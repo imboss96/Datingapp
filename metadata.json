@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Spark - Premium Dating & Moderation",
+  "description": "A high-end dating PWA with AI-powered swiping, chat moderation, and premium features.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
