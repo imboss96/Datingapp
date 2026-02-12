@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { UserProfile, Message, UserRole } from '../types';
-import { geminiService } from '../services/geminiService';
 
 interface ChatRoomProps {
   currentUser: UserProfile;
@@ -13,19 +12,31 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([
-    { id: 'm1', senderId: 'other', text: 'Hey there! How is your day going?', timestamp: Date.now() - 3600000, isFlagged: false },
-    { id: 'm2', senderId: 'me', text: 'Doing great! Just browsing Spark.', timestamp: Date.now() - 1800000, isFlagged: false },
+    { id: 'm1', senderId: 'other', text: 'Hey there! How is your day going?', timestamp: Date.now() - 3600000, isFlagged: false, isRead: true, readAt: Date.now() - 3000000 },
+    { id: 'm2', senderId: 'me', text: 'Doing great! Just browsing Spark.', timestamp: Date.now() - 1800000, isFlagged: false, isRead: true, readAt: Date.now() - 1700000 },
   ]);
   const [inputText, setInputText] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const isModerator = currentUser.role === UserRole.MODERATOR || currentUser.role === UserRole.ADMIN;
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
-  }, [messages]);
+  }, [messages, isOtherUserTyping]);
+
+  // Mark messages as read when they come into view
+  useEffect(() => {
+    setMessages(prev =>
+      prev.map(msg =>
+        msg.senderId !== currentUser.id && !msg.isRead
+          ? { ...msg, isRead: true, readAt: Date.now() }
+          : msg
+      )
+    );
+  }, [currentUser.id]);
 
   const handleSend = async () => {
     if (!inputText.trim()) return;
@@ -41,7 +52,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       senderId: currentUser.id,
       text: inputText,
       timestamp: Date.now(),
-      isFlagged: false
+      isFlagged: false,
+      isRead: false,
     };
 
     setMessages(prev => [...prev, newMessage]);
@@ -52,7 +64,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       onDeductCoin();
     }
 
-    const moderation = await geminiService.moderateContent(inputText);
+    // Simulate other user reading the message after 2 seconds
+    setTimeout(() => {
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === newMessage.id ? { ...m, isRead: true, readAt: Date.now() } : m
+        )
+      );
+    }, 2000);
+
+    // Moderation removed (Gemini). Keep messages unflagged by default.
+    const moderation = { isSafe: true };
     if (!moderation.isSafe) {
       setMessages(prev => prev.map(m => 
         m.id === newMessage.id ? { ...m, isFlagged: true, flagReason: moderation.reason } : m
@@ -181,12 +203,35 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     )}
                     </div>
                 </div>
-                <div className={`text-[9px] mt-1.5 font-bold tracking-tighter text-gray-400 uppercase ${isMe ? 'mr-1' : 'ml-1'}`}>
+                <div className={`text-[9px] mt-1.5 font-bold tracking-tighter text-gray-400 uppercase flex items-center gap-2 ${isMe ? 'mr-1' : 'ml-1'}`}>
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {isMe && (
+                      <span title={msg.isRead ? `Read at ${new Date(msg.readAt || 0).toLocaleTimeString()}` : 'Not read'}>
+                        {msg.isRead ? (
+                          <i className="fa-solid fa-check-double text-blue-500"></i>
+                        ) : (
+                          <i className="fa-solid fa-check text-gray-300"></i>
+                        )}
+                      </span>
+                    )}
                 </div>
                 </div>
             );
             })}
+
+            {/* Typing Indicator */}
+            {isOtherUserTyping && (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-none px-5 py-3 border border-gray-100 shadow-sm">
+                  <span className="text-xs text-gray-500 font-bold">Elena is typing</span>
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0s' }}></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
+                </div>
+              </div>
+            )}
         </div>
       </div>
 
@@ -206,8 +251,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     placeholder="Type a message..." 
                     className="bg-transparent w-full focus:outline-none text-sm text-gray-800 placeholder:text-gray-400"
                     value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                    onChange={(e) => {
+                      setInputText(e.target.value);
+                      // Show typing indicator
+                      if (e.target.value.length > 0) {
+                        setIsOtherUserTyping(false); // Simulate they stopped typing
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSend();
+                      }
+                    }}
                 />
             </div>
             <button 
