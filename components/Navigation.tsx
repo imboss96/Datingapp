@@ -15,7 +15,15 @@ const Navigation: React.FC<NavigationProps> = ({ isAdmin, coins }) => {
         className={({ isActive }) => `flex flex-col items-center transition-colors ${isActive ? 'text-red-500' : 'text-gray-400'}`}
       >
         <i className="fa-solid fa-fire text-xl"></i>
-        <span className="text-[10px] mt-1 font-medium">Discover</span>
+        <span className="text-[10px] mt-1 font-medium">Swipe</span>
+      </NavLink>
+
+      <NavLink 
+        to="/discover" 
+        className={({ isActive }) => `flex flex-col items-center transition-colors ${isActive ? 'text-red-500' : 'text-gray-400'}`}
+      >
+        <i className="fa-solid fa-magnifying-glass text-xl"></i>
+        <span className="text-[10px] mt-1 font-medium">Search</span>
       </NavLink>
       
       <NavLink 

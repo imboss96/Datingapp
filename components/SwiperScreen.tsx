@@ -1,7 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole } from '../types';
-import { geminiService } from '../services/geminiService';
+
+// Lightweight local stub to replace Gemini profile generation
+const generateProfileStub = async (name: string) => {
+  return {
+    bio: `${name} loves good conversation and new experiences.`,
+    interests: ['Travel', 'Music', 'Food', 'Movies']
+  };
+};
 
 interface SwiperScreenProps {
   currentUser: UserProfile;
@@ -18,7 +25,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   useEffect(() => {
     const fetchProfiles = async () => {
       const newProfiles = await Promise.all(MOCK_NAMES.map(async (name, i) => {
-        const data = await geminiService.generateProfile(name);
+        const data = await generateProfileStub(name);
         return {
           id: `u-${i}`,
           name,

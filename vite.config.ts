@@ -6,14 +6,13 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
       server: {
-        port: 3000,
-        host: '0.0.0.0',
+        port: 3001,
+        host: 'localhost',
+        strictPort: true,
       },
       plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
+      // No Gemini env vars defined (Gemini removed)
+      define: {},
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
