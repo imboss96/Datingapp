@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class APIClient {
   private token: string | null = null;
@@ -98,6 +98,25 @@ class APIClient {
     return result;
   }
 
+  async checkUsernameAvailable(username: string, userId?: string) {
+    const url = userId 
+      ? `/users/check-username/${username}?userId=${userId}`
+      : `/users/check-username/${username}`;
+    return this.request(url, {
+      method: 'POST',
+    });
+  }
+
+  async updateNotificationSettings(userId: string, settings: any) {
+    console.log('[DEBUG apiClient] updateNotificationSettings called with:', { userId, settings });
+    const result = await this.request(`/users/${userId}/notifications`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+    console.log('[DEBUG apiClient] updateNotificationSettings response:', result);
+    return result;
+  }
+
   async recordSwipe(userId: string, targetUserId: string, action: 'pass' | 'like' | 'superlike') {
     return this.request(`/users/${userId}/swipe`, {
       method: 'POST',
@@ -134,6 +153,67 @@ class APIClient {
     });
   }
 
+  async editMessage(chatId: string, messageId: string, text: string) {
+    return this.request(`/chats/${chatId}/messages/${messageId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  async deleteMessage(chatId: string, messageId: string) {
+    return this.request(`/chats/${chatId}/messages/${messageId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async markMessageAsRead(chatId: string, messageId: string) {
+    return this.request(`/chats/${chatId}/messages/${messageId}/read`, {
+      method: 'PUT',
+    });
+  }
+
+  async markAllMessagesAsRead(chatId: string) {
+    return this.request(`/chats/${chatId}/read-all`, {
+      method: 'PUT',
+    });
+  }
+
+  async uploadChatMedia(chatId: string, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const token = localStorage.getItem('authToken');
+    const headers: any = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const response = await fetch(`${apiBase}/chats/${chatId}/upload`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[ERROR apiClient] Upload media failed:', error);
+      throw error;
+    }
+  }
+
+  async sendMessageWithMedia(chatId: string, text: string, media: any) {
+    return this.request(`/chats/${chatId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ text, media }),
+    });
+  }
+
   // Reports
   async createReport(reportedId: string, reason: string, type: 'PROFILE' | 'CHAT', targetId: string) {
     return this.request('/reports', {
@@ -150,6 +230,102 @@ class APIClient {
     return this.request(`/reports/${reportId}`, {
       method: 'PUT',
       body: JSON.stringify({ status, notes }),
+    });
+  }
+
+  // Upload single image
+  async uploadImage(file: File) {
+    const formData = new FormData();
+    formData.append('image', file);
+
+    const response = await fetch(`${API_BASE_URL}/upload/upload-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Upload Error: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // Upload multiple images
+  async uploadImages(files: File[]) {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('images', file);
+    });
+
+    const response = await fetch(`${API_BASE_URL}/upload/upload-images`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Upload Error: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async processPurchase(userId: string, amount: number, price: string, method: string = 'CARD', isPremiumUpgrade: boolean = false) {
+    console.log('[DEBUG apiClient] processPurchase called with:', { userId, amount, price, method, isPremiumUpgrade });
+    const result = await this.request('/transactions/purchase', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId,
+        amount,
+        price,
+        method,
+        isPremiumUpgrade,
+      }),
+    });
+    console.log('[DEBUG apiClient] processPurchase response:', result);
+    return result;
+  }
+
+  async getTransactionHistory(userId: string) {
+    console.log('[DEBUG apiClient] getTransactionHistory called for userId:', userId);
+    const result = await this.request(`/transactions/history/${userId}`, {
+      method: 'GET',
+    });
+    console.log('[DEBUG apiClient] getTransactionHistory response:', result);
+    return result;
+  }
+
+  // Chat request methods
+  async acceptChatRequest(chatId: string) {
+    return this.request(`/chats/${chatId}/accept-request`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async blockChatRequest(chatId: string) {
+    return this.request(`/chats/${chatId}/block-request`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async deleteChat(chatId: string) {
+    return this.request(`/chats/${chatId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getPendingChatRequests() {
+    return this.request('/chats/requests/pending', {
+      method: 'GET',
     });
   }
 }

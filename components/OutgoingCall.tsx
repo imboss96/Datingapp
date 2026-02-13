@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { UserProfile } from '../types';
+import displayName from '../src/utils/formatName';
 
 interface OutgoingCallProps {
   isOpen: boolean;
@@ -41,14 +42,14 @@ const OutgoingCall: React.FC<OutgoingCallProps> = ({
             <div className="absolute inset-0 rounded-full border-2 border-blue-500 animate-pulse"></div>
             <img
               src={recipient.images[0] || 'https://via.placeholder.com/200x200?text=User'}
-              alt={recipient.name}
+              alt={recipient.username || recipient.name}
               className="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover"
             />
           </div>
         </div>
 
         {/* Recipient Info */}
-        <h2 className="text-3xl font-black text-white mb-2">{recipient.name}</h2>
+        <h2 className="text-3xl font-black text-white mb-2">{displayName(recipient)}</h2>
         <p className="text-gray-400 text-lg mb-6">{recipient.location}</p>
 
         {/* Call Type */}
@@ -100,7 +101,7 @@ const OutgoingCall: React.FC<OutgoingCallProps> = ({
 
         {/* Info */}
         <p className="text-gray-500 text-xs mt-6">
-          Waiting for {recipient.name} to answer...
+          Waiting for {displayName(recipient)} to answer...
         </p>
       </div>
     </div>

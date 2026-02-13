@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UserProfile } from '../types';
+import displayName from '../src/utils/formatName';
 
 interface VideoCallRoomProps {
   currentUser: UserProfile;
@@ -73,12 +74,12 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({ currentUser, otherUser })
               <div className="absolute bottom-8 left-8 z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-16 h-16 rounded-full border-4 border-emerald-500 overflow-hidden">
-                    <img src={otherUser.images[0]} alt={otherUser.name} className="w-full h-full object-cover" />
-                  </div>
+                        <img src={otherUser.images[0]} alt={otherUser.username || otherUser.name} className="w-full h-full object-cover" />
+                      </div>
                   <div className="text-white">
-                    <h3 className="text-xl font-bold">{otherUser.name}</h3>
-                    <p className="text-sm text-gray-300">{otherUser.location}</p>
-                  </div>
+                        <h3 className="text-xl font-bold">{displayName(otherUser)}</h3>
+                        <p className="text-sm text-gray-300">{otherUser.location}</p>
+                      </div>
                 </div>
               </div>
             </>
@@ -94,9 +95,9 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({ currentUser, otherUser })
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent"></div>
           <div className="absolute top-8 right-8 z-10">
-            <div className="text-right text-white">
+              <div className="text-right text-white">
               <div className="w-20 h-20 rounded-2xl border-4 border-blue-500 overflow-hidden mx-auto mb-2">
-                <img src={currentUser.images[0]} alt={currentUser.name} className="w-full h-full object-cover" />
+                <img src={currentUser.images[0]} alt={currentUser.username || currentUser.name} className="w-full h-full object-cover" />
               </div>
               <p className="text-xs font-bold">You</p>
               {!isVideoOn && <p className="text-xs text-red-400 mt-1">Video off</p>}

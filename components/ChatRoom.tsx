@@ -1,7 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { UserProfile, Message, UserRole } from '../types';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { UserProfile, Message, UserRole, MediaFile } from '../types';
+import apiClient from '../services/apiClient';
+import { useWebSocket } from '../services/useWebSocket';
+import MediaRenderer from './MediaRenderer';
+import VideoCallRoom from './VideoCallRoom';
 
 interface ChatRoomProps {
   currentUser: UserProfile;
@@ -10,36 +14,263 @@ interface ChatRoomProps {
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 'm1', senderId: 'other', text: 'Hey there! How is your day going?', timestamp: Date.now() - 3600000, isFlagged: false, isRead: true, readAt: Date.now() - 3000000 },
-    { id: 'm2', senderId: 'me', text: 'Doing great! Just browsing Spark.', timestamp: Date.now() - 1800000, isFlagged: false, isRead: true, readAt: Date.now() - 1700000 },
-  ]);
+  const [chatUser, setChatUser] = useState<UserProfile | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const [isUserTyping, setIsUserTyping] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [confirmCall, setConfirmCall] = useState<{ isVideo: boolean } | null>(null);
+  const [inCall, setInCall] = useState(false);
+  const [callIsVideo, setCallIsVideo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputFieldRef = useRef<HTMLInputElement>(null);
+  const inputContainerRef = useRef<HTMLDivElement>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const isModerator = currentUser.role === UserRole.MODERATOR || currentUser.role === UserRole.ADMIN;
+
+  // Set up WebSocket for typing indicators
+  const handleTypingIndicator = (data: any) => {
+    if (data.chatId === chatId && data.userId !== currentUser.id) {
+      console.log('[DEBUG ChatRoom] Received typing indicator:', data.isTyping);
+      setIsOtherUserTyping(data.isTyping);
+    }
+  };
+
+  const { sendTypingStatus, ws } = useWebSocket(currentUser.id, null, handleTypingIndicator);
+
+  // Handle keyboard visibility on mobile - scroll to bottom when keyboard shows/hides
+  useEffect(() => {
+    const inputElement = inputFieldRef.current;
+    if (!inputElement) return;
+
+    const handleFocus = () => {
+      // When keyboard appears, scroll messages up slightly to show input
+      setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 100);
+    };
+
+    const handleBlur = () => {
+      // When keyboard closes, scroll messages back down
+      setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 100);
+    };
+
+    inputElement.addEventListener('focus', handleFocus);
+    inputElement.addEventListener('blur', handleBlur);
+
+    return () => {
+      inputElement.removeEventListener('focus', handleFocus);
+      inputElement.removeEventListener('blur', handleBlur);
+    };
+  }, []);
+
+  // Debounced typing status - emits typing status every 1 second while typing
+  const emitTypingStatus = async (isTyping: boolean) => {
+    if (!chatId) return;
+    
+    // Clear any pending typing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    setIsUserTyping(isTyping);
+
+    if (isTyping) {
+      // Send typing status via WebSocket
+      if (sendTypingStatus) {
+        sendTypingStatus(chatId, true);
+        console.log('[DEBUG ChatRoom] Sent typing status: true');
+      }
+      
+      // Set timeout to mark typing as finished after 3 seconds of inactivity
+      typingTimeoutRef.current = setTimeout(() => {
+        setIsUserTyping(false);
+        if (sendTypingStatus) {
+          sendTypingStatus(chatId, false);
+          console.log('[DEBUG ChatRoom] Sent typing status: false');
+        }
+      }, 3000);
+    }
+  };
+
+  const handleMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !chatId) return;
+
+    // File size check (100MB max)
+    if (file.size > 100 * 1024 * 1024) {
+      alert('File size exceeds 100MB limit');
+      return;
+    }
+
+    setUploadingMedia(true);
+    setUploadProgress(0);
+
+    try {
+      console.log('[DEBUG ChatRoom] Uploading media:', file.name);
+      const result = await apiClient.uploadChatMedia(chatId, file);
+      
+      if (result.success && result.media) {
+        setSelectedMedia(result.media);
+        console.log('[DEBUG ChatRoom] Media uploaded successfully:', result.media);
+      }
+    } catch (err: any) {
+      console.error('[ERROR ChatRoom] Failed to upload media:', err);
+      alert('Failed to upload media. Please try again.');
+    } finally {
+      setUploadingMedia(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveMedia = () => {
+    setSelectedMedia(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+  useEffect(() => {
+    const loadChat = async () => {
+      try {
+        if (!id) {
+          console.error('[ERROR ChatRoom] No user ID provided in route');
+          return;
+        }
+        
+        setLoading(true);
+        console.log('[DEBUG ChatRoom] Loading chat with user ID:', id);
+
+        // Get or create chat with the other user
+        const chatData = await apiClient.createOrGetChat(id);
+        console.log('[DEBUG ChatRoom] Chat created/retrieved successfully:', chatData.id, 'with', chatData.messages?.length || 0, 'messages');
+        console.log('[DEBUG ChatRoom] Chat request status:', chatData.requestStatus, 'initiator:', chatData.requestInitiator);
+        
+        if (!chatData.id) {
+          throw new Error('Chat creation returned no ID');
+        }
+
+        setChatId(chatData.id);
+        setMessages(chatData.messages || []);
+
+        // Mark all messages as read when opening the chat (clears unread counter)
+        try {
+          await apiClient.markAllMessagesAsRead(chatData.id);
+          console.log('[DEBUG ChatRoom] Marked all messages as read for chat:', chatData.id);
+        } catch (err) {
+          console.warn('[WARN ChatRoom] Failed to mark messages as read:', err);
+        }
+
+        // Get the other user's profile from route state or fetch it
+        if ((location.state as any)?.matchedProfile) {
+          console.log('[DEBUG ChatRoom] Using matched profile from state:', (location.state as any).matchedProfile.name);
+          setChatUser((location.state as any).matchedProfile);
+        } else {
+          // Fetch user profile by ID
+          try {
+            console.log('[DEBUG ChatRoom] Fetching user profile for ID:', id);
+            const allUsers = await apiClient.getAllUsers();
+            const user = allUsers.find((u: UserProfile) => u.id === id);
+            if (user) {
+              console.log('[DEBUG ChatRoom] Found user:', user.name);
+              setChatUser(user);
+            } else {
+              console.warn('[WARN ChatRoom] User not found in list:', id);
+            }
+          } catch (err) {
+            console.error('[ERROR ChatRoom] Failed to fetch user profile:', err);
+          }
+        }
+      } catch (err: any) {
+        console.error('[ERROR ChatRoom] Failed to load chat:', err.message || err);
+        console.error('[ERROR ChatRoom] Full error details:', err);
+        console.error('[ERROR ChatRoom] Error response:', err.response || 'No response object');
+        alert(`Chat loading failed: ${err.message || 'Unknown error'}`);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadChat();
+  }, [id, location.state, currentUser.id]);
+
+  // Poll for new messages every 2 seconds
+  useEffect(() => {
+    if (!chatId) return;
+
+    const pollMessages = async () => {
+      try {
+        const chatData = await apiClient.getChat(chatId);
+        setMessages(chatData.messages || []);
+      } catch (err) {
+        console.error('[ERROR ChatRoom] Failed to poll messages:', err);
+      }
+    };
+
+    // Poll immediately and then every 2 seconds
+    pollMessages();
+    pollIntervalRef.current = setInterval(pollMessages, 2000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [chatId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
   }, [messages, isOtherUserTyping]);
 
-  // Mark messages as read when they come into view
+  // Mark unread messages as read
   useEffect(() => {
-    setMessages(prev =>
-      prev.map(msg =>
-        msg.senderId !== currentUser.id && !msg.isRead
-          ? { ...msg, isRead: true, readAt: Date.now() }
-          : msg
-      )
-    );
-  }, [currentUser.id]);
+    const markAsRead = async () => {
+      if (!chatId) return;
+      try {
+        for (const msg of messages) {
+          if (msg.senderId !== currentUser.id && !msg.isRead) {
+            await apiClient.markMessageAsRead(chatId, msg.id);
+          }
+        }
+      } catch (err) {
+        console.error('[ERROR ChatRoom] Failed to mark messages as read:', err);
+      }
+    };
+    
+    markAsRead();
+  }, [messages, chatId, currentUser.id]);
 
   const handleSend = async () => {
-    if (!inputText.trim()) return;
+    if (!chatId) {
+      console.warn('[WARN ChatRoom] Cannot send message: chatId not set');
+      alert('Please wait for the chat to load before sending a message.');
+      return;
+    }
+
+    if (!inputText.trim() && !selectedMedia) {
+      console.warn('[WARN ChatRoom] Cannot send empty message without media');
+      return;
+    }
 
     // Global economy check: Standard users pay 1 coin per message
     if (!currentUser.isPremium && currentUser.coins < 1) {
@@ -47,38 +278,73 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       return;
     }
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      senderId: currentUser.id,
-      text: inputText,
-      timestamp: Date.now(),
-      isFlagged: false,
-      isRead: false,
-    };
+    const messageText = inputText.trim();
+    const media = selectedMedia;
 
-    setMessages(prev => [...prev, newMessage]);
-    setInputText('');
-    
-    // Deduct coin if not premium
-    if (!currentUser.isPremium) {
-      onDeductCoin();
+    try {
+      setInputText('');
+      setSelectedMedia(null);
+
+      // Send message to backend
+      console.log('[DEBUG ChatRoom] Sending message to chat:', chatId, 'text:', messageText, 'with media:', !!media);
+      
+      let response;
+      if (media && messageText) {
+        response = await apiClient.sendMessageWithMedia(chatId, messageText, media);
+      } else if (media) {
+        response = await apiClient.sendMessageWithMedia(chatId, '', media);
+      } else {
+        response = await apiClient.sendMessage(chatId, messageText);
+      }
+      
+      console.log('[DEBUG ChatRoom] Message sent successfully:', response);
+
+      // Deduct coin if not premium
+      if (!currentUser.isPremium) {
+        onDeductCoin();
+      }
+
+      // Refresh messages to include the new one
+      const chatData = await apiClient.getChat(chatId);
+      setMessages(chatData.messages || []);
+    } catch (err: any) {
+      console.error('[ERROR ChatRoom] Failed to send message:', err);
+      alert('Failed to send message: ' + (err.message || 'Unknown error'));
+      setInputText(messageText); // Restore the original message text
     }
+  };
 
-    // Simulate other user reading the message after 2 seconds
-    setTimeout(() => {
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === newMessage.id ? { ...m, isRead: true, readAt: Date.now() } : m
-        )
-      );
-    }, 2000);
+  const handleEditMessage = async (messageId: string, oldText: string) => {
+    if (editingMessageId === messageId) {
+      // Save edit
+      if (!editText.trim()) return;
+      try {
+        await apiClient.editMessage(chatId!, messageId, editText);
+        const chatData = await apiClient.getChat(chatId!);
+        setMessages(chatData.messages || []);
+        setEditingMessageId(null);
+        setEditText('');
+      } catch (err) {
+        console.error('[ERROR] Failed to edit message:', err);
+        alert('Failed to edit message');
+      }
+    } else {
+      // Start editing
+      setEditingMessageId(messageId);
+      setEditText(oldText);
+    }
+  };
 
-    // Moderation removed (Gemini). Keep messages unflagged by default.
-    const moderation = { isSafe: true };
-    if (!moderation.isSafe) {
-      setMessages(prev => prev.map(m => 
-        m.id === newMessage.id ? { ...m, isFlagged: true, flagReason: moderation.reason } : m
-      ));
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!window.confirm('Delete this message?')) return;
+    
+    try {
+      await apiClient.deleteMessage(chatId!, messageId);
+      const chatData = await apiClient.getChat(chatId!);
+      setMessages(chatData.messages || []);
+    } catch (err) {
+      console.error('[ERROR] Failed to delete message:', err);
+      alert('Failed to delete message');
     }
   };
 
@@ -104,24 +370,44 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white md:bg-[#f0f2f5]">
+    <div className="flex flex-col w-full h-full bg-white md:bg-[#f0f2f5]">
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4 flex items-center gap-4 sticky top-0 z-10 shadow-sm">
-        <button onClick={() => navigate('/chats')} className="md:hidden text-gray-500 hover:text-red-500 transition-colors">
-          <i className="fa-solid fa-chevron-left text-lg"></i>
+      <div className="bg-white border-b px-3 md:px-6 py-2 md:py-4 flex items-center gap-2 md:gap-4 flex-shrink-0 shadow-sm z-20 safe-area-top">
+        <button onClick={() => navigate('/chats')} className="md:hidden text-gray-500 hover:text-red-500 transition-colors text-lg">
+          <i className="fa-solid fa-chevron-left"></i>
         </button>
-        <img src="https://picsum.photos/100/100?random=1" className="w-11 h-11 rounded-full border border-gray-100 shadow-sm" alt="User" />
-        <div className="flex-1">
-          <h3 className="font-bold text-gray-900 text-lg leading-tight">Elena</h3>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Active Now</span>
-          </div>
-        </div>
+        {chatUser && (
+          <>
+            <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-11 h-11 rounded-full border border-gray-100 shadow-sm object-cover" alt="User" />
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-gray-900 text-lg leading-tight truncate">{chatUser.name}</h3>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Active Now</span>
+              </div>
+            </div>
+          </>
+        )}
         <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 shadow-sm">
-              <i className="fa-solid fa-coins text-amber-500 text-xs"></i>
-              <span className="text-[10px] font-black text-amber-800">{currentUser.isPremium ? '∞' : currentUser.coins}</span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => { if (chatUser) { setConfirmCall({ isVideo: false }); } }}
+                title="Voice call"
+                className="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-200 shadow-sm"
+              >
+                <i className="fa-solid fa-phone"></i>
+              </button>
+              <button
+                onClick={() => { if (chatUser) { setConfirmCall({ isVideo: true }); } }}
+                title="Video call"
+                className="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-200 shadow-sm"
+              >
+                <i className="fa-solid fa-video"></i>
+              </button>
+              <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 shadow-sm">
+                <i className="fa-solid fa-coins text-amber-500 text-xs"></i>
+                <span className="text-[10px] font-black text-amber-800">{currentUser.isPremium ? '∞' : currentUser.coins}</span>
+              </div>
             </div>
             {isModerator && (
             <div className="hidden sm:flex bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-[10px] font-black uppercase items-center gap-2 border border-blue-100 shadow-sm">
@@ -129,15 +415,62 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 Moderator Access
             </div>
             )}
+            
             <button className="w-9 h-9 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 transition-colors">
                 <i className="fa-solid fa-ellipsis-vertical text-lg"></i>
             </button>
         </div>
       </div>
+      {/* Confirm toast for starting calls */}
+      {confirmCall && chatUser && (
+        <div className="fixed top-20 right-4 z-40">
+          <div className="bg-white shadow-lg rounded-lg p-3 flex items-center gap-3">
+            <div className="flex-1">
+              <div className="font-semibold">{confirmCall.isVideo ? 'Start Video Call' : 'Start Voice Call'}</div>
+              <div className="text-sm text-gray-500">Call {chatUser.username || chatUser.name}?</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setConfirmCall(null)}
+                className="px-3 py-1 rounded-md border border-gray-200 text-sm text-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setCallIsVideo(confirmCall.isVideo);
+                  setInCall(true);
+                  setConfirmCall(null);
+                }}
+                className="px-3 py-1 rounded-md bg-red-500 text-white text-sm font-semibold"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video call room (renders full-screen when inCall=true) */}
+      {inCall && (
+        <VideoCallRoom currentUser={currentUser} otherUser={chatUser || undefined} />
+      )}
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-        <div className="max-w-4xl mx-auto space-y-6">
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-gray-500 text-sm">Loading conversation...</p>
+          </div>
+        </div>
+      ) : (
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto p-3 md:p-8 space-y-6 bg-white md:bg-[#f0f2f5] w-full chat-messages"
+        style={{ paddingBottom: `calc(88px + env(safe-area-inset-bottom, 16px))` }}
+      >
+        <div className="w-full md:max-w-4xl md:mx-auto space-y-6">
             {messages.map((msg) => {
             const isMe = msg.senderId === currentUser.id;
             const isEditing = editingMessageId === msg.id;
@@ -145,13 +478,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             return (
                 <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                 <div className="flex items-center gap-2 max-w-[85%] md:max-w-[70%] group">
-                    {isModerator && !isEditing && (
-                    <button 
-                        onClick={() => startEditing(msg)}
-                        className={`opacity-0 group-hover:opacity-100 p-2 text-gray-300 hover:text-blue-500 transition-all ${isMe ? 'order-first' : 'order-last'}`}
-                    >
-                        <i className="fa-solid fa-pen-nib"></i>
-                    </button>
+                    {isMe && (
+                      <div className="opacity-0 group-hover:opacity-100 flex gap-2 transition-opacity order-first mr-2">
+                        <button 
+                          onClick={() => handleEditMessage(msg.id, msg.text)}
+                          className="p-2 text-gray-400 hover:text-blue-500 text-sm transition-colors"
+                          title="Edit message"
+                        >
+                          <i className="fa-solid fa-pen-nib"></i>
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="p-2 text-gray-400 hover:text-red-500 text-sm transition-colors"
+                          title="Delete message"
+                        >
+                          <i className="fa-solid fa-trash"></i>
+                        </button>
+                      </div>
                     )}
                     
                     <div className={`rounded-2xl px-5 py-3 text-sm shadow-sm relative ${
@@ -162,7 +505,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     {isEditing ? (
                         <div className="flex flex-col gap-3 min-w-[280px]">
                         <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
-                            <i className="fa-solid fa-pen-to-square"></i> Moderator intervention
+                            <i className="fa-solid fa-pen-to-square"></i> Edit message
                         </div>
                         <textarea
                             className="w-full bg-white text-gray-800 p-3 rounded-xl border border-blue-100 focus:outline-none text-sm resize-none"
@@ -172,15 +515,41 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                             autoFocus
                         />
                         <div className="flex justify-end gap-3">
-                            <button onClick={cancelEdit} className="text-[10px] font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest">Cancel</button>
-                            <button onClick={saveEdit} className="bg-blue-600 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-transform">
-                            Save Edits
+                            <button 
+                              onClick={() => {
+                                setEditingMessageId(null);
+                                setEditText('');
+                              }} 
+                              className="text-[10px] font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest"
+                            >
+                              Cancel
+                            </button>
+                            <button 
+                              onClick={() => handleEditMessage(msg.id, msg.text)}
+                              className="bg-blue-600 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-transform"
+                            >
+                              Save
                             </button>
                         </div>
                         </div>
                     ) : (
                         <>
-                        <div className="leading-relaxed font-medium">{msg.text}</div>
+                        {msg.text && <div className="leading-relaxed font-medium">{msg.text}</div>}
+                        
+                        {msg.media && (
+                          <div className="mt-2">
+                            <MediaRenderer media={msg.media} isMe={isMe} messageId={msg.id} />
+                          </div>
+                        )}
+                        
+                        {msg.isEdited && !msg.isEditedByModerator && (
+                            <div className={`mt-2 pt-2 border-t text-[9px] font-semibold uppercase tracking-wider flex items-center gap-1 ${
+                                isMe ? 'border-white/10 text-white/70' : 'border-gray-100 text-gray-500'
+                            }`}>
+                                <i className="fa-solid fa-pen-nib text-[8px]"></i>
+                                edited
+                            </div>
+                        )}
                         
                         {msg.isEditedByModerator && (
                             <div className={`mt-2 pt-2 border-t flex items-center gap-1.5 ${isMe ? 'border-white/10' : 'border-gray-50'}`}>
@@ -219,43 +588,128 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             );
             })}
 
+            {/* Spacer so last message is visible above input/nav */}
+            <div aria-hidden="true" style={{ height: 'calc(88px + env(safe-area-inset-bottom, 16px))' }} />
+
             {/* Typing Indicator */}
             {isOtherUserTyping && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-none px-5 py-3 border border-gray-100 shadow-sm">
-                  <span className="text-xs text-gray-500 font-bold">Elena is typing</span>
-                  <div className="flex gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0s' }}></div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                  <span className="text-xs text-gray-500 font-semibold">{chatUser?.name || 'User'} is typing</span>
+                  <div className="flex gap-1.5 ml-1">
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0s' }}></div>
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0.3s' }}></div>
                   </div>
                 </div>
               </div>
             )}
         </div>
       </div>
+      )}
 
       {/* Input Area */}
-      <div className="p-4 md:p-6 bg-white md:bg-transparent border-t md:border-none sticky bottom-0 z-10">
-        <div className="max-w-4xl mx-auto flex items-center gap-4 bg-white md:shadow-2xl md:rounded-3xl p-3 md:p-4 border border-gray-100">
+      <div ref={inputContainerRef} className="bg-white border-t p-2 md:p-6 flex-shrink-0 w-full" style={{ paddingBottom: `max(0.5rem, env(safe-area-inset-bottom))` }}>
+        {/* Media Preview */}
+        {selectedMedia && (
+          <div className="mb-2 w-full md:max-w-4xl md:mx-auto">
+            <div className="relative inline-block w-full">
+              <div className="rounded-lg overflow-hidden border-2 border-red-300 bg-red-50 p-2 md:p-3">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1">
+                    {selectedMedia.type === 'image' && (
+                      <>
+                        <img src={selectedMedia.url} alt="preview" className="max-h-36 rounded-lg" />
+                        <p className="text-xs text-gray-600 font-semibold mt-2 truncate">{selectedMedia.name}</p>
+                      </>
+                    )}
+                    {selectedMedia.type === 'video' && (
+                      <>
+                        <video className="max-h-36 rounded-lg bg-black" controls={false}>
+                          <source src={selectedMedia.url} type={selectedMedia.mimetype} />
+                        </video>
+                        <p className="text-xs text-gray-600 font-semibold mt-2 truncate">{selectedMedia.name}</p>
+                      </>
+                    )}
+                    {(selectedMedia.type === 'pdf' || selectedMedia.type === 'file') && (
+                      <>
+                        <div className="flex items-center gap-2 bg-gray-100 p-2 rounded-lg">
+                          <i className={`fa-solid ${selectedMedia.type === 'pdf' ? 'fa-file-pdf text-red-500' : 'fa-file text-gray-500'} text-xl`}></i>
+                          <div>
+                            <p className="text-xs text-gray-600 font-semibold truncate">{selectedMedia.name}</p>
+                            <p className="text-[10px] text-gray-500">{(selectedMedia.size / 1024 / 1024).toFixed(1)} MB</p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    {selectedMedia.type === 'audio' && (
+                      <>
+                        <div className="flex items-center gap-2 bg-blue-100 p-3 rounded-lg">
+                          <i className="fa-solid fa-music text-blue-600 text-xl"></i>
+                          <div>
+                            <p className="text-xs text-gray-700 font-semibold truncate">{selectedMedia.name}</p>
+                            <p className="text-[10px] text-gray-600">Ready to send</p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleRemoveMedia}
+                    className="text-gray-400 hover:text-red-600 text-lg transition-colors flex-shrink-0"
+                  >
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="w-full flex items-center gap-3 md:gap-4 bg-white md:shadow-2xl md:rounded-3xl p-3 md:p-4 border md:border-gray-100 border-none md:max-w-4xl md:mx-auto">
             <div className="hidden sm:flex flex-col items-center">
               <i className="fa-solid fa-coins text-amber-500 text-xs"></i>
               <span className="text-[8px] font-black text-amber-700">-1</span>
             </div>
-            <button className="text-gray-300 hover:text-gray-500 text-2xl px-2 transition-transform active:scale-90">
-                <i className="fa-solid fa-circle-plus"></i>
+            
+            {/* File Upload Button */}
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingMedia}
+              className="text-gray-400 hover:text-blue-500 text-lg md:text-2xl px-1 md:px-2 transition-transform active:scale-90 disabled:opacity-50"
+              title="Attach file (photo, video, PDF, etc.)"
+            >
+              <i className="fa-solid fa-paperclip"></i>
             </button>
-            <div className="flex-1 bg-gray-50 rounded-2xl px-5 py-3 flex items-center border border-gray-100">
+
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              onChange={handleMediaUpload}
+              accept="image/*,video/*,.pdf,audio/*"
+              className="hidden"
+              disabled={uploadingMedia}
+            />
+
+            {uploadingMedia && (
+              <div className="text-xs text-blue-600 font-semibold flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                Uploading...
+              </div>
+            )}
+            
+            <div className="flex-1 bg-gray-50 rounded-2xl px-4 md:px-5 py-2 md:py-3 flex items-center border border-gray-100">
                 <input 
+                    ref={inputFieldRef}
                     type="text" 
                     placeholder="Type a message..." 
-                    className="bg-transparent w-full focus:outline-none text-sm text-gray-800 placeholder:text-gray-400"
+                    className="bg-transparent w-full focus:outline-none text-sm md:text-base text-gray-800 placeholder:text-gray-400"
                     value={inputText}
                     onChange={(e) => {
                       setInputText(e.target.value);
-                      // Show typing indicator
-                      if (e.target.value.length > 0) {
-                        setIsOtherUserTyping(false); // Simulate they stopped typing
+                      // Emit typing status
+                      if (e.target.value.trim().length > 0) {
+                        emitTypingStatus(true);
                       }
                     }}
                     onKeyDown={(e) => {
@@ -263,12 +717,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         handleSend();
                       }
                     }}
+                    disabled={uploadingMedia}
                 />
             </div>
             <button 
                 onClick={handleSend}
                 className="w-12 h-12 rounded-2xl spark-gradient text-white flex items-center justify-center shadow-lg hover:shadow-red-500/20 active:scale-95 transition-all disabled:grayscale disabled:opacity-30"
-                disabled={!inputText.trim()}
+                disabled={!chatId || (!inputText.trim() && !selectedMedia) || uploadingMedia}
+                title={!chatId ? 'Loading chat...' : 'Send message'}
             >
                 <i className="fa-solid fa-paper-plane text-lg"></i>
             </button>

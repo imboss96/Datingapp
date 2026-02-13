@@ -2,15 +2,54 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-body {
-  font-family: 'Inter', sans-serif;
-  background-color: #f9fafb;
-  overscroll-behavior-y: contain;
+html, body, #root {
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  width: 100vw;
+  -webkit-user-select: none;
+  user-select: none;
+  margin: 0;
+  padding: 0;
 }
 
-.swipe-card {
-  transition: transform 0.3s ease, opacity 0.3s ease;
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #000000;
+  overscroll-behavior: none;
+  overscroll-behavior-y: contain;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Safe area support for notched devices */
+.safe-area-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
   touch-action: none;
+}
+
+/* Ensure headers and top bars are visible under notches / translucent status bars */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Mobile keyboard handling */
+input:focus {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Prevent zoom on input focus */
+input, textarea, select {
+  font-size: 16px;
 }
 
 .premium-gradient {
@@ -25,4 +64,39 @@ body {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Modal and bottom-nav z-index + padding fixes */
+/* Ensure full-screen overlays appear above the bottom navigation */
+.fixed.inset-0.z-50 {
+  z-index: 9999 !important;
+}
+
+/* Make common bottom-sheet panels scrollable and reserve space above nav */
+.fixed.inset-0 .rounded-t-3xl,
+.fixed.inset-0 .rounded-t-[2.5rem],
+.fixed.inset-0 .modal-panel,
+.fixed.inset-0 .relative.w-full,
+.fixed.inset-0 .max-h-\[90vh\] {
+  max-height: calc(100dvh - env(safe-area-inset-bottom, 16px) - 72px);
+  overflow-y: auto;
+  padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 88px);
+}
+
+/* Chat messages: add bottom padding so last message is visible above input + nav */
+.chat-messages {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 16px));
+  overscroll-behavior: contain;
+}
+
+/* Ensure anchored scrolling accounts for bottom input/nav */
+.chat-messages {
+  scroll-padding-bottom: calc(88px + env(safe-area-inset-bottom, 16px));
+}
+
+/* Chat input: keep above nav and safe-area */
+.chat-input {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 5000;
 }
