@@ -1,22 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const countries = [
-  'Afghanistan', 'Albania', 'Algeria', 'American Samoa', 'Andorra', 'Angola', 'Anguilla', 'Antigua & Barbuda',
-  'Argentina', 'Armenia', 'Aruba', 'Australia', 'Austria', 'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh',
-  'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bermuda', 'Bhutan', 'Bolivia', 'Bosnia & Herzegovina',
-  'Botswana', 'Brazil', 'Brunei', 'Bulgaria', 'Burkina Faso', 'Burundi', 'Cambodia', 'Cameroon', 'Canada',
-  'Cape Verde', 'Cayman Islands', 'Central African Republic', 'Chad', 'Chile', 'China', 'Christmas Island',
-  'Cocos Island', 'Colombia', 'Comoros', 'Congo', 'Cook Islands', 'Costa Rica', 'Cote D\'Ivoire', 'Croatia'
-];
-
 export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: () => void }) {
-  const [formData, setFormData] = useState({
-    gender: 'male',
-    lookingFor: 'female',
-    ageFrom: '18',
-    ageTo: '25',
-    country: 'Bangladesh'
-  });
   const [activeTab, setActiveTab] = useState(0);
 
   useEffect(() => {
@@ -51,14 +35,6 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
       links.forEach(link => link.remove());
     };
   }, []);
-
-  const handleFormChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
 
   const members = [
     { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/01.jpg' },
@@ -194,78 +170,6 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Search Form Section */}
-      <div className="about about--style3 padding-top pt-xl-0">
-        <div className="container">
-          <div className="section__wrapper wow fadeInUp" data-wow-duration="1.5s">
-            <form action="#">
-              <div className="banner__list">
-                <div className="row align-items-center row-cols-xl-5 row-cols-lg-3 row-cols-sm-2 row-cols-1">
-                  <div className="col-6">
-                    <label>I am a</label>
-                    <div className="banner__inputlist">
-                      <select name="gender" value={formData.gender} onChange={handleFormChange}>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="others">Others</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="col-6">
-                    <label>Looking for</label>
-                    <div className="banner__inputlist">
-                      <select name="lookingFor" value={formData.lookingFor} onChange={handleFormChange}>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="others">Others</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="col">
-                    <label>Age</label>
-                    <div className="row">
-                      <div className="col-6">
-                        <div className="banner__inputlist">
-                          <select name="ageFrom" value={formData.ageFrom} onChange={handleFormChange}>
-                            {[...Array(40)].map((_, i) => (
-                              <option key={i} value={18 + i}>{18 + i}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="col-6">
-                        <div className="banner__inputlist">
-                          <select name="ageTo" value={formData.ageTo} onChange={handleFormChange}>
-                            {[...Array(40)].map((_, i) => (
-                              <option key={i} value={18 + i}>{18 + i}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="col">
-                    <label>Country</label>
-                    <div className="banner__inputlist">
-                      <select name="country" value={formData.country} onChange={handleFormChange}>
-                        {countries.map(country => (
-                          <option key={country} value={country}>{country}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="col">
-                    <button type="button" onClick={() => onOpenLoginModal?.()} className="default-btn style-2" style={{ width: '100%' }}>
-                      <span>Find Your Partner</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </form>
           </div>
         </div>
       </div>
