@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f9fafb;
+  overscroll-behavior-y: contain;
+}
+
+.swipe-card {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  touch-action: none;
+}
+
+.premium-gradient {
+  background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+}
+
+.spark-gradient {
+  background: linear-gradient(to right, #ff416c, #ff4b2b);
+}
+
+.glass-morphism {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}

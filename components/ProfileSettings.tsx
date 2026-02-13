@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 
 interface Props {
@@ -29,10 +30,20 @@ const PAYMENT_METHODS = [
 ];
 
 const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
+  const navigate = useNavigate();
   const [selectedPack, setSelectedPack] = useState<CoinPack | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStep, setPaymentStep] = useState<'SELECT_METHOD' | 'PROCESSING' | 'SUCCESS'>('SELECT_METHOD');
   const [selectedMethod, setSelectedMethod] = useState<string>('card');
+
+  const handleSignOut = () => {
+    // Clear user session
+    localStorage.removeItem('googleUser');
+    localStorage.removeItem('authToken');
+    setUser(null as any);
+    // Navigate to home page
+    window.location.hash = '#/';
+  };
 
   const handleOpenCheckout = (pack: CoinPack) => {
     setSelectedPack(pack);
@@ -280,7 +291,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
           ))}
         </div>
 
-        <button className="w-full py-4 text-red-500 font-bold text-sm border-2 border-red-50 border-dashed rounded-2xl active:bg-red-50 transition-colors mt-8">
+        <button 
+          onClick={handleSignOut}
+          className="w-full py-4 text-red-500 font-bold text-sm border-2 border-red-50 border-dashed rounded-2xl active:bg-red-50 transition-colors mt-8">
           Sign Out
         </button>
       </div>
