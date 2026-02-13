@@ -47,6 +47,7 @@ export interface Notification {
 export interface UserProfile {
   id: string;
   name: string;
+  username?: string;
   age: number;
   bio: string;
   images: string[];
@@ -61,16 +62,32 @@ export interface UserProfile {
   reportedUsers: string[]; // User IDs that this user has reported
 }
 
+export interface MediaFile {
+  url: string;
+  type: 'image' | 'video' | 'pdf' | 'file' | 'audio';
+  name: string;
+  size: number;
+  mimetype: string;
+  duration?: number; // for videos/audio in seconds
+  width?: number; // for images/videos
+  height?: number; // for images/videos
+  thumbnail?: string; // thumbnail URL for videos
+}
+
 export interface Message {
   id: string;
   senderId: string;
-  text: string;
+  text?: string;
   timestamp: number;
   isFlagged: boolean;
   flagReason?: string;
   isEditedByModerator?: boolean;
+  isEdited?: boolean; // User edited the message
+  editedAt?: number; // Timestamp when message was edited
+  originalText?: string; // Store original text for edit history
   isRead?: boolean; // Read receipt
   readAt?: number; // Timestamp when message was read
+  media?: MediaFile; // Media file attached to message
 }
 
 export interface Chat {
@@ -79,6 +96,11 @@ export interface Chat {
   messages: Message[];
   lastUpdated: number;
   isBlocked?: boolean; // If one party blocked the other
+  requestStatus?: 'pending' | 'accepted' | 'blocked';
+  requestInitiator?: string;
+  requestInitiatorFirstMessage?: boolean;
+  blockedBy?: string[];
+  isNewChat?: boolean;
 }
 
 export interface Report {

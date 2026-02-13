@@ -20,6 +20,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [imageUrl, setImageUrl] = useState(profilePicture || '');
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
 
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
@@ -35,6 +36,24 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
     } else {
       setInterests([...selectedInterests, interest].join(','));
     }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setUploadedImages((prev) => [...prev, base64]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeImage = (index: number) => {
+    setUploadedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,14 +76,15 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
 
       // Update user profile in MongoDB
       console.log('[DEBUG ProfileSetup] Updating profile with:', { userId, name, age: parseInt(age), bio, location, interests: selectedInterests });
+      const allImages = [...uploadedImages, imageUrl].filter(img => img);
       const updatedUser = await apiClient.updateProfile(userId, {
         name,
         age: parseInt(age),
         bio,
         location,
         interests: selectedInterests,
-        images: imageUrl ? [imageUrl] : [],
-        profilePicture: imageUrl || profilePicture
+        images: allImages,
+        profilePicture: allImages[0] || profilePicture
       });
       console.log('[DEBUG ProfileSetup] Profile update response:', updatedUser);
 
@@ -91,26 +111,68 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Profile Picture */}
+          {/* Profile Pictures */}
           <div className="bg-gray-50 rounded-2xl p-6">
-            <label className="block text-sm font-bold text-gray-900 mb-3">Profile Photo URL</label>
-            <div className="flex gap-4 items-start">
-              {(imageUrl || profilePicture) && (
-                <img
-                  src={imageUrl || profilePicture}
-                  alt="Profile"
-                  className="w-20 h-20 rounded-full object-cover border-2 border-red-200"
-                />
-              )}
+            <label className="block text-sm font-bold text-gray-900 mb-3">Profile Photos</label>
+            
+            {/* Upload File Input */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-700 mb-2">Upload Photos</label>
+              <input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-red-500 transition-colors focus:outline-none bg-white"
+              />
+              <p className="text-xs text-gray-500 mt-1">Drop up to 5 photos (JPG, PNG)</p>
+            </div>
+
+            {/* URL Input */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-700 mb-2">Or Paste URL</label>
               <input
                 type="url"
                 placeholder="Paste your profile photo URL here"
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
               />
+              <p className="text-xs text-gray-500 mt-1">Use Unsplash (images.unsplash.com) or any image URL</p>
             </div>
-            <p className="text-xs text-gray-500 mt-2">Use Unsplash (images.unsplash.com) or upload your own</p>
+
+            {/* Image Previews */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-2">Preview ({uploadedImages.length + (imageUrl ? 1 : 0)} photos)</label>
+              <div className="grid grid-cols-3 gap-2">
+                {uploadedImages.map((img, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={img}
+                      alt={`Uploaded ${idx + 1}`}
+                      className="w-full h-20 rounded-lg object-cover border-2 border-red-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(idx)}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    >
+                      <i className="fa-solid fa-times text-xs"></i>
+                    </button>
+                  </div>
+                ))}
+                {imageUrl && (
+                  <div key="url" className="relative">
+                    <img
+                      src={imageUrl}
+                      alt="URL"
+                      className="w-full h-20 rounded-lg object-cover border-2 border-green-200"
+                    />
+                    <span className="absolute bottom-1 right-1 bg-green-500 text-white text-[8px] px-2 py-0.5 rounded-full font-bold">URL</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Name (readonly) */}

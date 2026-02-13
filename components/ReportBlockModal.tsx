@@ -122,7 +122,7 @@ const ReportBlockModal: React.FC<ReportBlockModalProps> = ({
           <div className="space-y-4">
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
               <p className="text-sm text-gray-700">
-                Blocking <span className="font-bold">{targetUser.name}</span> will:
+                Blocking <span className="font-bold">{targetUser.username || targetUser.name}</span> will:
               </p>
               <ul className="text-xs text-gray-600 mt-3 space-y-2">
                 <li className="flex gap-2">

@@ -54,11 +54,13 @@ router.post('/register', async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
+        username: user.username,
         email: user.email,
         age: user.age,
         location: user.location,
         interests: user.interests || [],
         profilePicture: user.profilePicture,
+        images: user.images || [],
         coins: user.coins,
       },
     });
@@ -103,11 +105,13 @@ router.post('/login', async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
+        username: user.username,
         email: user.email,
         age: user.age,
         location: user.location,
         interests: user.interests || [],
         profilePicture: user.profilePicture,
+        images: user.images || [],
         coins: user.coins,
       },
     });
@@ -176,11 +180,13 @@ router.post('/google', async (req, res) => {
       user: {
         id: user.id,
         name: user.name,
+        username: user.username,
         email: user.email,
         age: user.age,
         location: user.location,
         interests: user.interests || [],
         profilePicture: user.profilePicture,
+        images: user.images || [],
         coins: user.coins,
       },
     });

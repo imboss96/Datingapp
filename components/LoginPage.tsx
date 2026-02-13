@@ -59,14 +59,18 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
         const user: UserProfile = {
           id: response.user.id,
           name: response.user.name,
+          username: response.user.username || '',
           age: response.user.age || 25,
           bio: response.user.bio || 'Welcome to lunesa!',
-          images: response.user.profilePicture ? [response.user.profilePicture] : [],
+          images: response.user.images || [],
           isPremium: false,
           role: UserRole.USER,
           location: response.user.location || 'Not specified',
           interests: response.user.interests || [],
-          coins: response.user.coins || 10
+          coins: response.user.coins || 10,
+          verification: response.user.verification || { status: 'UNVERIFIED' as const },
+          blockedUsers: response.user.blockedUsers || [],
+          reportedUsers: response.user.reportedUsers || []
         };
         // New signup always needs profile setup
         onLoginSuccess?.(user, true);
@@ -84,14 +88,18 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
         const user: UserProfile = {
           id: response.user.id,
           name: response.user.name,
+          username: response.user.username || '',
           age: response.user.age || 25,
           bio: response.user.bio || 'Welcome to lunesa!',
-          images: response.user.profilePicture ? [response.user.profilePicture] : [],
+          images: response.user.images || [],
           isPremium: false,
           role: UserRole.USER,
           location: response.user.location || 'Not specified',
           interests: response.user.interests || [],
-          coins: response.user.coins || 10
+          coins: response.user.coins || 10,
+          verification: response.user.verification || { status: 'UNVERIFIED' as const },
+          blockedUsers: response.user.blockedUsers || [],
+          reportedUsers: response.user.reportedUsers || []
         };
         // Check if profile is complete for returning user
         const needsProfileSetup = !isProfileComplete(response.user);
@@ -135,14 +143,18 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
       const user: UserProfile = {
         id: response.user.id,
         name: response.user.name,
+        username: response.user.username || '',
         age: response.user.age || 25,
         bio: response.user.bio || 'Welcome to lunesa!',
-        images: response.user.profilePicture ? [response.user.profilePicture] : [],
+        images: response.user.images || [],
         isPremium: false,
         role: UserRole.USER,
         location: response.user.location || 'Not specified',
         interests: response.user.interests || [],
-        coins: response.user.coins || 10
+        coins: response.user.coins || 10,
+        verification: response.user.verification || { status: 'UNVERIFIED' as const },
+        blockedUsers: response.user.blockedUsers || [],
+        reportedUsers: response.user.reportedUsers || []
       };
 
       // Check if profile is complete - for returning Google users, skip ProfileSetup if complete
@@ -204,7 +216,6 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
           theme="outline"
           size="large"
           text="signin_with"
-          locale="en_US"
         />
       </div>
 

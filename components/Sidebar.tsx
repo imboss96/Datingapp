@@ -38,7 +38,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
             {currentUser.isPremium && <i className="fa-solid fa-crown absolute -top-1 -right-1 text-amber-400 text-[10px]"></i>}
           </div>
           <div className="flex flex-col">
-            <span className="font-bold text-sm tracking-tight leading-none mb-1">{currentUser.name}</span>
+            <span className="font-bold text-sm tracking-tight leading-none mb-1">{currentUser.username || currentUser.name}</span>
             <div className="flex items-center gap-1">
               <i className="fa-solid fa-coins text-amber-400 text-[10px]"></i>
               <span className="text-[10px] font-black">{currentUser.isPremium ? 'Unlimited' : currentUser.coins}</span>
@@ -74,8 +74,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
       </div>
 
       {/* Scrollable Chat List */}
-      <div className="flex-1 overflow-y-auto">
-        <ChatList />
+      <div className="flex-1 overflow-y-auto pointer-events-auto">
+        <ChatList currentUser={currentUser} />
       </div>
       
       {/* Global Economy CTA */}

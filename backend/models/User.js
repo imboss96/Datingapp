@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema({
   passwordHash: { type: String },
   googleId: { type: String, sparse: true },
   name: { type: String, required: true },
+  username: { type: String, unique: true, sparse: true, lowercase: true, index: true },
   age: { type: Number, required: true },
   bio: { type: String },
   images: [{ type: String }],
@@ -17,6 +18,12 @@ const userSchema = new mongoose.Schema({
   coins: { type: Number, default: 10 },
   swipes: [{ type: String }], // User IDs they've liked/disliked
   matches: [{ type: String }], // User IDs they've matched with
+  notifications: {
+    newMatches: { type: Boolean, default: true },
+    newMessages: { type: Boolean, default: true },
+    activityUpdates: { type: Boolean, default: true },
+    promotions: { type: Boolean, default: false }
+  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

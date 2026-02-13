@@ -50,8 +50,8 @@ const IncomingCall: React.FC<IncomingCallProps> = ({
               />
             ))}
             <img
-              src={caller.images[0] || 'https://via.placeholder.com/200x200?text=User'}
-              alt={caller.name}
+                src={caller.images[0] || 'https://via.placeholder.com/200x200?text=User'}
+                alt={caller.username || caller.name}
               className="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover"
             />
           </div>

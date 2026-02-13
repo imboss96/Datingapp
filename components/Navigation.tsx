@@ -9,7 +9,7 @@ interface NavigationProps {
 
 const Navigation: React.FC<NavigationProps> = ({ isAdmin, coins }) => {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass-morphism border-t h-16 flex items-center justify-around z-50 md:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass-morphism border-t h-16 flex items-center justify-around z-20 md:hidden safe-area-bottom">
       <NavLink 
         to="/" 
         className={({ isActive }) => `flex flex-col items-center transition-colors ${isActive ? 'text-red-500' : 'text-gray-400'}`}

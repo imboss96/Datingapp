@@ -231,7 +231,7 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
             </div>
             <div className="p-3">
               <h3 className="font-bold text-sm text-gray-900 truncate">
-                {profile.name}, {profile.age}
+                {profile.username || profile.name}, {profile.age}
               </h3>
               <p className="text-xs text-gray-500 truncate mb-2">
                 <i className="fa-solid fa-location-dot mr-1"></i>

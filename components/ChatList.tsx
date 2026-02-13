@@ -1,64 +1,318 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { UserProfile } from '../types';
+import apiClient from '../services/apiClient';
+import ChatOptionsModal from './ChatOptionsModal';
 
-const MOCK_CHATS = [
-  { id: '1', name: 'Elena', lastMessage: 'That sounds fun! Where should we meet?', time: '2m ago', image: 'https://picsum.photos/100/100?random=1', unread: 2 },
-  { id: '2', name: 'Sarah', lastMessage: 'Hey! I saw you also like running!', time: '1h ago', image: 'https://picsum.photos/100/100?random=2', unread: 0 },
-  { id: '3', name: 'Liam', lastMessage: 'Have you seen that new movie yet?', time: '3h ago', image: 'https://picsum.photos/100/100?random=3', unread: 0 },
-];
+interface ChatData {
+  id: string;
+  participants: string[];
+  messages: Array<{
+    id: string;
+    senderId: string;
+    text: string;
+    timestamp: number;
+  }>;
+  lastUpdated: number;
+}
 
-const ChatList: React.FC = () => {
+interface MatchProfile {
+  id: string;
+  name: string;
+  username?: string;
+  age: number;
+  location: string;
+  bio: string;
+  images: string[];
+  interests: string[];
+  image: string;
+}
+
+const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   const navigate = useNavigate();
+  const [chats, setChats] = useState<ChatData[]>([]);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [selectedMatch, setSelectedMatch] = useState<MatchProfile | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  
+  // Long-press state
+  const [optionsModalOpen, setOptionsModalOpen] = useState(false);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [selectedChatUsername, setSelectedChatUsername] = useState<string>('');
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Long-press handlers
+  const handleTouchStart = (chatId: string, username: string) => {
+    console.log('[DEBUG] Touch start detected on chat:', chatId);
+    const timer = setTimeout(() => {
+      console.log('[DEBUG] Long-press triggered on chat:', chatId);
+      setSelectedChatId(chatId);
+      setSelectedChatUsername(username);
+      setOptionsModalOpen(true);
+    }, 500); // 500ms long-press
+    setLongPressTimer(timer);
+  };
+
+  const handleTouchEnd = () => {
+    console.log('[DEBUG] Touch end detected');
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
+  const handleChatItemClick = (e: React.MouseEvent, chatId: string, otherUser: UserProfile | null) => {
+    console.log('[DEBUG] Chat item clicked, optionsModalOpen:', optionsModalOpen);
+    // Don't navigate if options modal is open
+    if (optionsModalOpen) {
+      e.stopPropagation();
+      return;
+    }
+    e.stopPropagation();
+    handleChatClick(chatId, otherUser);
+  };
+
+  const handleDeleteChat = async () => {
+    if (!selectedChatId) return;
+    
+    try {
+      setOptionsLoading(true);
+      await apiClient.deleteChat(selectedChatId);
+      setChats(prev => prev.filter(c => c.id !== selectedChatId));
+      setOptionsModalOpen(false);
+      console.log('[DEBUG ChatList] Chat deleted successfully');
+    } catch (err: any) {
+      console.error('[ERROR ChatList] Failed to delete chat:', err);
+      alert('Failed to delete chat. Please try again.');
+    } finally {
+      setOptionsLoading(false);
+      setSelectedChatId(null);
+      setSelectedChatUsername('');
+    }
+  };
+
+  const handleBlockChat = async () => {
+    if (!selectedChatId) return;
+    
+    try {
+      setOptionsLoading(true);
+      await apiClient.blockChatRequest(selectedChatId);
+      setChats(prev => prev.filter(c => c.id !== selectedChatId));
+      setOptionsModalOpen(false);
+      console.log('[DEBUG ChatList] Chat blocked successfully');
+    } catch (err: any) {
+      console.error('[ERROR ChatList] Failed to block chat:', err);
+      alert('Failed to block chat. Please try again.');
+    } finally {
+      setOptionsLoading(false);
+      setSelectedChatId(null);
+      setSelectedChatUsername('');
+    }
+  };
+
+  // Load chats and users on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        console.log('[DEBUG ChatList] Loading chats and users');
+
+        // Fetch chats and all users
+        const [chatsData, usersData] = await Promise.all([
+          apiClient.getChats(),
+          apiClient.getAllUsers(),
+        ]);
+
+        console.log('[DEBUG ChatList] Loaded', chatsData.length, 'chats and', usersData.length, 'users');
+        // Sort chats: unread first (descending unreadCount), then by lastUpdated
+        const sorted = chatsData.slice().sort((a: any, b: any) => {
+          const ua = (a.unreadCount || 0);
+          const ub = (b.unreadCount || 0);
+          if (ua !== ub) return ub - ua;
+          return b.lastUpdated - a.lastUpdated;
+        });
+        setChats(sorted);
+        setAllUsers(usersData);
+      } catch (err: any) {
+        console.error('[ERROR ChatList] Failed to load data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // Get the other user in a chat
+  const getOtherUser = (chat: ChatData): UserProfile | null => {
+    if (!currentUser) {
+      console.log('[DEBUG ChatList] No currentUser available');
+      return null;
+    }
+    const otherUserId = chat.participants.find(id => id !== currentUser.id);
+    console.log('[DEBUG ChatList] Chat participants:', chat.participants, 'Current user:', currentUser.id, 'Other user ID:', otherUserId);
+    const otherUser = allUsers.find(u => u.id === otherUserId);
+    console.log('[DEBUG ChatList] Found user:', otherUser?.name || 'NOT FOUND');
+    return otherUser || null;
+  };
+
+  const handleChatClick = (chatId: string, otherUser: UserProfile | null) => {
+    console.log('[DEBUG ChatList] Navigating to chat:', chatId);
+    navigate(`/chat/${otherUser?.id || chatId}`, { 
+      state: { matchedProfile: otherUser }
+    });
+  };
+
+  const handleMatchClick = (match: MatchProfile) => {
+    setSelectedMatch(match);
+    setCurrentImageIndex(0);
+  };
+
+  const closeModal = () => {
+    setSelectedMatch(null);
+    setCurrentImageIndex(0);
+  };
+
+  const nextImage = () => {
+    if (selectedMatch) {
+      setCurrentImageIndex((prev) => (prev + 1) % selectedMatch.images.length);
+    }
+  };
+
+  const prevImage = () => {
+    if (selectedMatch) {
+      setCurrentImageIndex((prev) => (prev - 1 + selectedMatch.images.length) % selectedMatch.images.length);
+    }
+  };
+
+  const getLastMessage = (chat: ChatData): string => {
+    if (!chat.messages || chat.messages.length === 0) {
+      return 'No messages yet';
+    }
+    return chat.messages[chat.messages.length - 1].text;
+  };
+
+  const getTimeAgo = (timestamp: number): string => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'now';
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return `${days}d ago`;
+  };
 
   return (
-    <div className="h-full bg-white flex flex-col">
+    <div className="h-full bg-white flex flex-col pointer-events-auto">
       <div className="md:hidden p-4 border-b">
         <h2 className="text-xl font-bold text-gray-800">Messages</h2>
       </div>
 
-      <div className="p-4 border-b border-gray-50">
-        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Matches</h3>
-        <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-          {[4, 5, 6, 7, 8].map(i => (
-            <div key={i} className="flex-shrink-0 text-center cursor-pointer group">
-              <div className="w-14 h-14 rounded-full border-2 border-red-500 p-0.5 group-hover:scale-105 transition-transform">
-                <img src={`https://picsum.photos/100/100?random=${i}`} className="w-full h-full rounded-full object-cover shadow-sm" alt="Match" />
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-gray-500 text-sm">Loading chats...</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-4 pt-6">
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
+                Conversations ({chats.length})
+              </h3>
+            </div>
+            {chats.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-8 text-center">
+                <i className="fa-solid fa-message text-4xl text-gray-300 mb-3"></i>
+                <p className="text-gray-500 text-sm">No conversations yet. Start swiping to match!</p>
               </div>
-              <span className="text-[10px] font-bold mt-1.5 block text-gray-700">Maya</span>
-            </div>
-          ))}
-        </div>
-      </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {chats.map((chat) => {
+                  const otherUser = getOtherUser(chat);
+                  if (!otherUser) return null;
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-4 pt-6">
-            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Conversations</h3>
-        </div>
-        <div className="divide-y divide-gray-50">
-            {MOCK_CHATS.map(chat => (
-            <div 
-                key={chat.id} 
-                onClick={() => navigate(`/chat/${chat.id}`)}
-                className="flex items-center gap-4 p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group"
-            >
-                <div className="relative">
-                    <img src={chat.image} className="w-14 h-14 rounded-full object-cover shadow-sm border border-gray-100" alt={chat.name} />
-                    {chat.unread > 0 && <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 border-2 border-white rounded-full"></span>}
-                </div>
-                <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center mb-0.5">
-                    <h4 className="font-bold text-gray-900 truncate text-sm">{chat.name}</h4>
-                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">{chat.time}</span>
-                </div>
-                <p className={`text-xs truncate ${chat.unread > 0 ? 'font-bold text-gray-900' : 'text-gray-400 font-medium'}`}>
-                    {chat.lastMessage}
-                </p>
-                </div>
-            </div>
-            ))}
-        </div>
-      </div>
+                  return (
+                    <div
+                      key={chat.id}
+                      onClick={(e) => handleChatItemClick(e, chat.id, otherUser)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleChatClick(chat.id, otherUser);
+                        }
+                      }}
+                      onTouchStart={() => handleTouchStart(chat.id, otherUser.username || otherUser.name)}
+                      onTouchEnd={handleTouchEnd}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setSelectedChatId(chat.id);
+                        setSelectedChatUsername(otherUser.username || otherUser.name);
+                        setOptionsModalOpen(true);
+                      }}
+                      className="flex items-center gap-4 p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group pointer-events-auto"
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="relative">
+                        <img
+                          src={otherUser.images?.[0] || 'https://via.placeholder.com/56'}
+                          className="w-14 h-14 rounded-full object-cover shadow-sm border border-gray-100"
+                          alt={otherUser.username || otherUser.name}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-center mb-0.5">
+                          <div className="flex flex-col">
+                            <h4 className="font-bold text-gray-900 truncate text-sm">
+                              {otherUser.username || otherUser.name}
+                            </h4>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {chat.unreadCount > 0 && (
+                              <span className="inline-flex items-center justify-center bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
+                              {getTimeAgo(chat.lastUpdated)}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs truncate text-gray-400 font-medium">
+                          {getLastMessage(chat)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+      
+      {/* Chat Options Modal */}
+      <ChatOptionsModal
+        isOpen={optionsModalOpen}
+        onClose={() => {
+          setOptionsModalOpen(false);
+          setSelectedChatId(null);
+          setSelectedChatUsername('');
+        }}
+        onDelete={handleDeleteChat}
+        onBlock={handleBlockChat}
+        chatUsername={selectedChatUsername}
+        loading={optionsLoading}
+      />
     </div>
   );
 };
