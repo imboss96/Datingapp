@@ -1,6 +1,9 @@
 
 import React, { useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import './src/globals.css';
+import LandingPage from './components/LandingPage';
+import LoginPage from './components/LoginPage';
 import SwiperScreen from './components/SwiperScreen';
 import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
@@ -24,11 +27,24 @@ const INITIAL_ME: UserProfile = {
   coins: 10 // Free starter coins
 };
 
-const AppContent: React.FC<{ currentUser: UserProfile; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile>>; isAdmin: boolean }> = ({ currentUser, setCurrentUser, isAdmin }) => {
+const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean }> = ({ currentUser, setCurrentUser, isAdmin }) => {
   const location = useLocation();
   
+  // If no user is logged in
+  if (!currentUser || !currentUser.id) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage onLoginSuccess={(user) => setCurrentUser(user)} />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    );
+  }
+  
   const updateCoins = (amount: number) => {
-    setCurrentUser(prev => ({ ...prev, coins: Math.max(0, prev.coins + amount) }));
+    if (currentUser) {
+      setCurrentUser(prev => prev ? { ...prev, coins: Math.max(0, prev.coins + amount) } : null);
+    }
   };
 
   return (
@@ -63,8 +79,8 @@ const AppContent: React.FC<{ currentUser: UserProfile; setCurrentUser: React.Dis
 };
 
 const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_ME);
-  const isAdmin = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MODERATOR;
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(INITIAL_ME);
+  const isAdmin = currentUser ? (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MODERATOR) : false;
 
   return (
     <HashRouter>

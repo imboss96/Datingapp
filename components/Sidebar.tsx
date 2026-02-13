@@ -12,6 +12,15 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
   const navigate = useNavigate();
 
+  // Safety check for currentUser
+  if (!currentUser || !currentUser.id) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-gray-500 text-center">Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Profile Header */}
@@ -22,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
         >
           <div className="relative">
             <img 
-              src={currentUser.images[0]} 
+              src={currentUser.images?.[0] || 'https://via.placeholder.com/40'} 
               className="w-10 h-10 rounded-full border-2 border-white/50 object-cover" 
               alt="My Profile" 
             />
