@@ -8,9 +8,10 @@ interface ProfileSetupProps {
   email: string;
   profilePicture?: string;
   onComplete: (userData: any) => void;
+  onCancel?: () => void;
 }
 
-const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profilePicture, onComplete }) => {
+const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profilePicture, onComplete, onCancel }) => {
   const navigate = useNavigate();
   const [age, setAge] = useState('');
   const [bio, setBio] = useState('');
@@ -75,7 +76,13 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
   };
 
   return (
-    <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+    <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto relative">
+      <button
+        onClick={onCancel}
+        className="absolute -top-10 right-0 text-gray-800 hover:text-gray-600 text-xl font-bold"
+      >
+        ✕
+      </button>
       <div className="text-center mb-8">
         <h1 className="text-4xl font-black text-gray-900 mb-2">Complete Your Profile</h1>
         <p className="text-gray-600">Help us find your perfect match</p>
