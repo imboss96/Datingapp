@@ -75,14 +75,13 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-black text-gray-900 mb-2">Complete Your Profile</h1>
-          <p className="text-gray-600">Help us find your perfect match</p>
-        </div>
+    <div className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-black text-gray-900 mb-2">Complete Your Profile</h1>
+        <p className="text-gray-600">Help us find your perfect match</p>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
           {/* Profile Picture */}
           <div className="bg-gray-50 rounded-2xl p-6">
             <label className="block text-sm font-bold text-gray-900 mb-3">Profile Photo URL</label>
@@ -195,7 +194,6 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
         <p className="text-xs text-gray-500 text-center mt-6">
           Your profile is stored securely and used to match you with compatible people.
         </p>
-      </div>
     </div>
   );
 };

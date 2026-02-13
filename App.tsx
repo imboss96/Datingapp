@@ -31,31 +31,6 @@ const INITIAL_ME: UserProfile = {
 const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean; showLoginModal: boolean; setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>>; showProfileSetup: boolean; setShowProfileSetup: React.Dispatch<React.SetStateAction<boolean>>; newSignupUser: UserProfile | null; setNewSignupUser: React.Dispatch<React.SetStateAction<UserProfile | null>> }> = ({ currentUser, setCurrentUser, isAdmin, showLoginModal, setShowLoginModal, showProfileSetup, setShowProfileSetup, newSignupUser, setNewSignupUser }) => {
   const location = useLocation();
   
-  // If showing profile setup for new signup
-  if (showProfileSetup && newSignupUser) {
-    return (
-      <ProfileSetup
-        userId={newSignupUser.id}
-        name={newSignupUser.name}
-        email={newSignupUser.name + '@lunesa.com'} // Mock email
-        profilePicture={newSignupUser.images?.[0]}
-        onComplete={(userData: any) => {
-          // Merge profile setup data with the signup user
-          const completeUser: UserProfile = {
-            ...newSignupUser,
-            age: parseInt(userData.age) || newSignupUser.age,
-            bio: userData.bio || newSignupUser.bio,
-            location: userData.location || newSignupUser.location,
-            interests: userData.interests?.split(',').map((i: string) => i.trim()).filter((i: string) => i) || []
-          };
-          setCurrentUser(completeUser);
-          setShowProfileSetup(false);
-          setNewSignupUser(null);
-        }}
-      />
-    );
-  }
-  
   // If no user is logged in
   if (!currentUser || !currentUser.id) {
     return (
@@ -64,7 +39,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
           <Route path="/" element={<LandingPage onOpenLoginModal={() => setShowLoginModal(true)} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
-        {showLoginModal && (
+        {showLoginModal && !showProfileSetup && (
           <LoginPage 
             isModal={true}
             onClose={() => setShowLoginModal(false)}
@@ -80,6 +55,29 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
               setShowLoginModal(false);
             }} 
           />
+        )}
+        {showProfileSetup && newSignupUser && (
+          <div className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center p-4 z-50" style={{ width: '100vw', height: '100vh' }}>
+            <ProfileSetup
+              userId={newSignupUser.id}
+              name={newSignupUser.name}
+              email={newSignupUser.name + '@lunesa.com'} // Mock email
+              profilePicture={newSignupUser.images?.[0]}
+              onComplete={(userData: any) => {
+                // Merge profile setup data with the signup user
+                const completeUser: UserProfile = {
+                  ...newSignupUser,
+                  age: parseInt(userData.age) || newSignupUser.age,
+                  bio: userData.bio || newSignupUser.bio,
+                  location: userData.location || newSignupUser.location,
+                  interests: userData.interests?.split(',').map((i: string) => i.trim()).filter((i: string) => i) || []
+                };
+                setCurrentUser(completeUser);
+                setShowProfileSetup(false);
+                setNewSignupUser(null);
+              }}
+            />
+          </div>
         )}
       </>
     );
