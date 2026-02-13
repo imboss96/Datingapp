@@ -9,6 +9,7 @@ import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
 import ModeratorPanel from './components/ModeratorPanel';
 import ProfileSettings from './components/ProfileSettings';
+import ProfileSetup from './components/ProfileSetup';
 import Navigation from './components/Navigation';
 import Sidebar from './components/Sidebar';
 import { UserProfile, UserRole, Chat } from './types';
@@ -27,8 +28,33 @@ const INITIAL_ME: UserProfile = {
   coins: 10 // Free starter coins
 };
 
-const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean; showLoginModal: boolean; setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>> }> = ({ currentUser, setCurrentUser, isAdmin, showLoginModal, setShowLoginModal }) => {
+const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean; showLoginModal: boolean; setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>>; showProfileSetup: boolean; setShowProfileSetup: React.Dispatch<React.SetStateAction<boolean>>; newSignupUser: UserProfile | null; setNewSignupUser: React.Dispatch<React.SetStateAction<UserProfile | null>> }> = ({ currentUser, setCurrentUser, isAdmin, showLoginModal, setShowLoginModal, showProfileSetup, setShowProfileSetup, newSignupUser, setNewSignupUser }) => {
   const location = useLocation();
+  
+  // If showing profile setup for new signup
+  if (showProfileSetup && newSignupUser) {
+    return (
+      <ProfileSetup
+        userId={newSignupUser.id}
+        name={newSignupUser.name}
+        email={newSignupUser.name + '@lunesa.com'} // Mock email
+        profilePicture={newSignupUser.images?.[0]}
+        onComplete={(userData: any) => {
+          // Merge profile setup data with the signup user
+          const completeUser: UserProfile = {
+            ...newSignupUser,
+            age: parseInt(userData.age) || newSignupUser.age,
+            bio: userData.bio || newSignupUser.bio,
+            location: userData.location || newSignupUser.location,
+            interests: userData.interests?.split(',').map((i: string) => i.trim()).filter((i: string) => i) || []
+          };
+          setCurrentUser(completeUser);
+          setShowProfileSetup(false);
+          setNewSignupUser(null);
+        }}
+      />
+    );
+  }
   
   // If no user is logged in
   if (!currentUser || !currentUser.id) {
@@ -42,8 +68,15 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
           <LoginPage 
             isModal={true}
             onClose={() => setShowLoginModal(false)}
-            onLoginSuccess={(user) => {
-              setCurrentUser(user);
+            onLoginSuccess={(user, isSignup) => {
+              if (isSignup) {
+                // For signup, show profile setup
+                setNewSignupUser(user);
+                setShowProfileSetup(true);
+              } else {
+                // For signin, go directly to app
+                setCurrentUser(user);
+              }
               setShowLoginModal(false);
             }} 
           />
@@ -92,11 +125,23 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [newSignupUser, setNewSignupUser] = useState<UserProfile | null>(null);
   const isAdmin = currentUser ? (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MODERATOR) : false;
 
   return (
     <HashRouter>
-      <AppContent currentUser={currentUser} setCurrentUser={setCurrentUser} isAdmin={isAdmin} showLoginModal={showLoginModal} setShowLoginModal={setShowLoginModal} />
+      <AppContent 
+        currentUser={currentUser} 
+        setCurrentUser={setCurrentUser} 
+        isAdmin={isAdmin} 
+        showLoginModal={showLoginModal} 
+        setShowLoginModal={setShowLoginModal}
+        showProfileSetup={showProfileSetup}
+        setShowProfileSetup={setShowProfileSetup}
+        newSignupUser={newSignupUser}
+        setNewSignupUser={setNewSignupUser}
+      />
     </HashRouter>
   );
 };

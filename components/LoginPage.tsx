@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, UserRole } from '../types';
 
-const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile) => void; onClose?: () => void; isModal?: boolean }> = ({ onLoginSuccess, onClose, isModal = false }) => {
+const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boolean) => void; onClose?: () => void; isModal?: boolean }> = ({ onLoginSuccess, onClose, isModal = false }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,7 +56,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile) => void; onClos
           interests: [],
           coins: 10
         };
-        onLoginSuccess?.(mockUser);
+        onLoginSuccess?.(mockUser, mode === 'signup');
       }, 1000);
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -80,7 +80,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile) => void; onClos
         interests: [],
         coins: 10
       };
-      onLoginSuccess?.(mockUser);
+      onLoginSuccess?.(mockUser, true);
     }, 1000);
   };
 
