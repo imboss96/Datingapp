@@ -1,17 +1,8 @@
 (function ($) {
     "use strict";
-    // Ensure preloader hides even if this script runs after the window 'load' event
-    const _hidePreloader = () => {
-        try {
-            $('.preloader').fadeOut(1000);
-        } catch (e) {
-            // ignore if jQuery or element not available yet
-        }
-    };
-    $(window).on('load', _hidePreloader);
-    if (document.readyState === 'complete') {
-        _hidePreloader();
-    }
+    $(window).on('load', function () {
+        $('.preloader').fadeOut(1000);
+    });
 
     // lightcase 
     $('a[data-rel^=lightcase]').lightcase();
@@ -126,7 +117,6 @@
 
         
 
-
     });
     
     //Banner slider
@@ -187,7 +177,6 @@
     });
 
 
-
     // post thumb slider
     var swiper = new Swiper('.blog__slider', {
         slidesPerView: 1,
@@ -201,7 +190,6 @@
         },
         loop: true,
     });
-
 
 
     // product view mode change js
