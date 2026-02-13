@@ -5,6 +5,45 @@ export enum UserRole {
   ADMIN = 'ADMIN'
 }
 
+export enum VerificationStatus {
+  UNVERIFIED = 'UNVERIFIED',
+  PENDING = 'PENDING',
+  VERIFIED = 'VERIFIED',
+  REJECTED = 'REJECTED'
+}
+
+export enum NotificationType {
+  MATCH = 'MATCH',
+  MESSAGE = 'MESSAGE',
+  SUPER_LIKE = 'SUPER_LIKE',
+  PROFILE_VIEW = 'PROFILE_VIEW',
+  REPORT = 'REPORT'
+}
+
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
+export interface VerificationInfo {
+  status: VerificationStatus;
+  idType?: string; // e.g., 'PASSPORT', 'DRIVERS_LICENSE'
+  verifiedAt?: number;
+  expiresAt?: number;
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  fromUserId?: string;
+  read: boolean;
+  timestamp: number;
+  actionUrl?: string;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -14,8 +53,12 @@ export interface UserProfile {
   isPremium: boolean;
   role: UserRole;
   location: string;
+  coordinates?: Coordinates; // For distance-based search
   interests: string[];
   coins: number; // Virtual currency for global usage
+  verification: VerificationInfo;
+  blockedUsers: string[]; // User IDs that this user has blocked
+  reportedUsers: string[]; // User IDs that this user has reported
 }
 
 export interface Message {
@@ -26,6 +69,8 @@ export interface Message {
   isFlagged: boolean;
   flagReason?: string;
   isEditedByModerator?: boolean;
+  isRead?: boolean; // Read receipt
+  readAt?: number; // Timestamp when message was read
 }
 
 export interface Chat {
@@ -33,6 +78,7 @@ export interface Chat {
   participants: [string, string];
   messages: Message[];
   lastUpdated: number;
+  isBlocked?: boolean; // If one party blocked the other
 }
 
 export interface Report {
@@ -43,4 +89,15 @@ export interface Report {
   status: 'PENDING' | 'RESOLVED' | 'DISMISSED';
   type: 'PROFILE' | 'CHAT';
   targetId: string; // Message ID or Profile ID
+  description?: string;
+  evidence?: string[]; // URLs to evidence (screenshots, etc)
+  createdAt: number;
+}
+
+export interface BlockedUser {
+  id: string;
+  userId: string; // Who did the blocking
+  blockedUserId: string; // Who was blocked
+  reason?: string;
+  blockedAt: number;
 }
