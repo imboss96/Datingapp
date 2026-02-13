@@ -27,17 +27,28 @@ const INITIAL_ME: UserProfile = {
   coins: 10 // Free starter coins
 };
 
-const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean }> = ({ currentUser, setCurrentUser, isAdmin }) => {
+const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean; showLoginModal: boolean; setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>> }> = ({ currentUser, setCurrentUser, isAdmin, showLoginModal, setShowLoginModal }) => {
   const location = useLocation();
   
   // If no user is logged in
   if (!currentUser || !currentUser.id) {
     return (
-      <Routes>
-        <Route path="/login" element={<LoginPage onLoginSuccess={(user) => setCurrentUser(user)} />} />
-        <Route path="/" element={<LandingPage />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+      <>
+        <Routes>
+          <Route path="/" element={<LandingPage onOpenLoginModal={() => setShowLoginModal(true)} />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+        {showLoginModal && (
+          <LoginPage 
+            isModal={true}
+            onClose={() => setShowLoginModal(false)}
+            onLoginSuccess={(user) => {
+              setCurrentUser(user);
+              setShowLoginModal(false);
+            }} 
+          />
+        )}
+      </>
     );
   }
   
@@ -80,11 +91,12 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const isAdmin = currentUser ? (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MODERATOR) : false;
 
   return (
     <HashRouter>
-      <AppContent currentUser={currentUser} setCurrentUser={setCurrentUser} isAdmin={isAdmin} />
+      <AppContent currentUser={currentUser} setCurrentUser={setCurrentUser} isAdmin={isAdmin} showLoginModal={showLoginModal} setShowLoginModal={setShowLoginModal} />
     </HashRouter>
   );
 };
