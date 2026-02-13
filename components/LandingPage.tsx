@@ -24,12 +24,12 @@ export default function LandingPage() {
   useEffect(() => {
     // Load template stylesheets dynamically
     const cssFiles = [
-      '/assets/css/bootstrap.min.css',
-      '/assets/css/animate.css',
-      '/assets/css/all.min.css',
-      '/assets/css/swiper.min.css',
-      '/assets/css/lightcase.css',
-      '/assets/css/style.css'
+      '/css/bootstrap.min.css',
+      '/css/animate.css',
+      '/css/all.min.css',
+      '/css/swiper.min.css',
+      '/css/lightcase.css',
+      '/css/style.css'
     ];
 
     const links: HTMLLinkElement[] = [];
