@@ -1,0 +1,59 @@
+[
+  {
+    "_id": "698efda73919f7d8b45d2620",
+    "id": "54b8d05c-c1e8-414e-a0ed-0c8d6c902ad5",
+    "email": "nyamechia@gmail.com",
+    "googleId": "115160136672177689687",
+    "name": "alice nyamechi",
+    "age": 26,
+    "images": [
+      "https://lh3.googleusercontent.com/a/ACg8ocJYVeZEhUw6HAmaJeVMUjX2_accfE68cpR7PRuweWxpmoXJDA=s96-c"
+    ],
+    "profilePicture": "https://lh3.googleusercontent.com/a/ACg8ocJYVeZEhUw6HAmaJeVMUjX2_accfE68cpR7PRuweWxpmoXJDA=s96-c",
+    "isPremium": false,
+    "role": "USER",
+    "location": "nairoobi",
+    "interests": [
+      "Travel",
+      "Food",
+      "Dance"
+    ],
+    "coins": 10,
+    "swipes": [],
+    "matches": [],
+    "createdAt": "2026-02-13T10:32:07.176Z",
+    "updatedAt": "2026-02-13T10:41:46.582Z",
+    "__v": 0,
+    "bio": "Am just unique"
+  },
+  {
+    "_id": "698f018d69742b98524b642d",
+    "id": "fb349252-0eb0-4501-a647-4efa7a54ccc9",
+    "email": "joshuanyandieka3@gmail.com",
+    "googleId": "115266328825060442264",
+    "name": "Joshua Nyandieka",
+    "age": 19,
+    "images": [
+      "https://lh3.googleusercontent.com/a/ACg8ocL6_bCcmzXgUqjcIdIRZEBKv-ymZJz_7Vk_4VPm1S_5cAlPJbE=s96-c"
+    ],
+    "profilePicture": "https://lh3.googleusercontent.com/a/ACg8ocL6_bCcmzXgUqjcIdIRZEBKv-ymZJz_7Vk_4VPm1S_5cAlPJbE=s96-c",
+    "isPremium": false,
+    "role": "USER",
+    "location": "Nairobi, Kenya",
+    "interests": [
+      "Travel",
+      "Food",
+      "Sports",
+      "Dance",
+      "Hiking",
+      "Fashion"
+    ],
+    "coins": 10,
+    "swipes": [],
+    "matches": [],
+    "createdAt": "2026-02-13T10:48:45.433Z",
+    "updatedAt": "2026-02-13T10:49:19.116Z",
+    "__v": 0,
+    "bio": "Am from Nairobi Kenya"
+  }
+]
