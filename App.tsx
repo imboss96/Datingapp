@@ -44,12 +44,15 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
             isModal={true}
             onClose={() => setShowLoginModal(false)}
             onLoginSuccess={(user, isSignup) => {
+              console.log('[DEBUG App] Login success - user:', { id: user.id, name: user.name, isSignup, hasInterests: user.interests?.length > 0, location: user.location, age: user.age });
               if (isSignup) {
                 // For signup, show profile setup
+                console.log('[DEBUG App] Showing ProfileSetup modal');
                 setNewSignupUser(user);
                 setShowProfileSetup(true);
               } else {
                 // For signin, go directly to app
+                console.log('[DEBUG App] Going directly to main app (profile complete)');
                 setCurrentUser(user);
               }
               setShowLoginModal(false);
@@ -64,14 +67,26 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
               email={newSignupUser.name + '@lunesa.com'} // Mock email
               profilePicture={newSignupUser.images?.[0]}
               onComplete={(userData: any) => {
+                console.log('[DEBUG App] ProfileSetup completed with data:', userData);
                 // Merge profile setup data with the signup user
+                // Handle interests as either string or array
+                let interests: string[] = [];
+                if (userData.interests) {
+                  if (Array.isArray(userData.interests)) {
+                    interests = userData.interests;
+                  } else if (typeof userData.interests === 'string') {
+                    interests = userData.interests.split(',').map((i: string) => i.trim()).filter((i: string) => i);
+                  }
+                }
+                
                 const completeUser: UserProfile = {
                   ...newSignupUser,
                   age: parseInt(userData.age) || newSignupUser.age,
                   bio: userData.bio || newSignupUser.bio,
                   location: userData.location || newSignupUser.location,
-                  interests: userData.interests?.split(',').map((i: string) => i.trim()).filter((i: string) => i) || []
+                  interests: interests
                 };
+                console.log('[DEBUG App] Setting current user after profile setup:', { id: completeUser.id, age: completeUser.age, location: completeUser.location, interests: completeUser.interests });
                 setCurrentUser(completeUser);
                 setShowProfileSetup(false);
                 setNewSignupUser(null);

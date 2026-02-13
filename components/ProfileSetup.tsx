@@ -56,6 +56,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
       }
 
       // Update user profile in MongoDB
+      console.log('[DEBUG ProfileSetup] Updating profile with:', { userId, name, age: parseInt(age), bio, location, interests: selectedInterests });
       const updatedUser = await apiClient.updateProfile(userId, {
         name,
         age: parseInt(age),
@@ -65,6 +66,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
         images: imageUrl ? [imageUrl] : [],
         profilePicture: imageUrl || profilePicture
       });
+      console.log('[DEBUG ProfileSetup] Profile update response:', updatedUser);
 
       onComplete(updatedUser);
       navigate('/');
