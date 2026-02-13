@@ -48,7 +48,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile) => void; onClos
           id: 'user-' + Date.now(),
           name: mode === 'signup' ? name : email.split('@')[0],
           age: 28,
-          bio: 'Welcome to Spark!',
+          bio: 'Welcome to lunesa!',
           images: ['https://picsum.photos/400/600?random=' + Math.random()],
           isPremium: false,
           role: UserRole.USER,
@@ -72,7 +72,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile) => void; onClos
         id: 'user-' + Date.now(),
         name: 'Google User',
         age: 28,
-        bio: 'Welcome to Spark!',
+        bio: 'Welcome to lunesa!',
         images: ['https://picsum.photos/400/600?random=' + Math.random()],
         isPremium: false,
         role: UserRole.USER,
@@ -87,7 +87,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile) => void; onClos
   const content = (
     <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8">
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Spark</h1>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">lunesa</h1>
         <p className="text-sm text-gray-600">Find your perfect match</p>
       </div>
 
@@ -203,7 +203,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile) => void; onClos
       </form>
 
       <p className="text-center text-xs text-gray-500 leading-relaxed mt-6">
-        By continuing, you agree to Spark's <a href="#" className="text-pink-600 hover:underline">Terms of Use</a> and <a href="#" className="text-pink-600 hover:underline">Privacy Policy</a>
+        By continuing, you agree to lunesa's <a href="#" className="text-pink-600 hover:underline">Terms of Use</a> and <a href="#" className="text-pink-600 hover:underline">Privacy Policy</a>
       </p>
     </div>
   );
