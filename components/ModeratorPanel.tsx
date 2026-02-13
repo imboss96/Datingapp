@@ -3,6 +3,14 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
+interface FlaggedItem {
+  id: string;
+  userId: string;
+  message: string;
+  status: 'pending' | 'warned' | 'banned' | 'dismissed';
+  action?: string;
+}
+
 const FLAG_DATA = [
   { name: 'Mon', count: 12 },
   { name: 'Tue', count: 19 },
@@ -13,9 +21,41 @@ const FLAG_DATA = [
   { name: 'Sun', count: 14 },
 ];
 
+const INITIAL_FLAGS: FlaggedItem[] = [
+  { id: '1', userId: '#9201', message: '"Hey, you look hot. Can I get your number or something more private? 😉"', status: 'pending' },
+  { id: '2', userId: '#9202', message: '"Let\'s meet up somewhere..need your location"', status: 'pending' },
+  { id: '3', userId: '#9203', message: '"Can you send more photos?"', status: 'pending' },
+];
+
 const ModeratorPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS'>('PENDING');
+  const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
+  const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
   const navigate = useNavigate();
+
+  const handleDismiss = (id: string) => {
+    const item = flaggedItems.find(f => f.id === id);
+    if (item) {
+      setResolvedItems([...resolvedItems, { ...item, status: 'dismissed', action: 'Dismissed' }]);
+      setFlaggedItems(flaggedItems.filter(f => f.id !== id));
+    }
+  };
+
+  const handleWarn = (id: string) => {
+    const item = flaggedItems.find(f => f.id === id);
+    if (item) {
+      setResolvedItems([...resolvedItems, { ...item, status: 'warned', action: 'User Warned' }]);
+      setFlaggedItems(flaggedItems.filter(f => f.id !== id));
+    }
+  };
+
+  const handleBan = (id: string) => {
+    const item = flaggedItems.find(f => f.id === id);
+    if (item) {
+      setResolvedItems([...resolvedItems, { ...item, status: 'banned', action: 'User Banned' }]);
+      setFlaggedItems(flaggedItems.filter(f => f.id !== id));
+    }
+  };
 
   return (
     <div className="h-full bg-gray-50 flex flex-col">
@@ -66,38 +106,60 @@ const ModeratorPanel: React.FC = () => {
 
         {activeTab === 'PENDING' && (
           <div className="space-y-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
-                      <i className="fa-solid fa-comment-slash text-xs"></i>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900">Flagged Message</h4>
-                      <p className="text-[10px] text-gray-500">From User ID: #9201</p>
-                    </div>
-                  </div>
-                  <span className="bg-red-50 text-red-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">High Risk</span>
-                </div>
-                
-                <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100 relative group">
-                  <p className="text-xs text-gray-700 italic">"Hey, you look hot. Can I get your number or something more private? 😉"</p>
-                  <button 
-                    onClick={() => navigate('/chat/1')}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-white shadow-sm border px-2 py-1 rounded text-[10px] font-bold text-blue-500 transition-opacity"
-                  >
-                    Edit Inline
-                  </button>
-                </div>
-
-                <div className="flex gap-2">
-                  <button className="flex-1 py-2 bg-emerald-500 text-white text-[10px] font-bold rounded-lg shadow-md">Dismiss</button>
-                  <button className="flex-1 py-2 bg-red-500 text-white text-[10px] font-bold rounded-lg shadow-md">Warn</button>
-                  <button className="flex-1 py-2 bg-gray-900 text-white text-[10px] font-bold rounded-lg shadow-md">Ban</button>
-                </div>
+            {flaggedItems.length === 0 ? (
+              <div className="text-center py-12">
+                <i className="fa-solid fa-check-circle text-4xl text-emerald-100 mb-2"></i>
+                <p className="text-gray-400 text-sm">No pending flags. Good job!</p>
               </div>
-            ))}
+            ) : (
+              flaggedItems.map(item => (
+                <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                        <i className="fa-solid fa-comment-slash text-xs"></i>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900">Flagged Message</h4>
+                        <p className="text-[10px] text-gray-500">From User ID: {item.userId}</p>
+                      </div>
+                    </div>
+                    <span className="bg-red-50 text-red-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">High Risk</span>
+                  </div>
+                  
+                  <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100 relative group">
+                    <p className="text-xs text-gray-700 italic">{item.message}</p>
+                    <button 
+                      onClick={() => navigate('/chat/1')}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-white shadow-sm border px-2 py-1 rounded text-[10px] font-bold text-blue-500 transition-opacity"
+                    >
+                      Edit Inline
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleDismiss(item.id)}
+                      className="flex-1 py-2 bg-emerald-500 text-white text-[10px] font-bold rounded-lg shadow-md hover:bg-emerald-600 active:scale-95 transition-all"
+                    >
+                      Dismiss
+                    </button>
+                    <button 
+                      onClick={() => handleWarn(item.id)}
+                      className="flex-1 py-2 bg-amber-500 text-white text-[10px] font-bold rounded-lg shadow-md hover:bg-amber-600 active:scale-95 transition-all"
+                    >
+                      Warn
+                    </button>
+                    <button 
+                      onClick={() => handleBan(item.id)}
+                      className="flex-1 py-2 bg-red-500 text-white text-[10px] font-bold rounded-lg shadow-md hover:bg-red-600 active:scale-95 transition-all"
+                    >
+                      Ban
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -135,9 +197,42 @@ const ModeratorPanel: React.FC = () => {
         )}
 
         {activeTab === 'RESOLVED' && (
-          <div className="text-center py-12">
-            <i className="fa-solid fa-check-circle text-4xl text-emerald-100 mb-2"></i>
-            <p className="text-gray-400 text-sm">No recent moderator actions logged.</p>
+          <div className="space-y-3">
+            {resolvedItems.length === 0 ? (
+              <div className="text-center py-12">
+                <i className="fa-solid fa-inbox text-4xl text-gray-200 mb-2"></i>
+                <p className="text-gray-400 text-sm">No resolved actions yet.</p>
+              </div>
+            ) : (
+              resolvedItems.map(item => (
+                <div key={item.id} className="bg-white p-4 rounded-2xl border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                        item.status === 'dismissed' ? 'bg-emerald-500' :
+                        item.status === 'warned' ? 'bg-amber-500' :
+                        'bg-red-500'
+                      }`}>
+                        {item.status === 'dismissed' ? '✓' :
+                         item.status === 'warned' ? '⚠' :
+                         '✕'}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-900">{item.action}</h4>
+                        <p className="text-[10px] text-gray-500">{item.message.substring(0, 50)}...</p>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded ${
+                      item.status === 'dismissed' ? 'bg-emerald-100 text-emerald-600' :
+                      item.status === 'warned' ? 'bg-amber-100 text-amber-600' :
+                      'bg-red-100 text-red-600'
+                    }`}>
+                      {item.userId}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
