@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 const countries = [
   'Afghanistan', 'Albania', 'Algeria', 'American Samoa', 'Andorra', 'Angola', 'Anguilla', 'Antigua & Barbuda',
@@ -10,8 +9,7 @@ const countries = [
   'Cocos Island', 'Colombia', 'Comoros', 'Congo', 'Cook Islands', 'Costa Rica', 'Cote D\'Ivoire', 'Croatia'
 ];
 
-export default function LandingPage() {
-  const navigate = useNavigate();
+export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: () => void }) {
   const [formData, setFormData] = useState({
     gender: 'male',
     lookingFor: 'female',
@@ -161,8 +159,8 @@ export default function LandingPage() {
                   </ul>
                 </div>
                 <ul className="button-group">
-                  <li><a href="javascript:void(0)" onClick={() => navigate('/login')} className="default-btn login"><i className="fa-solid fa-user"></i> <span>LOG IN</span> </a></li>
-                  <li><a href="javascript:void(0)" onClick={() => navigate('/login')} className="default-btn signup"><i className="fa-solid fa-users"></i> <span>SIGN UP</span> </a></li>
+                  <li><a href="javascript:void(0)" onClick={() => onOpenLoginModal?.()} className="default-btn login"><i className="fa-solid fa-user"></i> <span>LOG IN</span> </a></li>
+                  <li><a href="javascript:void(0)" onClick={() => onOpenLoginModal?.()} className="default-btn signup"><i className="fa-solid fa-users"></i> <span>SIGN UP</span> </a></li>
                 </ul>
               </div>
             </nav>
@@ -179,7 +177,7 @@ export default function LandingPage() {
                 <div className="banner__title">
                   <h2>We Have More Than <span>2.000.000</span> Join Members</h2>
                   <p>Still looking for your significant other? lunesa is the place for you! Join now to meet single men and women worldwide.</p>
-                  <a href="javascript:void(0)" onClick={() => navigate('/login')} className="default-btn style-2"><span>Registration Now</span></a>
+                  <a href="javascript:void(0)" onClick={() => onOpenLoginModal?.()} className="default-btn style-2"><span>Registration Now</span></a>
                 </div>
               </div>
             </div>
@@ -261,7 +259,7 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div className="col">
-                    <button type="button" onClick={() => navigate('/login')} className="default-btn style-2" style={{ width: '100%' }}>
+                    <button type="button" onClick={() => onOpenLoginModal?.()} className="default-btn style-2" style={{ width: '100%' }}>
                       <span>Find Your Partner</span>
                     </button>
                   </div>
