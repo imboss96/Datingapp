@@ -76,6 +76,11 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
                 setShowProfileSetup(false);
                 setNewSignupUser(null);
               }}
+              onCancel={() => {
+                setShowProfileSetup(false);
+                setNewSignupUser(null);
+                setShowLoginModal(true);
+              }}
             />
           </div>
         )}
