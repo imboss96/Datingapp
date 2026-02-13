@@ -79,7 +79,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
 };
 
 const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(INITIAL_ME);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const isAdmin = currentUser ? (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MODERATOR) : false;
 
   return (
