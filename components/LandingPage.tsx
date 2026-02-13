@@ -63,14 +63,14 @@ export default function LandingPage() {
   };
 
   const members = [
-    { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/assets/images/member/home3/01.jpg' },
-    { name: 'Arika Q Smith', status: 'Active 15 days ago', image: '/assets/images/member/home3/02.jpg' },
-    { name: 'William R Show', status: 'Active 10 days ago', image: '/assets/images/member/home3/03.jpg' },
-    { name: 'Hanna Marcovick', status: 'Active 10 days ago', image: '/assets/images/member/home3/04.jpg' },
-    { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/assets/images/member/home3/05.jpg' },
-    { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/assets/images/member/home3/06.jpg' },
-    { name: 'Arika Q Smith', status: 'Active 10 days ago', image: '/assets/images/member/home3/07.jpg' },
-    { name: 'William R Show', status: 'Active 10 days ago', image: '/assets/images/member/home3/08.jpg' }
+    { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/01.jpg' },
+    { name: 'Arika Q Smith', status: 'Active 15 days ago', image: '/images/member/home3/02.jpg' },
+    { name: 'William R Show', status: 'Active 10 days ago', image: '/images/member/home3/03.jpg' },
+    { name: 'Hanna Marcovick', status: 'Active 10 days ago', image: '/images/member/home3/04.jpg' },
+    { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/05.jpg' },
+    { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/06.jpg' },
+    { name: 'Arika Q Smith', status: 'Active 10 days ago', image: '/images/member/home3/07.jpg' },
+    { name: 'William R Show', status: 'Active 10 days ago', image: '/images/member/home3/08.jpg' }
   ];
 
   const stats = [
@@ -81,17 +81,17 @@ export default function LandingPage() {
   ];
 
   const locations = [
-    { name: 'London, UK', image: '/assets/images/meet/icon/02.jpg' },
-    { name: 'Barcelona, Spain', image: '/assets/images/meet/icon/03.jpg' },
-    { name: 'Taj Mahal, India', image: '/assets/images/meet/icon/04.jpg' },
-    { name: 'Burj Al Arab, Dubai', image: '/assets/images/meet/icon/05.jpg' },
-    { name: 'Paris, France', image: '/assets/images/meet/icon/06.jpg' }
+    { name: 'London, UK', image: '/images/meet/icon/02.jpg' },
+    { name: 'Barcelona, Spain', image: '/images/meet/icon/03.jpg' },
+    { name: 'Taj Mahal, India', image: '/images/meet/icon/04.jpg' },
+    { name: 'Burj Al Arab, Dubai', image: '/images/meet/icon/05.jpg' },
+    { name: 'Paris, France', image: '/images/meet/icon/06.jpg' }
   ];
 
   const stories = [
-    { title: 'Dream places and locations to visit in 2022', category: 'Entertainment', image: '/assets/images/story/author/01.jpg' },
-    { title: 'Make your dreams come true and monetise quickly', category: 'Love Stories', image: '/assets/images/story/author/02.jpg' },
-    { title: 'Love looks not with the eyes, but with the mind', category: 'Attraction', image: '/assets/images/story/author/03.jpg' }
+    { title: 'Dream places and locations to visit in 2022', category: 'Entertainment', image: '/images/story/author/01.jpg' },
+    { title: 'Make your dreams come true and monetise quickly', category: 'Love Stories', image: '/images/story/author/02.jpg' },
+    { title: 'Love looks not with the eyes, but with the mind', category: 'Attraction', image: '/images/story/author/03.jpg' }
   ];
 
   const whyChooseTabs = [
@@ -133,7 +133,7 @@ export default function LandingPage() {
         <div className="header__bottom">
           <div className="container">
             <nav className="navbar navbar-expand-lg">
-              <a className="navbar-brand" href="#"><img src="/assets/images/logo/logo.png" alt="logo" style={{ height: '40px', width: 'auto' }} /></a>
+              <a className="navbar-brand" href="#"><img src="/images/logo/logo.png" alt="logo" style={{ height: '40px', width: 'auto' }} /></a>
               <button className="navbar-toggler collapsed" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false"
                 aria-label="Toggle navigation">
@@ -171,7 +171,7 @@ export default function LandingPage() {
       </header>
 
       {/* Banner Section */}
-      <div className="banner banner--style3 padding-top bg_img" style={{ backgroundImage: 'url(/assets/images/banner/shape/home3/bg-3.jpg)' }}>
+      <div className="banner banner--style3 padding-top bg_img" style={{ backgroundImage: 'url(/images/banner/shape/home3/bg-3.jpg)' }}>
         <div className="container">
           <div className="row g-0 justify-content-center justify-content-xl-between">
             <div className="col-lg-5 col-12 wow fadeInLeft" data-wow-duration="1.5s">
@@ -185,10 +185,10 @@ export default function LandingPage() {
             </div>
             <div className="col-lg-6 col-12 wow fadeInUp" data-wow-duration="1.5s">
               <div className="banner__thumb text-xl-end">
-                <img src="/assets/images/banner/shape/home3/03.png" alt="banner" style={{ maxWidth: '100%', height: 'auto' }} />
+                <img src="/images/banner/shape/home3/03.png" alt="banner" style={{ maxWidth: '100%', height: 'auto' }} />
                 <div className="banner__thumb--shape">
                   <div className="shapeimg">
-                    <img src="/assets/images/about/icon/home3/01.png" alt="dating thumb" />
+                    <img src="/images/about/icon/home3/01.png" alt="dating thumb" />
                   </div>
                 </div>
                 <div className="banner__thumb--title">
