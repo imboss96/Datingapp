@@ -1,23 +1,133 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import displayName from '../src/utils/formatName';
+import { useWebRTC } from '../services/useWebRTC';
+import { useWebSocket } from '../services/useWebSocket';
 
 interface VideoCallRoomProps {
   currentUser: UserProfile;
   otherUser?: UserProfile;
+  otherUserId: string;
+  isInitiator: boolean;
+  isVideo: boolean;
+  onCallEnd?: () => void;
 }
 
-const VideoCallRoom: React.FC<VideoCallRoomProps> = ({ currentUser, otherUser }) => {
+const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
+  currentUser,
+  otherUser,
+  otherUserId,
+  isInitiator,
+  isVideo,
+  onCallEnd
+}) => {
   const navigate = useNavigate();
-  const { id } = useParams();
   const [callDuration, setCallDuration] = useState(0);
   const [isAudioOn, setIsAudioOn] = useState(true);
-  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(isVideo);
   const [showCallInfo, setShowCallInfo] = useState(true);
   const [callQuality, setCallQuality] = useState<'good' | 'moderate' | 'poor'>('good');
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const webRtcRef = useRef<any>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Simulate call timer
+  const { sendMessage, addMessageHandler } = useWebSocket(currentUser.id);
+
+  const handleConnectionStateChange = useCallback((state: RTCPeerConnectionState) => {
+    console.log('[VideoCallRoom] Connection state:', state);
+    setConnectionStatus(state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected');
+  }, []);
+
+  const handleWebSocketMessage = useCallback((data: any) => {
+    console.log('[VideoCallRoom] WebSocket message:', data.type);
+    
+    if (data.type === 'call_offer' && webRtcRef.current) {
+      webRtcRef.current.handleOffer(data.offer);
+    } else if (data.type === 'call_answer' && webRtcRef.current) {
+      webRtcRef.current.handleAnswer(data.answer);
+    } else if (data.type === 'ice_candidate' && webRtcRef.current) {
+      webRtcRef.current.handleICECandidate(data.candidate);
+    } else if (data.type === 'call_end') {
+      console.log('[VideoCallRoom] Remote user ended the call');
+      endCall();
+    }
+  }, []);
+
+  // Initialize WebRTC
+  useEffect(() => {
+    if (isInitialized) return;
+
+    const wsHandler = (data: any) => {
+      if (data.type === 'send_ice_candidate') {
+        sendMessage({
+          type: 'ice_candidate',
+          to: otherUserId,
+          candidate: data.candidate
+        });
+      } else if (data.type === 'send_call_offer') {
+        sendMessage({
+          type: 'call_offer',
+          to: otherUserId,
+          offer: data.offer
+        });
+      } else if (data.type === 'send_call_answer') {
+        sendMessage({
+          type: 'call_answer',
+          to: otherUserId,
+          answer: data.answer
+        });
+      } else if (data.type === 'send_call_end') {
+        sendMessage({
+          type: 'call_end',
+          to: otherUserId
+        });
+      }
+    };
+
+    const { useWebRTC: WebRTCHook } = require('../services/useWebRTC');
+    
+    webRtcRef.current = {
+      ...WebRTCHook({
+        userId: currentUser.id,
+        otherUserId: otherUserId,
+        isInitiator: isInitiator,
+        isVideoEnabled: isVideoOn,
+        isAudioEnabled: isAudioOn,
+        onRemoteStream: (stream: MediaStream) => {
+          console.log('[VideoCallRoom] Remote stream received');
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream;
+          }
+        },
+        onConnectionStateChange: handleConnectionStateChange,
+        onError: (error: Error) => {
+          console.error('[VideoCallRoom] WebRTC error:', error);
+          alert('Call connection error: ' + error.message);
+        },
+        wsMessageHandler: wsHandler
+      })
+    };
+
+    setIsInitialized(true);
+  }, [isInitialized, currentUser.id, otherUserId, isInitiator, isVideoOn, isAudioOn, handleConnectionStateChange, sendMessage]);
+
+  // Subscribe to WebSocket messages
+  useEffect(() => {
+    const unsubscribe = addMessageHandler(handleWebSocketMessage);
+    return unsubscribe;
+  }, [addMessageHandler, handleWebSocketMessage]);
+
+  // Update local video stream
+  useEffect(() => {
+    if (webRtcRef.current?.localStream && localVideoRef.current) {
+      localVideoRef.current.srcObject = webRtcRef.current.localStream;
+    }
+  }, []);
+
+  // Call timer
   useEffect(() => {
     const interval = setInterval(() => {
       setCallDuration((prev) => prev + 1);
@@ -25,10 +135,10 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({ currentUser, otherUser })
     return () => clearInterval(interval);
   }, []);
 
-  // Simulate network quality fluctuation
+  // Simulate network quality
   useEffect(() => {
     const interval = setInterval(() => {
-      const qualities: ('good' | 'moderate' | 'poor')[] = ['good', 'good', 'moderate', 'good', 'good'];
+      const qualities: ('good' | 'moderate' | 'poor')[] = ['good', 'good', 'moderate'];
       setCallQuality(qualities[Math.floor(Math.random() * qualities.length)]);
     }, 5000);
     return () => clearInterval(interval);
@@ -55,78 +165,111 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({ currentUser, otherUser })
     }
   };
 
+  const endCall = () => {
+    console.log('[VideoCallRoom] Ending call');
+    webRtcRef.current?.hangUp();
+    onCallEnd?.();
+    navigate('/chats');
+  };
+
   const quality = getQualityIcon();
 
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden flex items-center justify-center group">
       {/* Main Video Grid */}
       <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-0">
-        {/* Remote Video (Full when only 1, left when 2) */}
+        {/* Remote Video */}
         <div className="relative bg-gray-900 flex items-center justify-center">
-          {otherUser && (
+          {isVideo ? (
             <>
-              <img
-                src={otherUser.images[0] || 'https://via.placeholder.com/1920x1080?text=Remote'}
-                alt="Remote user"
-                className="w-full h-full object-cover blur-sm"
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50"></div>
               <div className="absolute bottom-8 left-8 z-10">
                 <div className="flex items-center gap-3">
                   <div className="w-16 h-16 rounded-full border-4 border-emerald-500 overflow-hidden">
-                        <img src={otherUser.images[0]} alt={otherUser.username || otherUser.name} className="w-full h-full object-cover" />
-                      </div>
+                    <img src={otherUser?.images[0]} alt={otherUser?.username || otherUser?.name} className="w-full h-full object-cover" />
+                  </div>
                   <div className="text-white">
-                        <h3 className="text-xl font-bold">{displayName(otherUser)}</h3>
-                        <p className="text-sm text-gray-300">{otherUser.location}</p>
-                      </div>
+                    <h3 className="text-xl font-bold">{displayName(otherUser)}</h3>
+                    <p className="text-sm text-gray-300">{otherUser?.location}</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <img
+                src={otherUser?.images[0] || 'https://via.placeholder.com/1920x1080?text=Voice+Call'}
+                alt="Remote user"
+                className="w-full h-full object-cover blur-sm"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50 flex items-center justify-center">
+                <div className="text-center text-white">
+                  <div className="w-32 h-32 rounded-full border-4 border-emerald-500 overflow-hidden mx-auto mb-4">
+                    <img src={otherUser?.images[0]} alt={otherUser?.username || otherUser?.name} className="w-full h-full object-cover" />
+                  </div>
+                  <h2 className="text-3xl font-bold">{displayName(otherUser)}</h2>
+                  <p className="text-lg text-gray-300 mt-2">Voice Call</p>
                 </div>
               </div>
             </>
           )}
         </div>
 
-        {/* Local Video (Right when in grid mode) */}
-        <div className="hidden md:flex relative bg-gray-900 items-center justify-center border-l border-gray-700">
-          <img
-            src={currentUser.images[0] || 'https://via.placeholder.com/1920x1080?text=You'}
-            alt="Your video"
-            className="w-full h-full object-cover blur-sm"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent"></div>
-          <div className="absolute top-8 right-8 z-10">
+        {/* Local Video */}
+        {isVideo && (
+          <div className="hidden md:flex relative bg-gray-900 items-center justify-center border-l border-gray-700">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent"></div>
+            <div className="absolute top-8 right-8 z-10">
               <div className="text-right text-white">
-              <div className="w-20 h-20 rounded-2xl border-4 border-blue-500 overflow-hidden mx-auto mb-2">
-                <img src={currentUser.images[0]} alt={currentUser.username || currentUser.name} className="w-full h-full object-cover" />
+                <div className="w-20 h-20 rounded-2xl border-4 border-blue-500 overflow-hidden mx-auto mb-2">
+                  <img src={currentUser.images[0]} alt={currentUser.username || currentUser.name} className="w-full h-full object-cover" />
+                </div>
+                <p className="text-xs font-bold">You</p>
+                {!isVideoOn && <p className="text-xs text-red-400 mt-1">Video off</p>}
               </div>
-              <p className="text-xs font-bold">You</p>
-              {!isVideoOn && <p className="text-xs text-red-400 mt-1">Video off</p>}
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Local Video - Bottom Right Corner */}
-      <div className="md:hidden absolute bottom-32 right-8 w-24 h-32 rounded-2xl border-4 border-blue-500 overflow-hidden shadow-lg z-20">
-        <img
-          src={currentUser.images[0]}
-          alt="Your video"
-          className={`w-full h-full object-cover ${!isVideoOn ? 'blur-md bg-gray-800' : ''}`}
-        />
-        {!isVideoOn && (
-          <div className="absolute inset-0 bg-gray-800/80 flex items-center justify-center">
-            <i className="fa-solid fa-video-slash text-white text-2xl"></i>
           </div>
         )}
       </div>
+
+      {/* Mobile Local Video */}
+      {isVideo && (
+        <div className="md:hidden absolute bottom-32 right-8 w-24 h-32 rounded-2xl border-4 border-blue-500 overflow-hidden shadow-lg z-20">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-full object-cover ${!isVideoOn ? 'blur-md bg-gray-800' : ''}`}
+          />
+          {!isVideoOn && (
+            <div className="absolute inset-0 bg-gray-800/80 flex items-center justify-center">
+              <i className="fa-solid fa-video-slash text-white text-2xl"></i>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Call Info Overlay */}
       {showCallInfo && (
         <div className="absolute top-8 left-8 right-8 flex items-center justify-between z-20 text-white">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 bg-black/60 backdrop-blur px-4 py-2 rounded-full">
-              <i className={`fa-solid ${quality.icon} ${quality.color} animate-pulse`}></i>
-              <span className="text-sm font-bold">{callQuality === 'good' ? 'Good Connection' : callQuality === 'moderate' ? 'Moderate Connection' : 'Poor Connection'}</span>
+              <i className="fa-solid fa-signal text-emerald-500 animate-pulse"></i>
+              <span className="text-sm font-bold">{connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}</span>
             </div>
             <div className="bg-black/60 backdrop-blur px-4 py-2 rounded-full font-bold text-lg">
               {formatTime(callDuration)}
@@ -156,7 +299,10 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({ currentUser, otherUser })
         <div className="max-w-6xl mx-auto flex items-center justify-center gap-6">
           {/* Audio Toggle */}
           <button
-            onClick={() => setIsAudioOn(!isAudioOn)}
+            onClick={() => {
+              setIsAudioOn(!isAudioOn);
+              webRtcRef.current?.toggleAudio(!isAudioOn);
+            }}
             className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
               isAudioOn
                 ? 'bg-gray-700 text-white hover:bg-gray-600'
@@ -168,42 +314,31 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({ currentUser, otherUser })
           </button>
 
           {/* Video Toggle */}
-          <button
-            onClick={() => setIsVideoOn(!isVideoOn)}
-            className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
-              isVideoOn
-                ? 'bg-gray-700 text-white hover:bg-gray-600'
-                : 'bg-red-500 text-white hover:bg-red-600 ring-4 ring-red-500/50'
-            }`}
-            title={isVideoOn ? 'Stop Video' : 'Start Video'}
-          >
-            <i className={`fa-solid ${isVideoOn ? 'fa-video' : 'fa-video-slash'}`}></i>
-          </button>
+          {isVideo && (
+            <button
+              onClick={() => {
+                setIsVideoOn(!isVideoOn);
+                webRtcRef.current?.toggleVideo(!isVideoOn);
+              }}
+              className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
+                isVideoOn
+                  ? 'bg-gray-700 text-white hover:bg-gray-600'
+                  : 'bg-red-500 text-white hover:bg-red-600 ring-4 ring-red-500/50'
+              }`}
+              title={isVideoOn ? 'Stop Video' : 'Start Video'}
+            >
+              <i className={`fa-solid ${isVideoOn ? 'fa-video' : 'fa-video-slash'}`}></i>
+            </button>
+          )}
 
           {/* Call Duration Display */}
           <div className="bg-black/60 backdrop-blur px-6 py-3 rounded-full text-white font-bold text-lg">
             {formatTime(callDuration)}
           </div>
 
-          {/* Screen Share */}
-          <button
-            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold bg-gray-700 text-white hover:bg-gray-600 transition-all shadow-lg"
-            title="Share Screen"
-          >
-            <i className="fa-solid fa-display"></i>
-          </button>
-
-          {/* Switch Camera */}
-          <button
-            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold bg-gray-700 text-white hover:bg-gray-600 transition-all shadow-lg hidden md:flex"
-            title="Switch Camera"
-          >
-            <i className="fa-solid fa-repeat"></i>
-          </button>
-
           {/* End Call */}
           <button
-            onClick={() => navigate('/chats')}
+            onClick={endCall}
             className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold bg-red-500 text-white hover:bg-red-600 transition-all shadow-lg"
             title="End Call"
           >
