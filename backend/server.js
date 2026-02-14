@@ -30,10 +30,6 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Serve static files from frontend build (dist folder)
-const distPath = path.join(__dirname, '../dist');
-app.use(express.static(distPath));
-
 // Connect to MongoDB
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
@@ -75,11 +71,6 @@ app.use('/api/transactions', transactionsRoutes);  // Auth middleware applied se
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend running', timestamp: new Date().toISOString() });
-});
-
-// SPA fallback - serve index.html for all non-API routes (client-side routing)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // Error handling middleware

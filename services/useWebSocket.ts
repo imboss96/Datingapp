@@ -2,14 +2,12 @@ import { useEffect, useCallback, useRef } from 'react';
 
 /**
  * Custom hook for WebSocket connection and notifications
- * @param {string} userId - Current user ID
- * @param {Function} onMessageNotification - Callback when new message arrives
- * @param {Function} onTypingIndicator - Callback when someone is typing
  */
-export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) => {
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const pingIntervalRef = useRef(null);
+export const useWebSocket = (userId: string, onMessageNotification: any = null, onTypingIndicator: any = null) => {
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const messageHandlersRef = useRef<Set<(data: any) => void>>(new Set());
 
   const connect = useCallback(() => {
     if (!userId) {
@@ -17,22 +15,15 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
       return;
     }
 
-    // Determine WebSocket URL
-    // Priority:
-    // 1. Environment variable VITE_WS_URL (for production)
-    // 2. Auto-detect from current location (for development)
-    
     let wsUrl: string;
     
     const wsEnv = import.meta.env.VITE_WS_URL;
     if (wsEnv) {
-      // Production: Use environment variable
       wsUrl = wsEnv;
       console.log('[WebSocket] Using environment URL:', wsUrl);
     } else {
-      // Development: Auto-detect from current location
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host; // includes hostname:port
+      const host = window.location.host;
       wsUrl = `${protocol}//${host}/ws`;
       console.log('[WebSocket] Using auto-detected URL:', wsUrl);
     }
@@ -44,19 +35,17 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
 
       ws.onopen = () => {
         console.log('[WebSocket] Connected');
-        // Register user
         ws.send(JSON.stringify({
           type: 'register',
           userId: userId
         }));
 
-        // Start ping interval to keep connection alive
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === 1) {
             ws.send(JSON.stringify({ type: 'ping' }));
           }
-        }, 30000); // Ping every 30 seconds
+        }, 30000);
       };
 
       ws.onmessage = (event) => {
@@ -64,6 +53,16 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
           const data = JSON.parse(event.data);
           console.log('[WebSocket] Received:', data.type);
 
+          // Call all registered message handlers
+          messageHandlersRef.current.forEach(handler => {
+            try {
+              handler(data);
+            } catch (err) {
+              console.error('[WebSocket] Error in message handler:', err);
+            }
+          });
+
+          // Legacy callbacks
           if (data.type === 'new_message' && onMessageNotification) {
             onMessageNotification(data);
           } else if (data.type === 'registered') {
@@ -71,7 +70,7 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
           } else if (data.type === 'pong') {
             console.log('[WebSocket] Pong received');
           } else if (data.type === 'typing_status' && onTypingIndicator) {
-            console.log('[WebSocket] Typing status from', data.userId, ':', data.isTyping);
+            console.log('[WebSocket] Typing status received');
             onTypingIndicator(data);
           }
         } catch (err) {
@@ -87,7 +86,6 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
         console.log('[WebSocket] Disconnected, attempting to reconnect in 5 seconds...');
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         
-        // Attempt to reconnect
         if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = setTimeout(() => {
           connect();
@@ -98,7 +96,7 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
     } catch (err) {
       console.error('[WebSocket] Connection error:', err);
     }
-  }, [userId, onMessageNotification]);
+  }, [userId, onMessageNotification, onTypingIndicator]);
 
   useEffect(() => {
     connect();
@@ -112,7 +110,7 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
     };
   }, [userId, connect]);
 
-  const sendTypingStatus = (chatId: string, isTyping: boolean) => {
+  const sendTypingStatus = useCallback((chatId: string, isTyping: boolean) => {
     if (wsRef.current && wsRef.current.readyState === 1) {
       wsRef.current.send(JSON.stringify({
         type: 'typing_status',
@@ -120,12 +118,27 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
         isTyping: isTyping
       }));
     }
-  };
+  }, []);
+
+  const addMessageHandler = useCallback((handler: (data: any) => void) => {
+    messageHandlersRef.current.add(handler);
+    return () => {
+      messageHandlersRef.current.delete(handler);
+    };
+  }, []);
+
+  const sendMessage = useCallback((message: any) => {
+    if (wsRef.current && wsRef.current.readyState === 1) {
+      wsRef.current.send(JSON.stringify(message));
+    }
+  }, []);
 
   return {
     isConnected: wsRef.current?.readyState === 1,
     ws: wsRef.current,
-    sendTypingStatus
+    sendTypingStatus,
+    addMessageHandler,
+    sendMessage
   };
 };
 

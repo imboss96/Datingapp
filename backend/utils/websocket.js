@@ -31,22 +31,92 @@ export function initWebSocket(server) {
         else if (message.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }));
         }
-        // Handle typing status - broadcast to all connected users
-        // The frontend will filter by chatId
+        // Handle typing status
         else if (message.type === 'typing_status') {
-          console.log(`[WebSocket] User ${userId} typing status:`, message.isTyping, 'in chat:', message.chatId);
+          console.log(`[WebSocket] User ${userId} typing in chat: ${message.chatId}`);
           const typingMessage = {
             type: 'typing_status',
             userId: userId,
             chatId: message.chatId,
             isTyping: message.isTyping
           };
-          // Broadcast to all connected users (they'll filter by chatId on client side)
           connectedUsers.forEach((userWs, connectedUserId) => {
             if (connectedUserId !== userId && userWs.readyState === 1) {
               userWs.send(JSON.stringify(typingMessage));
             }
           });
+        }
+        // Handle call incoming notification
+        else if (message.type === 'call_incoming') {
+          console.log(`[WebSocket] Call incoming from ${userId} to ${message.to} (video: ${message.isVideo})`);
+          const targetWs = connectedUsers.get(message.to);
+          if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+              type: 'call_incoming',
+              from: userId,
+              fromName: message.fromName,
+              isVideo: message.isVideo,
+              chatId: message.chatId
+            }));
+          } else {
+            console.log(`[WebSocket] Target user ${message.to} not online`);
+          }
+        }
+        // Handle call offer (WebRTC signaling)
+        else if (message.type === 'call_offer') {
+          console.log(`[WebSocket] Call offer from ${userId} to ${message.to}`);
+          const targetWs = connectedUsers.get(message.to);
+          if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+              type: 'call_offer',
+              from: userId,
+              offer: message.offer
+            }));
+          }
+        }
+        // Handle call answer (WebRTC signaling)
+        else if (message.type === 'call_answer') {
+          console.log(`[WebSocket] Call answer from ${userId} to ${message.to}`);
+          const targetWs = connectedUsers.get(message.to);
+          if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+              type: 'call_answer',
+              from: userId,
+              answer: message.answer
+            }));
+          }
+        }
+        // Handle ICE candidates
+        else if (message.type === 'ice_candidate') {
+          console.log(`[WebSocket] ICE candidate from ${userId} to ${message.to}`);
+          const targetWs = connectedUsers.get(message.to);
+          if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+              type: 'ice_candidate',
+              from: userId,
+              candidate: message.candidate
+            }));
+          }
+        }
+        // Handle call end
+        else if (message.type === 'call_end') {
+          console.log(`[WebSocket] Call ended by ${userId}`);
+          const targetWs = connectedUsers.get(message.to);
+          if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+              type: 'call_end'
+            }));
+          }
+        }
+        // Handle call rejection
+        else if (message.type === 'call_reject') {
+          console.log(`[WebSocket] Call rejected by ${userId}`);
+          const targetWs = connectedUsers.get(message.to);
+          if (targetWs && targetWs.readyState === 1) {
+            targetWs.send(JSON.stringify({
+              type: 'call_reject'
+            }));
+          }
         }
       } catch (err) {
         console.error('[WebSocket] Error parsing message:', err);

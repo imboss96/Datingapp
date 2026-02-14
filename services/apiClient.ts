@@ -189,7 +189,7 @@ class APIClient {
     }
 
     try {
-      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
       const response = await fetch(`${apiBase}/chats/${chatId}/upload`, {
         method: 'POST',
         headers,

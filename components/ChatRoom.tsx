@@ -441,6 +441,16 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                   setCallIsVideo(confirmCall.isVideo);
                   setInCall(true);
                   setConfirmCall(null);
+                  //send calls incooming notification
+                  if (ws && chatUser) {
+                    ws.send(JSON.stringify({
+                      type: 'call_incoming',
+                      to: chatUser.id,
+                      fromName: currentUser.name || currentUser.username,
+                       isVideo: confirmCall.isVideo,
+                       chatId: chatId
+                       }));
+                      }
                 }}
                 className="px-3 py-1 rounded-md bg-red-500 text-white text-sm font-semibold"
               >
@@ -451,10 +461,28 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         </div>
       )}
 
+          
+
       {/* Video call room (renders full-screen when inCall=true) */}
-      {inCall && (
-        <VideoCallRoom currentUser={currentUser} otherUser={chatUser || undefined} />
+      {inCall && chatUser && (
+        <VideoCallRoom
+          currentUser={currentUser}
+          otherUser={chatUser}
+          otherUserId={chatUser.id}
+          isInitiator={true}
+          isVideo={callIsVideo}
+          onCallEnd={() => {
+            setInCall(false);
+            // Send call end notification
+            ws?.send(JSON.stringify({
+              type: 'call_end',
+              to: chatUser.id
+            }));
+          }}
+        />
       )}
+
+      {/* Messages */}
 
       {/* Messages */}
       {loading ? (
