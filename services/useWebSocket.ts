@@ -17,12 +17,25 @@ export const useWebSocket = (userId, onMessageNotification, onTypingIndicator) =
       return;
     }
 
-    // Determine WebSocket URL - use reverse proxy or direct connection
-    // When using reverse proxy on same port/origin, use /ws path
-    // This works for localhost AND ngrok deployment
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host; // includes hostname:port
-    const wsUrl = `${protocol}//${host}/ws`;
+    // Determine WebSocket URL
+    // Priority:
+    // 1. Environment variable VITE_WS_URL (for production)
+    // 2. Auto-detect from current location (for development)
+    
+    let wsUrl: string;
+    
+    const wsEnv = import.meta.env.VITE_WS_URL;
+    if (wsEnv) {
+      // Production: Use environment variable
+      wsUrl = wsEnv;
+      console.log('[WebSocket] Using environment URL:', wsUrl);
+    } else {
+      // Development: Auto-detect from current location
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host; // includes hostname:port
+      wsUrl = `${protocol}//${host}/ws`;
+      console.log('[WebSocket] Using auto-detected URL:', wsUrl);
+    }
 
     console.log('[WebSocket] Connecting to:', wsUrl);
 
