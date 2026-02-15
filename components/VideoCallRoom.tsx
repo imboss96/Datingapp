@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
+import { useAlert } from '../services/AlertContext';
 import displayName from '../src/utils/formatName';
 import { useWebRTC } from '../services/useWebRTC';
 import { useWebSocket } from '../services/useWebSocket';
@@ -23,12 +24,14 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   onCallEnd
 }) => {
   const navigate = useNavigate();
+  const { showAlert } = useAlert();
   const [callDuration, setCallDuration] = useState(0);
   const [isAudioOn, setIsAudioOn] = useState(true);
   const [isVideoOn, setIsVideoOn] = useState(isVideo);
   const [showCallInfo, setShowCallInfo] = useState(true);
   const [callQuality, setCallQuality] = useState<'good' | 'moderate' | 'poor'>('good');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [streamError, setStreamError] = useState<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const webRtcRef = useRef<any>(null);
@@ -36,9 +39,31 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   const { sendMessage, addMessageHandler } = useWebSocket(currentUser.id);
 
+  // Define endCall before callbacks that use it
+  const endCall = useCallback(() => {
+    console.log('[VideoCallRoom] Ending call');
+    webRtcRef.current?.hangUp();
+    onCallEnd?.();
+    navigate('/chats');
+  }, [onCallEnd, navigate]);
+
+  // Define callbacks BEFORE using them in hooks (prevents TDZ errors)
   const handleConnectionStateChange = useCallback((state: RTCPeerConnectionState) => {
     console.log('[VideoCallRoom] Connection state:', state);
     setConnectionStatus(state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected');
+  }, []);
+
+  const handleRemoteStream = useCallback((stream: MediaStream) => {
+    console.log('[VideoCallRoom] Remote stream received:', {
+      streamId: stream.id,
+      tracks: stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled }))
+    });
+    if (remoteVideoRef.current) {
+      console.log('[VideoCallRoom] Assigning remote stream to video element');
+      remoteVideoRef.current.srcObject = stream;
+    } else {
+      console.warn('[VideoCallRoom] remoteVideoRef not available');
+    }
   }, []);
 
   const handleWebSocketMessage = useCallback((data: any) => {
@@ -54,65 +79,43 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       console.log('[VideoCallRoom] Remote user ended the call');
       endCall();
     }
-  }, []);
+  }, [endCall]);
 
-  // Initialize WebRTC
+  const handleRTCError = useCallback((error: Error) => {
+    console.error('[VideoCallRoom] WebRTC error:', error);
+    setStreamError(error.message);
+    showAlert('Connection Error', 'Call connection error: ' + error.message);
+  }, [showAlert]);
+
+  const handleWSSignaling = useCallback((data: any) => {
+    const transformedData = {
+      ...data,
+      type: data.type.replace('send_', '') // Convert 'send_ice_candidate' to 'ice_candidate' etc.
+    };
+    console.log('[VideoCallRoom] Sending WebRTC signal:', transformedData.type);
+    sendMessage(transformedData);
+  }, [sendMessage]);
+
+  // Initialize WebRTC hook at component level (not in useEffect)
+  const webRtcHook = useWebRTC({
+    userId: currentUser.id,
+    otherUserId: otherUserId,
+    isInitiator: isInitiator,
+    isVideoEnabled: isVideoOn,
+    isAudioEnabled: isAudioOn,
+    onRemoteStream: handleRemoteStream,
+    onConnectionStateChange: handleConnectionStateChange,
+    onError: handleRTCError,
+    wsMessageHandler: handleWSSignaling
+  });
+
+  // Setup WebRTC ref with hook data
   useEffect(() => {
-    if (isInitialized) return;
-
-    const wsHandler = (data: any) => {
-      if (data.type === 'send_ice_candidate') {
-        sendMessage({
-          type: 'ice_candidate',
-          to: otherUserId,
-          candidate: data.candidate
-        });
-      } else if (data.type === 'send_call_offer') {
-        sendMessage({
-          type: 'call_offer',
-          to: otherUserId,
-          offer: data.offer
-        });
-      } else if (data.type === 'send_call_answer') {
-        sendMessage({
-          type: 'call_answer',
-          to: otherUserId,
-          answer: data.answer
-        });
-      } else if (data.type === 'send_call_end') {
-        sendMessage({
-          type: 'call_end',
-          to: otherUserId
-        });
-      }
-    };
-
-    const { useWebRTC: WebRTCHook } = require('../services/useWebRTC');
-    
-    webRtcRef.current = {
-      ...WebRTCHook({
-        userId: currentUser.id,
-        otherUserId: otherUserId,
-        isInitiator: isInitiator,
-        isVideoEnabled: isVideoOn,
-        isAudioEnabled: isAudioOn,
-        onRemoteStream: (stream: MediaStream) => {
-          console.log('[VideoCallRoom] Remote stream received');
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = stream;
-          }
-        },
-        onConnectionStateChange: handleConnectionStateChange,
-        onError: (error: Error) => {
-          console.error('[VideoCallRoom] WebRTC error:', error);
-          alert('Call connection error: ' + error.message);
-        },
-        wsMessageHandler: wsHandler
-      })
-    };
-
-    setIsInitialized(true);
-  }, [isInitialized, currentUser.id, otherUserId, isInitiator, isVideoOn, isAudioOn, handleConnectionStateChange, sendMessage]);
+    if (webRtcHook) {
+      webRtcRef.current = webRtcHook;
+      setIsInitialized(true);
+    }
+  }, [webRtcHook]);
 
   // Subscribe to WebSocket messages
   useEffect(() => {
@@ -122,10 +125,17 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   // Update local video stream
   useEffect(() => {
-    if (webRtcRef.current?.localStream && localVideoRef.current) {
-      localVideoRef.current.srcObject = webRtcRef.current.localStream;
+    console.log('[VideoCallRoom] Local stream update:', {
+      hasWebRtcHook: !!webRtcHook,
+      hasLocalStream: !!webRtcHook?.localStream,
+      localStreamTracks: webRtcHook?.localStream?.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled }))
+    });
+    
+    if (webRtcHook?.localStream && localVideoRef.current) {
+      console.log('[VideoCallRoom] Assigning local stream to video element');
+      localVideoRef.current.srcObject = webRtcHook.localStream;
     }
-  }, []);
+  }, [webRtcHook]);
 
   // Call timer
   useEffect(() => {
@@ -165,17 +175,57 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
   };
 
-  const endCall = () => {
-    console.log('[VideoCallRoom] Ending call');
-    webRtcRef.current?.hangUp();
-    onCallEnd?.();
-    navigate('/chats');
-  };
-
   const quality = getQualityIcon();
+
+  // Debug info - show if streams are missing
+  const hasLocalStream = webRtcHook?.localStream;
+  const localTracks = webRtcHook?.localStream?.getTracks() || [];
+  const hasVideoTrack = localTracks.some(t => t.kind === 'video');
+  const hasAudioTrack = localTracks.some(t => t.kind === 'audio');
 
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden flex items-center justify-center group">
+      {/* Debug Overlay - Remove in production */}
+      <div className="absolute top-2 left-2 z-50 bg-black/80 text-white text-xs p-2 rounded max-w-md font-mono">
+        <div>Local Stream: {hasLocalStream ? '✅' : '❌'}</div>
+        <div>Video Track: {hasVideoTrack ? '✅' : '❌'}</div>
+        <div>Audio Track: {hasAudioTrack ? '✅' : '❌'}</div>
+        <div>Status: {connectionStatus}</div>
+        <div>IsVideo: {isVideo ? 'Yes' : 'No'}</div>
+        <div>Browser: {navigator.userAgent.split(' ').slice(-2).join(' ')}</div>
+        {streamError && <div className="text-red-400 mt-2">Error: {streamError}</div>}
+      </div>
+
+      {/* Error message if streams failed */}
+      {streamError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-40">
+          <div className="bg-white rounded-xl max-w-md p-6 shadow-2xl">
+            <div className="text-center">
+              <i className="fa-solid fa-exclamation-triangle text-4xl text-red-500 mb-4 block"></i>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Device Error</h2>
+              <p className="text-gray-600 mb-6">{streamError}</p>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
+                <p className="text-sm font-bold text-blue-900 mb-2">To fix this:</p>
+                <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+                  <li>Check browser permissions for camera/microphone</li>
+                  <li>Ensure device is plugged in and enabled</li>
+                  <li>Try a different browser (Chrome/Firefox recommended)</li>
+                  <li>Restart your browser</li>
+                  <li>If in RDP/VM, enable device redirection</li>
+                </ul>
+              </div>
+              
+              <button 
+                onClick={() => endCall()}
+                className="w-full px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition"
+              >
+                End Call
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Main Video Grid */}
       <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-0">
         {/* Remote Video */}

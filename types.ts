@@ -60,6 +60,18 @@ export interface UserProfile {
   verification: VerificationInfo;
   blockedUsers: string[]; // User IDs that this user has blocked
   reportedUsers: string[]; // User IDs that this user has reported
+  // Legal & Verification
+  termsOfServiceAccepted?: boolean;
+  privacyPolicyAccepted?: boolean;
+  cookiePolicyAccepted?: boolean;
+  legalAcceptanceDate?: Date;
+  emailVerified?: boolean;
+  emailVerifiedAt?: Date;
+  isPhotoVerified?: boolean;
+  photoVerifiedAt?: Date;
+  // Account Status
+  suspended?: boolean;
+  banned?: boolean;
 }
 
 export interface MediaFile {

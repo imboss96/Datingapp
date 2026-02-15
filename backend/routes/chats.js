@@ -29,10 +29,10 @@ const upload = multer({
       'image/jpeg', 'image/png', 'image/gif', 'image/webp',
       'video/mp4', 'video/mpeg', 'video/quicktime', 'video/webm',
       'application/pdf',
-      'audio/mpeg', 'audio/wav', 'audio/ogg'
+      'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/webm;codecs=opus'
     ];
     
-    if (allowedMimes.includes(file.mimetype)) {
+    if (allowedMimes.includes(file.mimetype) || file.mimetype.startsWith('audio/')) {
       cb(null, true);
     } else {
       cb(new Error('Invalid file type'), false);
@@ -40,25 +40,43 @@ const upload = multer({
   }
 });
 
-// Get chats for user
+// Get chats for user (or all chats for moderators)
 router.get('/', async (req, res) => {
   try {
-    console.log('[DEBUG] Getting chats for user:', req.userId);
-    const chats = await Chat.find({ 
-      participants: req.userId,
-      $or: [
-        { deletedBy: { $exists: false } },
-        { deletedBy: { $nin: [req.userId] } }
-      ]
-    }).sort({ lastUpdated: -1 });
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+    console.log('[DEBUG] Getting chats for user:', req.userId, 'isModerator:', isModerator);
+    
+    let query;
+    if (isModerator) {
+      // Moderators/admins can see all chats
+      query = Chat.find({}).sort({ lastUpdated: -1 });
+      console.log('[DEBUG] Moderator/Admin viewing all chats');
+    } else {
+      // Regular users only see their own chats
+      query = Chat.find({ 
+        participants: req.userId,
+        $or: [
+          { deletedBy: { $exists: false } },
+          { deletedBy: { $nin: [req.userId] } }
+        ]
+      }).sort({ lastUpdated: -1 });
+    }
+    
+    const chats = await query;
     console.log('[DEBUG] Found', chats.length, 'chats for user:', req.userId);
 
     // Attach unread count for requesting user to each chat object
     const transformed = chats.map(c => {
       const obj = c.toObject();
-      const unread = (c.unreadCounts && c.unreadCounts.get && c.unreadCounts.get(req.userId)) || 0;
-      obj.unreadCount = unread;
-      obj.lastOpenedAt = (c.lastOpened && c.lastOpened.get && c.lastOpened.get(req.userId)) || null;
+      if (isModerator) {
+        // For moderators, attach participant count instead of unread count
+        obj.unreadCount = 0;
+        obj.isModerator = true;
+      } else {
+        const unread = (c.unreadCounts && c.unreadCounts.get && c.unreadCounts.get(req.userId)) || 0;
+        obj.unreadCount = unread;
+        obj.lastOpenedAt = (c.lastOpened && c.lastOpened.get && c.lastOpened.get(req.userId)) || null;
+      }
       return obj;
     });
 
@@ -158,17 +176,24 @@ router.post('/create-or-get', async (req, res) => {
 // Get specific chat
 router.get('/:chatId', async (req, res) => {
   try {
-    console.log('[DEBUG] Getting chat:', req.params.chatId, 'for user:', req.userId);
+    console.log('[DEBUG] Getting chat:', req.params.chatId, 'for user:', req.userId, 'role:', req.userRole);
     const chat = await Chat.findOne({ id: req.params.chatId });
     if (!chat) {
       console.log('[DEBUG] Chat not found:', req.params.chatId);
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    // Verify user is participant
-    if (!chat.participants.includes(req.userId)) {
-      console.log('[DEBUG] User not authorized. Participants:', chat.participants, 'User:', req.userId);
+    // Verify user is participant OR is a moderator/admin
+    const isParticipant = chat.participants.includes(req.userId);
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+    
+    if (!isParticipant && !isModerator) {
+      console.log('[DEBUG] User not authorized. Participants:', chat.participants, 'User:', req.userId, 'Role:', req.userRole);
       return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    if (isModerator && !isParticipant) {
+      console.log('[DEBUG] Moderator/Admin accessing chat as root:', req.userId);
     }
 
     console.log('[DEBUG] Returning chat with', chat.messages.length, 'messages');
@@ -351,14 +376,17 @@ router.post('/:chatId/messages', async (req, res) => {
 router.put('/:chatId/messages/:messageId', async (req, res) => {
   try {
     const { text } = req.body;
-    console.log('[DEBUG] Editing message:', req.params.messageId, 'in chat:', req.params.chatId);
+    console.log('[DEBUG] Editing message:', req.params.messageId, 'in chat:', req.params.chatId, 'by user:', req.userId, 'role:', req.userRole);
 
     const chat = await Chat.findOne({ id: req.params.chatId });
     if (!chat) {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    if (!chat.participants.includes(req.userId)) {
+    const isParticipant = chat.participants.includes(req.userId);
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+
+    if (!isParticipant && !isModerator) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
@@ -367,8 +395,8 @@ router.put('/:chatId/messages/:messageId', async (req, res) => {
       return res.status(404).json({ error: 'Message not found' });
     }
 
-    // Only sender can edit their message
-    if (message.senderId !== req.userId) {
+    // Only sender can edit their own message, but moderators/admins can edit any message
+    if (message.senderId !== req.userId && !isModerator) {
       return res.status(403).json({ error: 'Can only edit your own messages' });
     }
 
@@ -376,6 +404,9 @@ router.put('/:chatId/messages/:messageId', async (req, res) => {
     message.text = text;
     message.isEdited = true;
     message.editedAt = Date.now();
+    if (isModerator && message.senderId !== req.userId) {
+      message.isEditedByModerator = true;
+    }
     chat.lastUpdated = Date.now();
     await chat.save();
 
@@ -390,14 +421,17 @@ router.put('/:chatId/messages/:messageId', async (req, res) => {
 // Delete message
 router.delete('/:chatId/messages/:messageId', async (req, res) => {
   try {
-    console.log('[DEBUG] Deleting message:', req.params.messageId, 'in chat:', req.params.chatId);
+    console.log('[DEBUG] Deleting message:', req.params.messageId, 'in chat:', req.params.chatId, 'by user:', req.userId, 'role:', req.userRole);
 
     const chat = await Chat.findOne({ id: req.params.chatId });
     if (!chat) {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    if (!chat.participants.includes(req.userId)) {
+    const isParticipant = chat.participants.includes(req.userId);
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+
+    if (!isParticipant && !isModerator) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
@@ -407,8 +441,8 @@ router.delete('/:chatId/messages/:messageId', async (req, res) => {
     }
 
     const message = chat.messages[messageIndex];
-    // Only sender can delete their message
-    if (message.senderId !== req.userId) {
+    // Only sender can delete their message, but moderators/admins can delete any message
+    if (message.senderId !== req.userId && !isModerator) {
       return res.status(403).json({ error: 'Can only delete your own messages' });
     }
 
@@ -591,6 +625,46 @@ router.delete('/:chatId', async (req, res) => {
     }
   } catch (err) {
     console.error('[ERROR] Failed to delete chat:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Flag/unflag message (moderators only)
+router.put('/:chatId/messages/:messageId/flag', async (req, res) => {
+  try {
+    const { flag, flagReason } = req.body;
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+    
+    if (!isModerator) {
+      return res.status(403).json({ error: 'Only moderators can flag messages' });
+    }
+
+    console.log('[DEBUG] Flag message:', req.params.messageId, 'in chat:', req.params.chatId, 'flag:', flag, 'reason:', flagReason, 'by moderator:', req.userId);
+
+    const chat = await Chat.findOne({ id: req.params.chatId });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    const message = chat.messages.find(m => m.id === req.params.messageId);
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    message.isFlagged = flag;
+    if (flag && flagReason) {
+      message.flagReason = flagReason;
+    } else if (!flag) {
+      delete message.flagReason;
+    }
+    
+    chat.lastUpdated = Date.now();
+    await chat.save();
+
+    console.log('[DEBUG] Message flag updated successfully');
+    res.json(message);
+  } catch (err) {
+    console.error('[ERROR] Failed to flag message:', err);
     res.status(500).json({ error: err.message });
   }
 });

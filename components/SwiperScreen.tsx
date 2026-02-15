@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile, UserRole } from '../types';
 import apiClient from '../services/apiClient';
+import { useAlert } from '../services/AlertContext';
 import MatchModal from './MatchModal';
 
 interface SwiperScreenProps {
@@ -18,6 +19,7 @@ interface Heart {
 
 const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }) => {
   const navigate = useNavigate();
+  const { showAlert } = useAlert();
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -98,8 +100,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         const response = await apiClient.recordSwipe(currentUser.id, profile.id, 'like');
         console.log('[DEBUG SwiperScreen] Liked profile:', profile.id, response);
         
-        // Check if there's a match (70%+ interest match + mutual like)
-        if (response.matched && response.matchedUser && response.interestMatch >= 70) {
+        // Check if there's a match (demo matches or real mutual likes)
+        if (response.matched && response.matchedUser) {
           console.log('[DEBUG SwiperScreen] MATCH FOUND!', response);
           setMatchedUser(response.matchedUser);
           setInterestMatch(response.interestMatch);
@@ -127,7 +129,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   const handleSuperLike = async () => {
     if (!currentUser.isPremium && currentUser.coins < 1) {
-      alert("Out of coins! Top up in your profile to keep swiping.");
+      showAlert('Out of Coins', 'Top up in your profile to keep swiping.');
       return;
     }
     
@@ -149,7 +151,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const handleRewind = () => {
     if (currentIndex === 0) return;
     if (!currentUser.isPremium && currentUser.coins < 1) {
-      alert("Rewind costs 1 coin. Top up to undo your last choice!");
+      showAlert('Coins Required', 'Rewind costs 1 coin. Top up to undo your last choice!');
       return;
     }
     if (!currentUser.isPremium) onDeductCoin();

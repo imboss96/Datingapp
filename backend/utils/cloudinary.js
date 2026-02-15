@@ -37,4 +37,54 @@ export const deleteFromCloudinary = (publicId) => {
   return cloudinary.uploader.destroy(publicId);
 };
 
+export const uploadPhotoVerificationImage = async (base64Data, userId) => {
+  try {
+    // Remove data URI prefix if present
+    const base64String = base64Data.includes(',') 
+      ? base64Data.split(',')[1] 
+      : base64Data;
+
+    const result = await cloudinary.uploader.upload(
+      `data:image/jpeg;base64,${base64String}`,
+      {
+        folder: 'spark-dating/verification-photos',
+        public_id: `verification_${userId}_${Date.now()}`,
+        resource_type: 'auto',
+        quality: 'auto',
+        validation: {
+          width: { min: 200, max: 4000 },
+          height: { min: 200, max: 4000 },
+          aspect_ratio: { min: 0.5, max: 2.0 },
+        },
+        tags: ['verification', `user_${userId}`],
+        context: {
+          userId: userId,
+          verificationDate: new Date().toISOString(),
+        },
+      }
+    );
+
+    return {
+      secure_url: result.secure_url,
+      public_id: result.public_id,
+      width: result.width,
+      height: result.height,
+      size: result.bytes,
+    };
+  } catch (error) {
+    console.error('[Cloudinary] Photo verification upload failed:', error);
+    throw error;
+  }
+};
+
+export const deleteVerificationPhoto = async (publicId) => {
+  try {
+    const result = await cloudinary.uploader.destroy(publicId);
+    return result;
+  } catch (error) {
+    console.error('[Cloudinary] Photo deletion failed:', error);
+    throw error;
+  }
+};
+
 export default cloudinary;

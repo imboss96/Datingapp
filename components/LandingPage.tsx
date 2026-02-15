@@ -78,66 +78,23 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
   return (
     <div>
       {/* Header */}
-      <header className="header header--style2" id="navbar">
-        <div className="header__top d-none d-lg-block">
+      <header className="header header--style2" id="navbar" style={{ position: 'sticky', top: 0, zIndex: 1000, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', backgroundColor: '#ffffff', padding: '8px 0' }}>
+        <div className="header__bottom" style={{ padding: '0' }}>
           <div className="container">
-            <div className="header__top--area">
-              <div className="header__top--left">
-                <ul>
-                  <li>
-                    <i className="fa-solid fa-phone"></i> <span>+800-123-4567 6587</span>
-                  </li>
-                  <li>
-                    <i className="fa-solid fa-location-dot"></i> Beverley, New York 224 USA
-                  </li>
-                </ul>
-              </div>
-              <div className="header__top--right">
-                <ul>
-                  <li><a href="#"><i className="fa-brands fa-facebook-messenger"></i></a></li>
-                  <li><a href="#"><i className="fa-brands fa-twitter"></i></a></li>
-                  <li><a href="#"><i className="fa-brands fa-vimeo-v"></i></a></li>
-                  <li><a href="#"><i className="fa-brands fa-skype"></i></a></li>
-                  <li><a href="#"><i className="fa-solid fa-rss"></i></a></li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="header__bottom">
-          <div className="container">
-            <nav className="navbar navbar-expand-lg">
-              <a className="navbar-brand" href="#"><img src="/images/logo/logo.png" alt="logo" style={{ height: '40px', width: 'auto' }} /></a>
-              <button className="navbar-toggler collapsed" type="button" data-bs-toggle="collapse"
-                data-bs-target="#navbarNavAltMarkup" aria-controls="navbarNavAltMarkup" aria-expanded="false"
-                aria-label="Toggle navigation">
-                <span className="navbar-toggler--icon"></span>
-              </button>
-              <div className="collapse navbar-collapse justify-content-end" id="navbarNavAltMarkup">
-                <div className="navbar-nav mainmenu">
-                  <ul>
-                    <li className="active">
-                      <a href="#0">Home</a>
-                    </li>
-                    <li>
-                      <a href="#0">Pages</a>
-                    </li>
-                    <li>
-                      <a href="#0">Community</a>
-                    </li>
-                    <li>
-                      <a href="#0">Shops</a>
-                    </li>
-                    <li>
-                      <a href="#0">Blogs</a>
-                    </li>
-                    <li><a href="#0">Contact</a></li>
-                  </ul>
+            <nav className="navbar navbar-expand-lg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0', minHeight: 'auto', gap: '16px' }}>
+              <a className="navbar-brand" href="#" style={{ display: 'flex', alignItems: 'center', margin: 0, padding: 0, minHeight: '40px' }}><img src="/src/assets/images/logo/logo.png" alt="logo" style={{ height: '40px', width: 'auto', display: 'block' }} /></a>
+              <div className="navbar-collapse justify-content-end" id="navbarNavAltMarkup" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: 0, margin: 0 }}>
+                {/* Navigation links removed on landing page per request */}
+                <div className="button-group" style={{ display: 'flex', gap: 'clamp(8px, 2vw, 12px)', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <button onClick={() => onOpenLoginModal?.()} className="btn btn-outline-primary" style={{ padding: 'clamp(6px, 1.5vw, 8px) clamp(16px, 4vw, 24px)', fontSize: 'clamp(12px, 2.5vw, 14px)', fontWeight: '600', border: '1.5px solid #2ba6cb', color: '#2ba6cb', backgroundColor: 'transparent', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 1vw, 8px)', whiteSpace: 'nowrap', minHeight: '40px' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f0f8fb'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                    <i className="fa-solid fa-user"></i>
+                    <span>Log In</span>
+                  </button>
+                  <button onClick={() => onOpenLoginModal?.()} className="btn btn-primary" style={{ padding: 'clamp(8px, 1.5vw, 10px) clamp(18px, 5vw, 28px)', fontSize: 'clamp(12px, 2.5vw, 14px)', fontWeight: '600', border: 'none', color: '#ffffff', backgroundColor: '#2ba6cb', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 1vw, 8px)', whiteSpace: 'nowrap', minHeight: '40px' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1f8ba8'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(43, 166, 203, 0.3)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#2ba6cb'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
+                    <i className="fa-solid fa-user-plus"></i>
+                    <span>Sign Up</span>
+                  </button>
                 </div>
-                <ul className="button-group">
-                  <li><a href="javascript:void(0)" onClick={() => onOpenLoginModal?.()} className="default-btn login"><i className="fa-solid fa-user"></i> <span>LOG IN</span> </a></li>
-                  <li><a href="javascript:void(0)" onClick={() => onOpenLoginModal?.()} className="default-btn signup"><i className="fa-solid fa-users"></i> <span>SIGN UP</span> </a></li>
-                </ul>
               </div>
             </nav>
           </div>
@@ -153,7 +110,7 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
                 <div className="banner__title">
                   <h2>We Have More Than <span>2.000.000</span> Join Members</h2>
                   <p>Still looking for your significant other? lunesa is the place for you! Join now to meet single men and women worldwide.</p>
-                  <a href="javascript:void(0)" onClick={() => onOpenLoginModal?.()} className="default-btn style-2"><span>Registration Now</span></a>
+                  <a href="#" onClick={(e) => { e.preventDefault(); onOpenLoginModal?.(); }} className="default-btn style-2"><span>Registration Now</span></a>
                 </div>
               </div>
             </div>
