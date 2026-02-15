@@ -11,7 +11,7 @@ export const useWebSocket = (userId: string, onMessageNotification: any = null, 
 
   const connect = useCallback(() => {
     if (!userId) {
-      console.log('[WebSocket] Cannot connect: userId not provided');
+      console.debug('[WebSocket] Cannot connect: userId not provided');
       return;
     }
 

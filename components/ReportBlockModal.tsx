@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
+import { useAlert } from '../services/AlertContext';
 
 interface ReportBlockModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ const ReportBlockModal: React.FC<ReportBlockModalProps> = ({
   onBlock,
   isBlocked,
 }) => {
+  const { showAlert } = useAlert();
   const [action, setAction] = useState<ActionType>(null);
   const [reportReason, setReportReason] = useState('');
   const [description, setDescription] = useState('');
@@ -27,7 +29,7 @@ const ReportBlockModal: React.FC<ReportBlockModalProps> = ({
 
   const handleReportSubmit = () => {
     if (!reportReason) {
-      alert('Please select a reason');
+      showAlert('Missing Reason', 'Please select a reason');
       return;
     }
     onReport(reportReason, description);

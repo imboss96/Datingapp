@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
 import ChatOptionsModal from './ChatOptionsModal';
+import { useAlert } from '../services/AlertContext';
 
 interface ChatData {
   id: string;
@@ -33,6 +34,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   const navigate = useNavigate();
   const [chats, setChats] = useState<ChatData[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const fetchingUsersRef = React.useRef<Record<string, boolean>>({});
   const [selectedMatch, setSelectedMatch] = useState<MatchProfile | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
       console.log('[DEBUG ChatList] Chat deleted successfully');
     } catch (err: any) {
       console.error('[ERROR ChatList] Failed to delete chat:', err);
-      alert('Failed to delete chat. Please try again.');
+      showAlert('Error', 'Failed to delete chat. Please try again.');
     } finally {
       setOptionsLoading(false);
       setSelectedChatId(null);
@@ -105,7 +107,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
       console.log('[DEBUG ChatList] Chat blocked successfully');
     } catch (err: any) {
       console.error('[ERROR ChatList] Failed to block chat:', err);
-      alert('Failed to block chat. Please try again.');
+      showAlert('Error', 'Failed to block chat. Please try again.');
     } finally {
       setOptionsLoading(false);
       setSelectedChatId(null);
@@ -135,7 +137,9 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
           return b.lastUpdated - a.lastUpdated;
         });
         setChats(sorted);
-        setAllUsers(usersData);
+        // Sanitize users list: filter out null/invalid entries
+        const saneUsers = (usersData || []).filter((u: any) => u && u.id);
+        setAllUsers(saneUsers);
       } catch (err: any) {
         console.error('[ERROR ChatList] Failed to load data:', err);
       } finally {
@@ -154,7 +158,24 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     }
     const otherUserId = chat.participants.find(id => id !== currentUser.id);
     console.log('[DEBUG ChatList] Chat participants:', chat.participants, 'Current user:', currentUser.id, 'Other user ID:', otherUserId);
-    const otherUser = allUsers.find(u => u.id === otherUserId);
+    let otherUser = allUsers.find(u => u && (u as any).id === otherUserId) as UserProfile | undefined;
+    if (!otherUser && otherUserId && !fetchingUsersRef.current[otherUserId]) {
+      // Fetch missing participant profile and add to allUsers cache
+      fetchingUsersRef.current[otherUserId] = true;
+      apiClient.getUser(otherUserId).then((u) => {
+        if (!u) return;
+        setAllUsers(prev => {
+          // avoid duplicates and nulls
+          if (prev.find(p => p && p.id === u.id)) return prev;
+          return [...prev, u];
+        });
+      }).catch(err => {
+        console.warn('[WARN ChatList] Failed to fetch missing user:', otherUserId, err);
+      }).finally(() => {
+        fetchingUsersRef.current[otherUserId] = false;
+      });
+    }
+
     console.log('[DEBUG ChatList] Found user:', otherUser?.name || 'NOT FOUND');
     return otherUser || null;
   };
@@ -258,7 +279,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
                         setSelectedChatUsername(otherUser.username || otherUser.name);
                         setOptionsModalOpen(true);
                       }}
-                      className="flex items-center gap-4 p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer group pointer-events-auto"
+                      className={`flex items-center gap-4 p-4 transition-colors cursor-pointer group pointer-events-auto ${chat.unreadCount > 0 ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 active:bg-gray-100'}`}
                       role="button"
                       tabIndex={0}
                     >
@@ -272,13 +293,13 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center mb-0.5">
                           <div className="flex flex-col">
-                            <h4 className="font-bold text-gray-900 truncate text-sm">
+                            <h4 className={`text-gray-900 truncate text-sm ${chat.unreadCount > 0 ? 'font-black' : 'font-bold'}`}>
                               {otherUser.username || otherUser.name}
                             </h4>
                           </div>
                           <div className="flex items-center gap-2">
                             {chat.unreadCount > 0 && (
-                              <span className="inline-flex items-center justify-center bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              <span className="inline-flex items-center justify-center bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
                                 {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
                               </span>
                             )}
@@ -287,7 +308,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
                             </span>
                           </div>
                         </div>
-                        <p className="text-xs truncate text-gray-400 font-medium">
+                        <p className={`text-xs truncate font-medium ${chat.unreadCount > 0 ? 'text-gray-600 font-semibold' : 'text-gray-400'}`}>
                           {getLastMessage(chat)}
                         </p>
                       </div>

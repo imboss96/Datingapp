@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { createServer } from 'http';
@@ -11,7 +12,13 @@ import chatsRoutes from './routes/chats.js';
 import reportsRoutes from './routes/reports.js';
 import uploadRoutes from './routes/upload.js';
 import transactionsRoutes from './routes/transactions.js';
+import matchesRoutes from './routes/matches.js';
+import verificationRoutes from './routes/verification.js';
+import emailVerificationRoutes from './routes/emailVerification.js';
+import moderationRoutes from './routes/moderation.js';
+import pushRoutes from './routes/push.js';
 import { authMiddleware } from './middleware/auth.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { initCloudinary } from './utils/cloudinary.js';
 import { initWebSocket } from './utils/websocket.js';
 
@@ -26,7 +33,13 @@ const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/spark-dating';
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3001', 'http://localhost:5173'],
+  credentials: true, // Allow cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -62,24 +75,27 @@ mongoose.connect(MONGODB_URI, {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/verification', verificationRoutes);  // Email verification
+app.use('/api/email-verification', emailVerificationRoutes);
 app.use('/api/users', usersRoutes);  // Auth middleware applied selectively in users.js
 app.use('/api/chats', authMiddleware, chatsRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
+app.use('/api/matches', authMiddleware, matchesRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/transactions', transactionsRoutes);  // Auth middleware applied selectively in transactions.js
+app.use('/api/moderation', authMiddleware, moderationRoutes);  // Moderator-only routes
+app.use('/api/push', authMiddleware, pushRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend running', timestamp: new Date().toISOString() });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal Server Error',
-  });
-});
+// 404 handler - for undefined routes
+app.use(notFoundHandler);
+
+// Error handling middleware - MUST be last
+app.use(errorHandler);
 
 // Create HTTP server and attach WebSocket
 const server = createServer(app);

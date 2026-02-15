@@ -1687,16 +1687,9 @@ iframe {
     z-index: 9999;
   }
 }
-@media (max-width: 767px) {
-  .header .header__top {
-    display: none;
-  }
-}
+/* header top / top-strip styles removed from compiled CSS */
 .header__bottom {
   padding-block: 16.5px;
-}
-.header.header-fixed .header__top {
-  display: none !important;
 }
 @media (min-width: 992px) {
   .header.header-fixed {
@@ -1712,42 +1705,6 @@ iframe {
   .header.header-fixed .navbar--bottom-line {
     border: none;
   }
-}
-.header__top--left ul li, .header__top--right ul li {
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
-}
-.header__top--left ul li:last-child {
-  border-right: none;
-}
-.header__top--right ul li:first-child {
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-}
-.header--style2 .header__top {
-  background: #2ba6cb;
-}
-.header--style2 .header__top--left ul li:last-child::before, .header--style2 .header__top--right ul li:last-child::before {
-  right: 0px;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.1);
-  -webkit-transform: rotate(15deg);
-  -moz-transform: rotate(15deg);
-  -ms-transform: rotate(15deg);
-  -o-transform: rotate(15deg);
-  transform: rotate(15deg);
-}
-.header--style2 .header__top--left ul li::after, .header--style2 .header__top--right ul li::after {
-  left: -5px;
-  top: 0;
-  width: 1px;
-  height: 100%;
-  background: rgba(255, 255, 255, 0.1);
-  -webkit-transform: rotate(15deg);
-  -moz-transform: rotate(15deg);
-  -ms-transform: rotate(15deg);
-  -o-transform: rotate(15deg);
-  transform: rotate(15deg);
 }
 .header--style2 .header__bottom .mainmenu ul li:hover > a, .header--style2 .header__bottom .mainmenu ul li.open > a {
   color: #ff0461;

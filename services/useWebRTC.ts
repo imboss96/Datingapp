@@ -33,24 +33,124 @@ export const useWebRTC = ({
   useEffect(() => {
     const getLocalMedia = async () => {
       try {
-        console.log('[WebRTC] Requesting media:', { audio: isAudioEnabled, video: isVideoEnabled });
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: isAudioEnabled ? { echoCancellation: true, noiseSuppression: true } : false,
-          video: isVideoEnabled 
-            ? { 
+        const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+        console.log('[WebRTC] Requesting media:', { audio: isAudioEnabled, video: isVideoEnabled, demoMode: isDemoMode });
+        
+        // Demo mode: generate mock canvas stream
+        if (isDemoMode && isVideoEnabled) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 1280;
+          canvas.height = 720;
+          
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // Draw a demo pattern
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#00d4ff';
+            ctx.font = 'bold 48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('📽️ Demo Video Stream', canvas.width / 2, canvas.height / 2);
+            
+            ctx.fillStyle = '#888';
+            ctx.font = '24px Arial';
+            ctx.fillText('(Camera not available)', canvas.width / 2, canvas.height / 2 + 60);
+            
+            // Animate by updating canvas
+            setInterval(() => {
+              ctx.fillStyle = '#1a1a2e';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              ctx.fillStyle = '#00d4ff';
+              ctx.font = 'bold 48px Arial';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText('📽️ Demo Video Stream', canvas.width / 2, canvas.height / 2);
+              ctx.fillStyle = '#888';
+              ctx.font = '24px Arial';
+              ctx.fillText(`${new Date().toLocaleTimeString()}`, canvas.width / 2, canvas.height / 2 + 60);
+            }, 1000);
+          }
+          
+          const canvasStream = canvas.captureStream(30);
+          if (isAudioEnabled) {
+            try {
+              const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              audioStream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+            } catch {
+              console.warn('[WebRTC] Audio not available in demo mode');
+            }
+          }
+          
+          console.log('[WebRTC] Demo stream created:', canvasStream.getTracks().map(t => t.kind));
+          localStreamRef.current = canvasStream;
+          setLocalStream(canvasStream);
+          return;
+        }
+        
+        // Try to get video + audio first (if video is enabled)
+        if (isVideoEnabled && isAudioEnabled) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true },
+              video: { 
                 width: { ideal: 1280 }, 
                 height: { ideal: 720 },
                 facingMode: 'user'
-              } 
-            : false,
-        });
-        console.log('[WebRTC] Local media obtained:', stream.getTracks().map(t => t.kind));
-        localStreamRef.current = stream;
-        setLocalStream(stream);
+              }
+            });
+            console.log('[WebRTC] Local media obtained (video+audio):', stream.getTracks().map(t => t.kind));
+            localStreamRef.current = stream;
+            setLocalStream(stream);
+            return;
+          } catch (videoError) {
+            console.warn('[WebRTC] Video not available, trying audio only:', videoError);
+          }
+        }
+        
+        // Fallback to audio only
+        if (isAudioEnabled) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true },
+              video: false
+            });
+            console.log('[WebRTC] Local media obtained (audio only):', stream.getTracks().map(t => t.kind));
+            localStreamRef.current = stream;
+            setLocalStream(stream);
+            return;
+          } catch (audioError) {
+            console.error('[WebRTC] Audio not available:', audioError);
+            const error = audioError instanceof Error ? audioError : new Error('Microphone not found');
+            onError?.(new Error(`❌ Microphone Error: ${error.message}\n\nSet VITE_DEMO_MODE=true in .env to test without devices.`));
+            return;
+          }
+        }
+        
+        // Only video requested but failed
+        if (isVideoEnabled && !isAudioEnabled) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: { 
+                width: { ideal: 1280 }, 
+                height: { ideal: 720 },
+                facingMode: 'user'
+              },
+              audio: false
+            });
+            console.log('[WebRTC] Local media obtained (video only):', stream.getTracks().map(t => t.kind));
+            localStreamRef.current = stream;
+            setLocalStream(stream);
+          } catch (videoError) {
+            const error = videoError instanceof Error ? videoError : new Error('Camera not found');
+            onError?.(new Error(`❌ Camera Error: ${error.message}\n\nSet VITE_DEMO_MODE=true in .env to test without devices.`));
+          }
+        }
       } catch (err) {
         console.error('[WebRTC] Failed to get local media:', err);
-        const error = err instanceof Error ? err : new Error('Failed to get media');
-        onError?.(error);
+        const error = err instanceof Error ? err : new Error('Failed to access media devices');
+        onError?.(new Error(`⚠️ Media Error: ${error.message}\n\nSet VITE_DEMO_MODE=true in .env to test without devices.`));
       }
     };
 

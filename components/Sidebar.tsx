@@ -63,6 +63,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
           to="/" 
           className={({ isActive }) => `flex-1 py-4 text-center text-xs font-black uppercase tracking-widest border-b-2 transition-all ${isActive ? 'border-red-500 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
         >
+          Swipe
+        </NavLink>
+        <NavLink 
+          to="/matches" 
+          className={({ isActive }) => `flex-1 py-4 text-center text-xs font-black uppercase tracking-widest border-b-2 transition-all ${isActive ? 'border-red-500 text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+        >
           Matches
         </NavLink>
         <NavLink 

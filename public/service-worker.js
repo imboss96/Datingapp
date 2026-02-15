@@ -63,3 +63,41 @@ self.addEventListener('fetch', event => {
     })
   );
 });
+
+// Push event - display notification
+self.addEventListener('push', function(event) {
+  try {
+    const data = event.data ? event.data.json() : { title: 'New Notification', body: '' };
+    const title = data.title || 'New Notification';
+    const options = {
+      body: data.body || '',
+      icon: '/css/images/icons-192.png',
+      badge: '/css/images/badge-72.png',
+      data: data.data || {},
+      tag: data.tag || undefined,
+      renotify: data.renotify || false
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (err) {
+    console.error('[SW] Error handling push event:', err);
+  }
+});
+
+// Notification click - focus or open app
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url === url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
+});

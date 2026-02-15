@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
+import PasswordResetModal from './PasswordResetModal';
+import PhotoVerificationModal from './PhotoVerificationModal';
 
 interface Props {
   user: UserProfile;
@@ -55,12 +57,18 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showPasswordResetModal, setShowPasswordResetModal] = useState<'change' | null>(null);
+  const [showPhotoVerification, setShowPhotoVerification] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<'checking' | 'available' | 'taken' | null>(null);
   const [usernameCheckTimeout, setUsernameCheckTimeout] = useState<NodeJS.Timeout | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushEndpoint, setPushEndpoint] = useState<string | null>(null);
+  const [pushProcessing, setPushProcessing] = useState(false);
 
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
@@ -124,10 +132,15 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
     }));
   };
 
-  const handleSignOut = () => {
-    // Clear user session
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('authToken');
+  const handleSignOut = async () => {
+    try {
+      // Call logout endpoint to clear server-side cookie
+      await apiClient.logout();
+    } catch (err) {
+      console.error('[ERROR ProfileSettings] Logout API call failed:', err);
+    }
+    
+    // Clear client-side user data
     setUser(null as any);
     window.location.hash = '#/';
   };
@@ -169,7 +182,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
       };
 
       setUser(updatedUser);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      // backend is authoritative; no localStorage write
       
       setPaymentStep('SUCCESS');
     } catch (err: any) {
@@ -216,7 +229,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
       };
       
       setUser(updatedUserData);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUserData));
+      // backend is authoritative; no localStorage write
       console.log('[DEBUG ProfileSettings] Profile saved successfully:', updatedUserData);
       console.log('[DEBUG ProfileSettings] Updated images:', updatedUserData.images.length, 'images');
       
@@ -275,6 +288,117 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
       console.error('[ERROR ProfileSettings] Failed to save notifications:', err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Push helpers
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  const registerForPush = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setError('Push notifications are not supported in this browser');
+      return;
+    }
+
+    try {
+      if (Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          setError('Notifications permission denied');
+          return;
+        }
+      } else if (Notification.permission !== 'granted') {
+        setError('Notifications permission denied');
+        return;
+      }
+
+      const reg = await navigator.serviceWorker.register('/service-worker.js');
+      const vapidResp: any = await apiClient.getVapidPublicKey();
+      const publicKey = vapidResp?.publicKey;
+      if (!publicKey) {
+        setError('Server does not provide VAPID key');
+        return;
+      }
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+
+      await apiClient.subscribePush(sub);
+      setPushEnabled(true);
+      setPushEndpoint(sub.endpoint || null);
+      setSuccessMessage('Push subscription enabled');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      console.error('[ProfileSettings] registerForPush error:', err);
+      setError(err.message || 'Failed to register for push');
+    }
+  };
+
+  const unsubscribeFromPush = async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        const endpoint = sub.endpoint;
+        await sub.unsubscribe();
+        await apiClient.unsubscribePush(endpoint);
+        setPushEnabled(false);
+        setPushEndpoint(null);
+        setSuccessMessage('Unsubscribed from push notifications');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+    } catch (err: any) {
+      console.error('[ProfileSettings] unsubscribeFromPush error:', err);
+      setError(err.message || 'Failed to unsubscribe from push');
+    }
+  };
+
+  React.useEffect(() => {
+    setPushSupported(('serviceWorker' in navigator) && ('PushManager' in window));
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) return;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          setPushEnabled(true);
+          setPushEndpoint(sub.endpoint || null);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const handleEnablePush = async () => {
+    setPushProcessing(true);
+    setError(null);
+    try {
+      await registerForPush();
+    } finally {
+      setPushProcessing(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    setPushProcessing(true);
+    setError(null);
+    try {
+      await unsubscribeFromPush();
+    } finally {
+      setPushProcessing(false);
     }
   };
 
@@ -517,6 +641,32 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
             <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
           </button>
 
+          {/* Desktop / PWA Push Toggle */}
+          {pushSupported && (
+            <div className="mt-3">
+              <button
+                onClick={pushEnabled ? handleDisablePush : handleEnablePush}
+                disabled={pushProcessing}
+                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-colors ${pushEnabled ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-indigo-50 hover:bg-indigo-100'}`}
+              >
+                <div className="flex items-center gap-4 text-gray-700">
+                  <i className={`fa-solid ${pushEnabled ? 'fa-bell' : 'fa-bell-slash'} text-sm text-gray-400 w-5 text-center`}></i>
+                  <div className="text-left">
+                    <span className="text-sm font-semibold">Desktop & PWA Notifications</span>
+                    <div className="text-xs text-gray-500">{pushEnabled ? 'Enabled' : 'Disabled'}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {pushProcessing && <i className="fa-solid fa-spinner fa-spin text-gray-400"></i>}
+                  <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+                </div>
+              </button>
+              {pushEndpoint && (
+                <p className="text-[10px] text-gray-400 mt-2 truncate">Endpoint: {pushEndpoint}</p>
+              )}
+            </div>
+          )}
+
           {/* Privacy & Safety Button */}
           <button 
             onClick={() => { setError(null); setOpenModal('privacy'); }}
@@ -556,6 +706,46 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
               <span className="text-sm font-semibold">Help Center</span>
             </div>
             <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+          </button>
+
+          {/* Photo Verification Button */}
+          <button 
+            onClick={() => { setError(null); setShowPhotoVerification(true); }}
+            className={`w-full flex items-center justify-between p-4 rounded-2xl transition-colors ${
+              user.isPhotoVerified 
+                ? 'bg-green-50 hover:bg-green-100' 
+                : 'bg-purple-50 hover:bg-purple-100'
+            }`}
+          >
+            <div className="flex items-center gap-4">
+              <i className={`fa-solid fa-camera text-sm w-5 text-center ${
+                user.isPhotoVerified ? 'text-green-600' : 'text-purple-600'
+              }`}></i>
+              <div className="text-left">
+                <span className={`text-sm font-semibold block ${
+                  user.isPhotoVerified ? 'text-green-700' : 'text-purple-700'
+                }`}>Photo Verification</span>
+                <span className="text-xs opacity-75">
+                  {user.isPhotoVerified ? '✓ Verified' : 'Get verified badge'}
+                </span>
+              </div>
+            </div>
+            <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+          </button>
+        </div>
+
+        {/* Password Management Section */}
+        <div className="mt-8 pt-8 border-t-2 border-gray-100">
+          <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Security</h4>
+          <button 
+            onClick={() => setShowPasswordResetModal('change')}
+            className="w-full flex items-center justify-between p-4 bg-blue-50 rounded-2xl hover:bg-blue-100 active:bg-blue-100 transition-colors border border-blue-200"
+          >
+            <div className="flex items-center gap-4 text-blue-700">
+              <i className="fa-solid fa-lock text-sm text-blue-500 w-5 text-center"></i>
+              <span className="text-sm font-semibold">Change Password</span>
+            </div>
+            <i className="fa-solid fa-chevron-right text-[10px] text-blue-400"></i>
           </button>
         </div>
 
@@ -1057,6 +1247,44 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser }) => {
             </div>
           </div>
         )}
+
+        {/* Password Reset Modal */}
+        {showPasswordResetModal && (
+          <PasswordResetModal
+            isOpen={showPasswordResetModal === 'change'}
+            onClose={() => setShowPasswordResetModal(null)}
+            mode="change"
+            userEmail={user.email}
+          />
+        )}
+
+        {/* Photo Verification Modal */}
+        <PhotoVerificationModal
+          isOpen={showPhotoVerification}
+          onClose={() => setShowPhotoVerification(false)}
+          userId={user.id}
+            onSubmit={async (photoData) => {
+            try {
+              const response = await apiClient.post('/verification/upload-photo', {
+                photoData,
+                userId: user.id
+              });
+              
+              // Update user state with verification pending status
+              setUser(prev => ({
+                ...prev,
+                photoVerificationStatus: 'pending',
+                photoVerificationSubmittedAt: new Date().toISOString()
+              }));
+              
+              setShowPhotoVerification(false);
+            } catch (err) {
+              console.error('Photo upload failed:', err);
+              setError('Failed to upload verification photo. Please try again.');
+            }
+          }}
+        />
+
       </div>
     </div>
   );

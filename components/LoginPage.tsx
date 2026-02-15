@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { UserProfile, UserRole } from '../types';
 import apiClient from '../services/apiClient';
+import PasswordResetModal from './PasswordResetModal';
+import EmailVerificationModal from './EmailVerificationModal';
 
 const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boolean) => void; onClose?: () => void; isModal?: boolean }> = ({ onLoginSuccess, onClose, isModal = false }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -11,6 +13,8 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [showEmailVerificationModal, setShowEmailVerificationModal] = useState(false);
 
   // Helper function to check if profile is complete
   const isProfileComplete = (user: any): boolean => {
@@ -54,25 +58,32 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
           return;
         }
 
-        // Call register endpoint
-        const response = await apiClient.register(email, password, name, 25);
+        // Call register endpoint and then fetch authoritative user (includes role)
+        await apiClient.register(email, password, name, 25);
+        // Request OTP for email verification
+        try { await apiClient.requestEmailVerification(email); } catch (e) { /* ignore */ }
+        setShowEmailVerificationModal(true);
+        const me = await apiClient.getCurrentUser();
         const user: UserProfile = {
-          id: response.user.id,
-          name: response.user.name,
-          username: response.user.username || '',
-          age: response.user.age || 25,
-          bio: response.user.bio || 'Welcome to lunesa!',
-          images: response.user.images || [],
-          isPremium: false,
-          role: UserRole.USER,
-          location: response.user.location || 'Not specified',
-          interests: response.user.interests || [],
-          coins: response.user.coins || 10,
-          verification: response.user.verification || { status: 'UNVERIFIED' as const },
-          blockedUsers: response.user.blockedUsers || [],
-          reportedUsers: response.user.reportedUsers || []
+          id: me.id,
+          name: me.name,
+          username: me.username || '',
+          age: me.age || 25,
+          bio: me.bio || 'Welcome to lunesa!',
+          images: me.images || [],
+          isPremium: me.isPremium || false,
+          role: (me.role as UserRole) || UserRole.USER,
+          location: me.location || 'Not specified',
+          interests: me.interests || [],
+          coins: me.coins || 10,
+          verification: me.verification || { status: 'UNVERIFIED' as const },
+          blockedUsers: me.blockedUsers || [],
+          reportedUsers: me.reportedUsers || [],
+          termsOfServiceAccepted: me.termsOfServiceAccepted || false,
+          privacyPolicyAccepted: me.privacyPolicyAccepted || false,
+          cookiePolicyAccepted: me.cookiePolicyAccepted || false,
         };
-        // New signup always needs profile setup
+        // New signup always needs profile setup; wait until verification or continue
         onLoginSuccess?.(user, true);
       } else {
         // Sign in validation
@@ -82,29 +93,31 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
           return;
         }
 
-        // Call login endpoint
-        const response = await apiClient.login(email, password);
-        console.log('[DEBUG LoginPage] Login response:', response);
+        // Call login endpoint and fetch authoritative user
+        await apiClient.login(email, password);
+        const me = await apiClient.getCurrentUser();
+        console.log('[DEBUG LoginPage] Fetched current user after login:', me);
         const user: UserProfile = {
-          id: response.user.id,
-          name: response.user.name,
-          username: response.user.username || '',
-          age: response.user.age || 25,
-          bio: response.user.bio || 'Welcome to lunesa!',
-          images: response.user.images || [],
-          isPremium: false,
-          role: UserRole.USER,
-          location: response.user.location || 'Not specified',
-          interests: response.user.interests || [],
-          coins: response.user.coins || 10,
-          verification: response.user.verification || { status: 'UNVERIFIED' as const },
-          blockedUsers: response.user.blockedUsers || [],
-          reportedUsers: response.user.reportedUsers || []
+          id: me.id,
+          name: me.name,
+          username: me.username || '',
+          age: me.age || 25,
+          bio: me.bio || 'Welcome to lunesa!',
+          images: me.images || [],
+          isPremium: me.isPremium || false,
+          role: (me.role as UserRole) || UserRole.USER,
+          location: me.location || 'Not specified',
+          interests: me.interests || [],
+          coins: me.coins || 10,
+          verification: me.verification || { status: 'UNVERIFIED' as const },
+          blockedUsers: me.blockedUsers || [],
+          reportedUsers: me.reportedUsers || [],
+          termsOfServiceAccepted: me.termsOfServiceAccepted || false,
+          privacyPolicyAccepted: me.privacyPolicyAccepted || false,
+          cookiePolicyAccepted: me.cookiePolicyAccepted || false,
         };
-        // Check if profile is complete for returning user
-        const needsProfileSetup = !isProfileComplete(response.user);
-        console.log('[DEBUG LoginPage] Email login - needsProfileSetup:', needsProfileSetup);
-        onLoginSuccess?.(user, needsProfileSetup);
+        // For sign-in, report as not a signup; App will decide if profile setup is needed
+        onLoginSuccess?.(user, false);
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -140,27 +153,30 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
       );
       console.log('[DEBUG LoginPage] Google auth response:', response);
 
+      // Fetch authoritative user after Google auth
+      const me = await apiClient.getCurrentUser();
       const user: UserProfile = {
-        id: response.user.id,
-        name: response.user.name,
-        username: response.user.username || '',
-        age: response.user.age || 25,
-        bio: response.user.bio || 'Welcome to lunesa!',
-        images: response.user.images || [],
-        isPremium: false,
-        role: UserRole.USER,
-        location: response.user.location || 'Not specified',
-        interests: response.user.interests || [],
-        coins: response.user.coins || 10,
-        verification: response.user.verification || { status: 'UNVERIFIED' as const },
-        blockedUsers: response.user.blockedUsers || [],
-        reportedUsers: response.user.reportedUsers || []
+        id: me.id,
+        name: me.name,
+        username: me.username || '',
+        age: me.age || 25,
+        bio: me.bio || 'Welcome to lunesa!',
+        images: me.images || [],
+        isPremium: me.isPremium || false,
+        role: (me.role as UserRole) || UserRole.USER,
+        location: me.location || 'Not specified',
+        interests: me.interests || [],
+        coins: me.coins || 10,
+        verification: me.verification || { status: 'UNVERIFIED' as const },
+        blockedUsers: me.blockedUsers || [],
+        reportedUsers: me.reportedUsers || [],
+        termsOfServiceAccepted: me.termsOfServiceAccepted || false,
+        privacyPolicyAccepted: me.privacyPolicyAccepted || false,
+        cookiePolicyAccepted: me.cookiePolicyAccepted || false,
       };
 
-      // Check if profile is complete - for returning Google users, skip ProfileSetup if complete
-      const needsProfileSetup = !isProfileComplete(response.user);
-      console.log('[DEBUG LoginPage] Google login - needsProfileSetup:', needsProfileSetup);
-      onLoginSuccess?.(user, needsProfileSetup);
+      // For Google sign-in, treat as signin (not explicit signup); App will decide if profile setup is needed
+      onLoginSuccess?.(user, false);
     } catch (err: any) {
       setError(err.message || 'Google authentication failed');
       setLoading(false);
@@ -182,7 +198,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
       <div className="flex gap-2 mb-8 bg-gray-100 p-1 rounded-lg">
         <button
           onClick={() => setMode('signin')}
-          className={`flex-1 py-2 px-4 rounded-md font-semibold transition-all text-sm ${
+          className={`flex-1 py-2 px-4 rounded-xl font-semibold transition-all text-sm ${
             mode === 'signin'
               ? 'bg-gradient-to-r from-pink-500 to-red-500 text-white'
               : 'text-gray-600 hover:text-gray-900'
@@ -192,7 +208,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
         </button>
         <button
           onClick={() => setMode('signup')}
-          className={`flex-1 py-2 px-4 rounded-md font-semibold transition-all text-sm ${
+          className={`flex-1 py-2 px-4 rounded-xl font-semibold transition-all text-sm ${
             mode === 'signup'
               ? 'bg-gradient-to-r from-pink-500 to-red-500 text-white'
               : 'text-gray-600 hover:text-gray-900'
@@ -272,14 +288,20 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
 
         {mode === 'signin' && (
           <div className="flex justify-end">
-            <a href="#" className="text-sm text-pink-600 hover:underline">Forgot password?</a>
+            <button
+              type="button"
+              onClick={() => setShowForgotPasswordModal(true)}
+              className="text-sm text-pink-600 hover:underline transition-colors"
+            >
+              Forgot password?
+            </button>
           </div>
         )}
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3 rounded-lg bg-gradient-to-r from-pink-500 to-red-500 text-white font-bold hover:shadow-lg transition-all disabled:opacity-50 text-sm"
+          className="w-full py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-red-500 text-white font-bold hover:shadow-lg transition-all disabled:opacity-50 text-sm"
         >
           {loading ? (mode === 'signin' ? 'Signing in...' : 'Creating account...') : (mode === 'signin' ? 'Sign In' : 'Create Account')}
         </button>
@@ -288,6 +310,16 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
       <p className="text-center text-xs text-gray-500 leading-relaxed mt-6">
         By continuing, you agree to lunesa's <a href="#" className="text-pink-600 hover:underline">Terms of Use</a> and <a href="#" className="text-pink-600 hover:underline">Privacy Policy</a>
       </p>
+
+      {/* Password Reset Modal */}
+      {showForgotPasswordModal && (
+        <PasswordResetModal
+          isOpen={showForgotPasswordModal}
+          onClose={() => setShowForgotPasswordModal(false)}
+          mode="request"
+          userEmail={email}
+        />
+      )}
     </div>
   );
 
@@ -313,6 +345,19 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-pink-100 to-red-50 flex items-center justify-center p-4">
       {content}
     </div>
+  );
+
+  return (
+    <>
+      {content}
+      {showEmailVerificationModal && (
+        <EmailVerificationModal
+          email={email}
+          onClose={() => setShowEmailVerificationModal(false)}
+          onVerified={() => { /* optional hook */ }}
+        />
+      )}
+    </>
   );
 };
 

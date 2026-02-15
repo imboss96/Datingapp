@@ -1,7 +1,10 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import PhotoModerationPanel from './PhotoModerationPanel';
+import ChatModerationView from './ChatModerationView';
+import apiClient from '../services/apiClient';
 
 interface FlaggedItem {
   id: string;
@@ -9,6 +12,24 @@ interface FlaggedItem {
   message: string;
   status: 'pending' | 'warned' | 'banned' | 'dismissed';
   action?: string;
+}
+
+interface Message {
+  id: string;
+  senderId: string;
+  text: string;
+  timestamp: number;
+  isFlagged?: boolean;
+  flagReason?: string;
+  isEditedByModerator?: boolean;
+}
+
+interface ModeratorChat {
+  id: string;
+  participants: string[];
+  messages: Message[];
+  lastUpdated: number;
+  flaggedCount: number;
 }
 
 const FLAG_DATA = [
@@ -28,10 +49,85 @@ const INITIAL_FLAGS: FlaggedItem[] = [
 ];
 
 const ModeratorPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS'>('PENDING');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'PHOTOS'>('PENDING');
   const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
   const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
+  const [chats, setChats] = useState<ModeratorChat[]>([]);
+  const [selectedChat, setSelectedChat] = useState<ModeratorChat | null>(null);
+  const [viewingChatModal, setViewingChatModal] = useState<ModeratorChat | null>(null);
+  const [loadingChats, setLoadingChats] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
   const navigate = useNavigate();
+  const [currentUserId] = useState<string>('moderator-' + Math.random().toString(36).substring(7));
+
+  // Fetch chats on component mount
+  useEffect(() => {
+    fetchChats();
+    
+    // Set up auto-refresh every 10 seconds when on CHATS tab
+    const refreshInterval = setInterval(() => {
+      if (activeTab === 'CHATS') {
+        console.log('[DEBUG ModeratorPanel] Auto-refreshing chats...');
+        fetchChats();
+      }
+    }, 10000);
+
+    return () => clearInterval(refreshInterval);
+  }, [activeTab]);
+
+  const fetchChats = async () => {
+    try {
+      setLoadingChats(true);
+      setChatError(null);
+      const response = await apiClient.getChats();
+      
+      // Transform chats to include flagged count
+      const transformedChats: ModeratorChat[] = response.map((chat: any) => {
+        const flaggedCount = chat.messages?.filter((msg: Message) => msg.isFlagged).length || 0;
+        return {
+          ...chat,
+          flaggedCount,
+        };
+      });
+
+      // Sort by last updated, most recent first
+      transformedChats.sort((a, b) => b.lastUpdated - a.lastUpdated);
+      
+      setChats(transformedChats);
+      setLastRefresh(Date.now());
+      console.log('[DEBUG ModeratorPanel] Loaded', transformedChats.length, 'chats');
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to fetch chats:', error);
+      setChatError('Failed to load chats. Using demo data.');
+      // Fall back to demo chats
+      setChats([
+        {
+          id: '1',
+          participants: ['Elena', 'Mark'],
+          messages: [],
+          lastUpdated: Date.now(),
+          flaggedCount: 2
+        },
+        {
+          id: '2',
+          participants: ['Sarah', 'Alex'],
+          messages: [],
+          lastUpdated: Date.now() - 3600000,
+          flaggedCount: 0
+        },
+        {
+          id: '3',
+          participants: ['Liam', 'Julia'],
+          messages: [],
+          lastUpdated: Date.now() - 7200000,
+          flaggedCount: 1
+        }
+      ]);
+    } finally {
+      setLoadingChats(false);
+    }
+  };
 
   const handleDismiss = (id: string) => {
     const item = flaggedItems.find(f => f.id === id);
@@ -67,11 +163,62 @@ const ModeratorPanel: React.FC = () => {
         <p className="text-sm text-gray-500 mt-1">AI-assisted moderation & reporting</p>
       </div>
 
+      {/* Active Chat Display */}
+      {selectedChat && (
+        <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-b-2 border-blue-300 p-4 shadow-md">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex -space-x-4">
+                <div className="w-12 h-12 rounded-full border-3 border-white bg-blue-200 flex items-center justify-center text-sm font-bold text-blue-700">
+                  {selectedChat.participants[0]?.charAt(0).toUpperCase()}
+                </div>
+                {selectedChat.participants[1] && (
+                  <div className="w-12 h-12 rounded-full border-3 border-white bg-purple-200 flex items-center justify-center text-sm font-bold text-purple-700">
+                    {selectedChat.participants[1]?.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Moderating: {selectedChat.participants.slice(0, 2).join(' & ')}
+                  </h3>
+                  {selectedChat.flaggedCount > 0 && (
+                    <span className="bg-red-500 text-white text-xs font-black px-2 py-1 rounded-full">
+                      {selectedChat.flaggedCount} FLAGGED
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-600 mt-1">Chat ID: {selectedChat.id}</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {selectedChat.messages?.length || 0} messages • Last updated: {new Date(selectedChat.lastUpdated).toLocaleTimeString()}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewingChatModal(selectedChat)}
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <i className="fa-solid fa-magnifying-glass"></i>
+                View & Moderate
+              </button>
+              <button
+                onClick={() => setSelectedChat(null)}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors"
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-4 overflow-y-auto">
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
           <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Security Analytics</h3>
-          <div className="h-40 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-40 w-full" style={{ minWidth: 0, minHeight: 120 }}>
+            <ResponsiveContainer width="100%" height={120}>
               <BarChart data={FLAG_DATA}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10}} />
@@ -95,6 +242,12 @@ const ModeratorPanel: React.FC = () => {
             className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'CHATS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
           >
             Live Chats
+          </button>
+          <button 
+            onClick={() => setActiveTab('PHOTOS')}
+            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'PHOTOS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+          >
+            Photos
           </button>
           <button 
             onClick={() => setActiveTab('RESOLVED')}
@@ -165,35 +318,82 @@ const ModeratorPanel: React.FC = () => {
 
         {activeTab === 'CHATS' && (
           <div className="space-y-3">
-            {[
-              { id: '1', user1: 'Elena', user2: 'Mark', flags: 2 },
-              { id: '2', user1: 'Sarah', user2: 'Alex', flags: 0 },
-              { id: '3', user1: 'Liam', user2: 'Julia', flags: 1 },
-            ].map(chat => (
-              <div 
-                key={chat.id} 
-                onClick={() => navigate(`/chat/${chat.id}`)}
-                className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between active:scale-[0.98] transition-all cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex -space-x-2">
-                    <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-200"></div>
-                    <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-300"></div>
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-gray-900">{chat.user1} & {chat.user2}</h4>
-                    <p className="text-[10px] text-gray-500">ID: {chat.id}-0x42</p>
-                  </div>
-                </div>
-                {chat.flags > 0 && (
-                  <div className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-1 rounded-full">
-                    {chat.flags} FLAGGED
-                  </div>
-                )}
-                <i className="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-[10px] text-gray-500">
+                Last updated: {new Date(lastRefresh).toLocaleTimeString()}
               </div>
-            ))}
+              <button
+                onClick={() => fetchChats()}
+                disabled={loadingChats}
+                className="text-[10px] font-bold text-blue-500 hover:text-blue-600 disabled:opacity-50 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-all"
+              >
+                <i className={`fa-solid fa-rotate-right ${loadingChats ? 'animate-spin' : ''}`}></i>
+                Refresh
+              </button>
+            </div>
+            {chatError && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded-lg text-sm">
+                {chatError}
+              </div>
+            )}
+            {loadingChats ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                <p className="text-gray-500 text-sm mt-2">Loading chats...</p>
+              </div>
+            ) : chats.length === 0 ? (
+              <div className="text-center py-12">
+                <i className="fa-solid fa-comments text-4xl text-gray-200 mb-2"></i>
+                <p className="text-gray-400 text-sm">No chats available</p>
+              </div>
+            ) : (
+              chats.map(chat => {
+                const participantNames = chat.participants.slice(0, 2).join(' & ');
+                return (
+                  <div 
+                    key={chat.id} 
+                    onClick={() => { setSelectedChat(chat); setViewingChatModal(chat); }}
+                    className={`bg-white p-4 rounded-2xl border-2 flex items-center justify-between active:scale-[0.98] transition-all cursor-pointer hover:shadow-md ${
+                      selectedChat?.id === chat.id ? 'border-blue-500 bg-blue-50' : 'border-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="flex -space-x-2">
+                        <div className="w-8 h-8 rounded-full border-2 border-white bg-blue-200 flex items-center justify-center text-[10px] font-bold text-blue-700">
+                          {chat.participants[0]?.charAt(0).toUpperCase()}
+                        </div>
+                        {chat.participants[1] && (
+                          <div className="w-8 h-8 rounded-full border-2 border-white bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-700">
+                            {chat.participants[1]?.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-900">{participantNames}</h4>
+                        <p className="text-[10px] text-gray-500">ID: {chat.id.substring(0, 8)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {chat.flaggedCount > 0 && (
+                        <div className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-1 rounded-full">
+                          {chat.flaggedCount} FLAGGED
+                        </div>
+                      )}
+                      {selectedChat?.id === chat.id ? (
+                        <i className="fa-solid fa-check-circle text-blue-500 text-lg"></i>
+                      ) : (
+                        <i className="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
+        )}
+
+        {activeTab === 'PHOTOS' && (
+          <PhotoModerationPanel embedded={true} isAdmin={true} />
         )}
 
         {activeTab === 'RESOLVED' && (
@@ -236,6 +436,16 @@ const ModeratorPanel: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Chat Moderation Modal */}
+      {viewingChatModal && (
+        <ChatModerationView
+          chat={viewingChatModal}
+          currentUserId={currentUserId}
+          onClose={() => setViewingChatModal(null)}
+          onRefresh={() => fetchChats()}
+        />
+      )}
     </div>
   );
 };

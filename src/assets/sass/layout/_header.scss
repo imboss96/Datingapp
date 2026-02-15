@@ -18,18 +18,11 @@
             z-index: 9999;
         }
     }
-    .header__top {
-        @include breakpoint(max-md) {
-            display: none;
-        }
-    }
+    // header__top removed (top strip removed from markup)
     &__bottom {
         padding-block: 16.5px;
     }
     &.header-fixed {
-        .header__top {
-            display: none !important;
-        }
         @include breakpoint(lg) {
             position: fixed;
             width: 100%;
@@ -45,87 +38,9 @@
             .header__bottom {}
         }
     }
-    &__top {
-        @extend %bg-theme;
-        &--area {
-            @extend %flex;
-            @extend %justify-between;
-        }
-        &--left, &--right {
-            ul {
-                @extend %flex;
-                li {
-                    @extend %p-10;
-                    @extend %white-color;
-                    border-right: 1px solid rgba($white-color, $alpha: .1);
-                    a {
-                        @extend %white-color;
-                    }
-                }
-            }
-        }
-        &--left {
-            ul {
-                li {
-                    &:last-child {
-                        border-right: none;
-                    }
-                }
-            }
-        }
-        &--right {
-            ul {
-                li {
-                    &:first-child {
-                        border-left: 1px solid rgba($white-color, $alpha: .1);
-                    }
-                    a {
-                        i {
-                            @extend %mr-5;
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // Top strip styles removed — markup no longer uses header__top
     &--style2 {
         .header {
-            &__top {
-                background: $theme-color6;
-                &--left, &--right {
-                    ul {
-                        @extend %flex;
-                        li {
-                            @extend %border-none;
-                            @extend %p-rel;
-                            &:first-child {
-                                @extend %border-none;
-                            }
-                            &:last-child {
-                                &::before {
-                                    @extend %p-abs;
-                                    right: 0px;
-                                    top: 0;
-                                    width: 1px;
-                                    height: 100%;
-                                    background: rgba($white-color, $alpha: .1);
-                                    @include add-prefix(transform, rotate(15deg));
-                                }
-                            }
-                            &::after {
-                                @extend %p-abs;
-                                left: -5px;
-                                top: 0;
-                                width: 1px;
-                                height: 100%;
-                                background: rgba($white-color, $alpha: .1);
-                                @include add-prefix(transform, rotate(15deg));
-                            }
-                            a {}
-                        }
-                    }
-                }
-            }
             &__bottom {
                 .mainmenu {
                     ul {

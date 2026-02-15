@@ -3,9 +3,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { UserProfile, Message, UserRole, MediaFile } from '../types';
 import apiClient from '../services/apiClient';
+import { useAlert } from '../services/AlertContext';
 import { useWebSocket } from '../services/useWebSocket';
 import MediaRenderer from './MediaRenderer';
 import VideoCallRoom from './VideoCallRoom';
+import { createAudioRecorder, formatAudioDuration, AudioRecording } from '../services/AudioRecorder';
 
 interface ChatRoomProps {
   currentUser: UserProfile;
@@ -13,6 +15,7 @@ interface ChatRoomProps {
 }
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
+  const { showAlert, showConfirm } = useAlert();
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -31,12 +34,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [confirmCall, setConfirmCall] = useState<{ isVideo: boolean } | null>(null);
   const [inCall, setInCall] = useState(false);
   const [callIsVideo, setCallIsVideo] = useState(false);
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordedAudio, setRecordedAudio] = useState<AudioRecording | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputFieldRef = useRef<HTMLInputElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRecorderRef = useRef(createAudioRecorder());
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const isModerator = currentUser.role === UserRole.MODERATOR || currentUser.role === UserRole.ADMIN;
 
@@ -117,7 +125,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
     // File size check (100MB max)
     if (file.size > 100 * 1024 * 1024) {
-      alert('File size exceeds 100MB limit');
+      showAlert('File Too Large', 'File size exceeds 100MB limit');
       return;
     }
 
@@ -134,7 +142,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       }
     } catch (err: any) {
       console.error('[ERROR ChatRoom] Failed to upload media:', err);
-      alert('Failed to upload media. Please try again.');
+      showAlert('Upload Error', 'Failed to upload media. Please try again.');
     } finally {
       setUploadingMedia(false);
       setUploadProgress(0);
@@ -150,24 +158,104 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       fileInputRef.current.value = '';
     }
   };
+
+  const handleStartAudioRecording = async () => {
+    try {
+      setIsRecordingAudio(true);
+      setRecordingDuration(0);
+      await audioRecorderRef.current.startRecording();
+
+      // Update duration every second
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+
+      console.log('[DEBUG ChatRoom] Audio recording started');
+    } catch (err: any) {
+      console.error('[ERROR ChatRoom] Failed to start recording:', err);
+      showAlert('Recording Failed', err.message || 'Failed to start audio recording');
+      setIsRecordingAudio(false);
+    }
+  };
+
+  const handleStopAudioRecording = async () => {
+    try {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+
+      setIsRecordingAudio(false);
+      const audio = await audioRecorderRef.current.stopRecording();
+
+      if (audio && audio.blob.size > 0) {
+        setRecordedAudio(audio);
+        console.log('[DEBUG ChatRoom] Audio recorded successfully:', audio.duration, 'ms');
+      }
+    } catch (err: any) {
+      console.error('[ERROR ChatRoom] Failed to stop recording:', err);
+      showAlert('Recording Error', err.message || 'Failed to stop audio recording');
+      setIsRecordingAudio(false);
+    }
+  };
+
+  const handleSendAudioMessage = async () => {
+    if (!recordedAudio || !chatId) return;
+
+    try {
+      setUploadingMedia(true);
+      
+      // Create a File from the blob
+      const audioFile = new File(
+        [recordedAudio.blob],
+        `audio-${Date.now()}.webm`,
+        { type: recordedAudio.mimeType }
+      );
+
+      console.log('[DEBUG ChatRoom] Uploading audio message:', audioFile.name);
+      const result = await apiClient.uploadChatMedia(chatId, audioFile);
+
+      if (result.success && result.media) {
+        // Send as media message
+        await handleSend(result.media);
+        setRecordedAudio(null);
+      }
+    } catch (err: any) {
+      console.error('[ERROR ChatRoom] Failed to send audio message:', err);
+      showAlert('Send Failed', 'Failed to send audio message');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const handleDiscardAudio = () => {
+    setRecordedAudio(null);
+    setRecordingDuration(0);
+  };
   useEffect(() => {
     const loadChat = async () => {
       try {
         if (!id) {
-          console.error('[ERROR ChatRoom] No user ID provided in route');
+          console.error('[ERROR ChatRoom] No ID provided in route');
           return;
         }
-        
-        setLoading(true);
-        console.log('[DEBUG ChatRoom] Loading chat with user ID:', id);
 
-        // Get or create chat with the other user
-        const chatData = await apiClient.createOrGetChat(id);
-        console.log('[DEBUG ChatRoom] Chat created/retrieved successfully:', chatData.id, 'with', chatData.messages?.length || 0, 'messages');
-        console.log('[DEBUG ChatRoom] Chat request status:', chatData.requestStatus, 'initiator:', chatData.requestInitiator);
-        
-        if (!chatData.id) {
-          throw new Error('Chat creation returned no ID');
+        setLoading(true);
+        console.log('[DEBUG ChatRoom] Loading chat/partner for ID:', id);
+
+        // First try to treat `id` as an existing chatId
+        let chatData = null;
+        try {
+          chatData = await apiClient.getChat(id);
+          console.log('[DEBUG ChatRoom] Loaded chat by chatId:', chatData.id);
+        } catch (err: any) {
+          // If not found, treat `id` as otherUserId and create-or-get chat
+          console.log('[DEBUG ChatRoom] Not a chatId, attempting createOrGet with userId:', id);
+          chatData = await apiClient.createOrGetChat(id);
+          console.log('[DEBUG ChatRoom] Chat created/retrieved successfully via createOrGet:', chatData.id);
+        }
+
+        if (!chatData || !chatData.id) {
+          throw new Error('Chat creation/lookup returned no ID');
         }
 
         setChatId(chatData.id);
@@ -190,7 +278,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           try {
             console.log('[DEBUG ChatRoom] Fetching user profile for ID:', id);
             const allUsers = await apiClient.getAllUsers();
-            const user = allUsers.find((u: UserProfile) => u.id === id);
+            const user = (allUsers || []).find((u: UserProfile | null) => u && (u as any).id === id);
             if (user) {
               console.log('[DEBUG ChatRoom] Found user:', user.name);
               setChatUser(user);
@@ -205,14 +293,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         console.error('[ERROR ChatRoom] Failed to load chat:', err.message || err);
         console.error('[ERROR ChatRoom] Full error details:', err);
         console.error('[ERROR ChatRoom] Error response:', err.response || 'No response object');
-        alert(`Chat loading failed: ${err.message || 'Unknown error'}`);
+        showAlert('Loading Error', `Chat loading failed: ${err.message || 'Unknown error'}`);
       } finally {
         setLoading(false);
       }
     };
 
     loadChat();
-  }, [id, location.state, currentUser.id]);
+  }, [id, location.state, currentUser?.id]);
 
   // Poll for new messages every 2 seconds
   useEffect(() => {
@@ -260,30 +348,32 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     markAsRead();
   }, [messages, chatId, currentUser.id]);
 
-  const handleSend = async () => {
+  const handleSend = async (mediaOverride?: MediaFile) => {
     if (!chatId) {
       console.warn('[WARN ChatRoom] Cannot send message: chatId not set');
-      alert('Please wait for the chat to load before sending a message.');
+      showAlert('Not Ready', 'Please wait for the chat to load before sending a message.');
       return;
     }
 
-    if (!inputText.trim() && !selectedMedia) {
+    const media = mediaOverride || selectedMedia;
+    if (!inputText.trim() && !media) {
       console.warn('[WARN ChatRoom] Cannot send empty message without media');
       return;
     }
 
     // Global economy check: Standard users pay 1 coin per message
     if (!currentUser.isPremium && currentUser.coins < 1) {
-      alert("Out of coins! Top up your balance in your profile to keep chatting.");
+      showAlert('Out of Coins', 'Top up your balance in your profile to keep chatting.');
       return;
     }
 
     const messageText = inputText.trim();
-    const media = selectedMedia;
 
     try {
       setInputText('');
-      setSelectedMedia(null);
+      if (!mediaOverride) {
+        setSelectedMedia(null);
+      }
 
       // Send message to backend
       console.log('[DEBUG ChatRoom] Sending message to chat:', chatId, 'text:', messageText, 'with media:', !!media);
@@ -309,8 +399,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       setMessages(chatData.messages || []);
     } catch (err: any) {
       console.error('[ERROR ChatRoom] Failed to send message:', err);
-      alert('Failed to send message: ' + (err.message || 'Unknown error'));
-      setInputText(messageText); // Restore the original message text
+      showAlert('Error', 'Failed to send message: ' + (err.message || 'Unknown error'));
+      setInputText(inputText); // Restore the original message text
     }
   };
 
@@ -326,7 +416,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         setEditText('');
       } catch (err) {
         console.error('[ERROR] Failed to edit message:', err);
-        alert('Failed to edit message');
+        showAlert('Error', 'Failed to edit message');
       }
     } else {
       // Start editing
@@ -336,16 +426,16 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   };
 
   const handleDeleteMessage = async (messageId: string) => {
-    if (!window.confirm('Delete this message?')) return;
-    
-    try {
-      await apiClient.deleteMessage(chatId!, messageId);
-      const chatData = await apiClient.getChat(chatId!);
-      setMessages(chatData.messages || []);
-    } catch (err) {
-      console.error('[ERROR] Failed to delete message:', err);
-      alert('Failed to delete message');
-    }
+    showConfirm('Delete Message', 'Are you sure you want to delete this message?', async () => {
+      try {
+        await apiClient.deleteMessage(chatId!, messageId);
+        const chatData = await apiClient.getChat(chatId!);
+        setMessages(chatData.messages || []);
+      } catch (err) {
+        console.error('[ERROR] Failed to delete message:', err);
+        showAlert('Error', 'Failed to delete message');
+      }
+    }, true);
   };
 
   const startEditing = (msg: Message) => {
@@ -526,7 +616,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     )}
                     
                     <div className={`rounded-2xl px-5 py-3 text-sm shadow-sm relative ${
-                    isMe ? 'bg-red-500 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none border border-gray-100'
+                    isMe ? 'bg-red-500 text-white rounded-tr-none' : `bg-white text-gray-800 rounded-tl-none border ${!msg.isRead ? 'border-2 border-blue-300 bg-blue-50' : 'border border-gray-100'}`
                     } ${msg.isFlagged ? 'border-2 border-amber-400 bg-amber-50 text-amber-900' : ''} ${
                     isEditing ? 'ring-2 ring-blue-400 border-transparent w-full shadow-lg' : ''
                     }`}>
@@ -694,6 +784,52 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           </div>
         )}
 
+        {/* Recorded Audio Preview */}
+        {recordedAudio && (
+          <div className="mb-2 w-full md:max-w-4xl md:mx-auto">
+            <div className="relative inline-block w-full">
+              <div className="rounded-lg overflow-hidden border-2 border-blue-300 bg-blue-50 p-2 md:p-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-blue-200">
+                      <i className="fa-solid fa-microphone text-blue-600 text-lg flex-shrink-0"></i>
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-700 font-semibold">Audio Message</p>
+                        <p className="text-[10px] text-gray-600">{formatAudioDuration(Math.round(recordedAudio.duration / 1000))}</p>
+                      </div>
+                      <audio 
+                        src={URL.createObjectURL(recordedAudio.blob)} 
+                        controls 
+                        className="h-8 max-w-[120px]"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleDiscardAudio}
+                    className="text-gray-400 hover:text-red-600 text-lg transition-colors flex-shrink-0"
+                  >
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recording Duration Display */}
+        {isRecordingAudio && (
+          <div className="mb-2 w-full md:max-w-4xl md:mx-auto">
+            <div className="rounded-lg border-2 border-red-300 bg-red-50 p-3 flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <i className="fa-solid fa-circle text-red-500 animate-pulse text-sm"></i>
+                <span className="text-sm font-bold text-red-600">Recording</span>
+              </div>
+              <div className="flex-1"></div>
+              <span className="text-sm font-bold text-red-600 font-mono">{formatAudioDuration(recordingDuration)}</span>
+            </div>
+          </div>
+        )}
+
         <div className="w-full flex items-center gap-3 md:gap-4 bg-white md:shadow-2xl md:rounded-3xl p-3 md:p-4 border md:border-gray-100 border-none md:max-w-4xl md:mx-auto">
             <div className="hidden sm:flex flex-col items-center">
               <i className="fa-solid fa-coins text-amber-500 text-xs"></i>
@@ -703,11 +839,25 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             {/* File Upload Button */}
             <button 
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingMedia}
+              disabled={uploadingMedia || isRecordingAudio}
               className="text-gray-400 hover:text-blue-500 text-lg md:text-2xl px-1 md:px-2 transition-transform active:scale-90 disabled:opacity-50"
               title="Attach file (photo, video, PDF, etc.)"
             >
               <i className="fa-solid fa-paperclip"></i>
+            </button>
+
+            {/* Audio Recording Button */}
+            <button 
+              onClick={isRecordingAudio ? handleStopAudioRecording : handleStartAudioRecording}
+              disabled={uploadingMedia || recordedAudio !== null}
+              className={`text-lg md:text-2xl px-1 md:px-2 transition-transform active:scale-90 disabled:opacity-50 ${
+                isRecordingAudio 
+                  ? 'text-red-500 animate-pulse' 
+                  : 'text-gray-400 hover:text-red-500'
+              }`}
+              title={isRecordingAudio ? 'Stop recording' : 'Record audio message'}
+            >
+              <i className="fa-solid fa-microphone"></i>
             </button>
 
             <input 
@@ -730,7 +880,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 <input 
                     ref={inputFieldRef}
                     type="text" 
-                    placeholder="Type a message..." 
+                    placeholder={isRecordingAudio ? "Recording audio..." : "Type a message..."} 
                     className="bg-transparent w-full focus:outline-none text-sm md:text-base text-gray-800 placeholder:text-gray-400"
                     value={inputText}
                     onChange={(e) => {
@@ -741,20 +891,20 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                       }
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && !isRecordingAudio) {
                         handleSend();
                       }
                     }}
-                    disabled={uploadingMedia}
+                    disabled={uploadingMedia || isRecordingAudio}
                 />
             </div>
             <button 
-                onClick={handleSend}
+                onClick={recordedAudio ? handleSendAudioMessage : handleSend}
                 className="w-12 h-12 rounded-2xl spark-gradient text-white flex items-center justify-center shadow-lg hover:shadow-red-500/20 active:scale-95 transition-all disabled:grayscale disabled:opacity-30"
-                disabled={!chatId || (!inputText.trim() && !selectedMedia) || uploadingMedia}
-                title={!chatId ? 'Loading chat...' : 'Send message'}
+                disabled={!chatId || (!inputText.trim() && !selectedMedia && !recordedAudio) || uploadingMedia || isRecordingAudio}
+                title={!chatId ? 'Loading chat...' : recordedAudio ? 'Send audio message' : 'Send message'}
             >
-                <i className="fa-solid fa-paper-plane text-lg"></i>
+                <i className={`fa-solid ${recordedAudio ? 'fa-check' : 'fa-paper-plane'} text-lg`}></i>
             </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { VerificationStatus, VerificationInfo } from '../types';
+import { useAlert } from '../services/AlertContext';
 
 interface VerificationModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ const VerificationModal: React.FC<VerificationModalProps> = ({
   verification,
   onSubmit,
 }) => {
+  const { showAlert } = useAlert();
   const [idType, setIdType] = useState<string>(verification.idType || 'DRIVERS_LICENSE');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -28,7 +30,7 @@ const VerificationModal: React.FC<VerificationModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!photoFile) {
-      alert('Please select a photo');
+      showAlert('Missing Photo', 'Please select a photo');
       return;
     }
 

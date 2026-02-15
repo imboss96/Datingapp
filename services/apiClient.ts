@@ -1,37 +1,20 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class APIClient {
-  private token: string | null = null;
-
   constructor() {
-    this.token = localStorage.getItem('authToken');
-  }
-
-  setToken(token: string) {
-    this.token = token;
-    localStorage.setItem('authToken', token);
-  }
-
-  clearToken() {
-    this.token = null;
-    localStorage.removeItem('authToken');
+    // Token is now stored in httpOnly cookies, no frontend token management needed
   }
 
   private getHeaders() {
-    const headers: Record<string, string> = {
+    return {
       'Content-Type': 'application/json',
     };
-
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-
-    return headers;
   }
 
   private async request(endpoint: string, options: RequestInit = {}) {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
+      credentials: 'include', // Send cookies automatically
       headers: {
         ...this.getHeaders(),
         ...(options.headers || {}),
@@ -46,13 +29,36 @@ class APIClient {
     return response.json();
   }
 
+  // Generic HTTP methods for moderation and other endpoints
+  async get(endpoint: string) {
+    return this.request(endpoint, { method: 'GET' });
+  }
+
+  async post(endpoint: string, body?: any) {
+    return this.request(endpoint, {
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  async put(endpoint: string, body?: any) {
+    return this.request(endpoint, {
+      method: 'PUT',
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  async delete(endpoint: string) {
+    return this.request(endpoint, { method: 'DELETE' });
+  }
+
   // Auth
   async register(email: string, password: string, name: string, age: number, location?: string) {
     const data = await this.request('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, name, age, location }),
     });
-    this.setToken(data.token);
+    // Token is now set as httpOnly cookie by server, no need to manage it here
     return data;
   }
 
@@ -61,7 +67,7 @@ class APIClient {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    this.setToken(data.token);
+    // Token is now set as httpOnly cookie by server, no need to manage it here
     return data;
   }
 
@@ -70,18 +76,68 @@ class APIClient {
       method: 'POST',
       body: JSON.stringify({ googleToken, email, name, profilePicture }),
     });
-    this.setToken(data.token);
+    // Token is now set as httpOnly cookie by server, no need to manage it here
     return data;
   }
 
-  // Get current user based on stored token
+  // Logout - clear cookie on server
+  async logout() {
+    return this.request('/auth/logout', {
+      method: 'POST',
+    });
+  }
+
+  // Get current user based on cookie
   async getCurrentUser() {
     return this.request('/auth/me');
   }
 
+  // Request password reset
+  async requestPasswordReset(email: string) {
+    return this.request('/auth/request-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  // Reset password with token
+  async resetPassword(email: string, resetToken: string, newPassword: string) {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, resetToken, newPassword }),
+    });
+  }
+
+  // Change password for authenticated user
+  async changePassword(currentPassword: string, newPassword: string) {
+    return this.request('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
   // Users
   async getUser(userId: string) {
-    return this.request(`/users/${userId}`);
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || '/api';
+      const resp = await fetch(`${apiBase}/users/${userId}`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (resp.status === 404) return null;
+      if (!resp.ok) {
+        let errBody = null;
+        try { errBody = await resp.json(); } catch (e) { /* ignore */ }
+        throw new Error((errBody && errBody.error) || `API Error: ${resp.statusText}`);
+      }
+      return await resp.json();
+    } catch (err) {
+      throw err;
+    }
   }
 
   async getAllUsers() {
@@ -121,6 +177,18 @@ class APIClient {
     return this.request(`/users/${userId}/swipe`, {
       method: 'POST',
       body: JSON.stringify({ targetUserId, action }),
+    });
+  }
+
+  async getMatches(userId: string) {
+    // Matches API lives at /api/matches and derives the user from the auth token on the server.
+    // Keep optional userId for compatibility, but ignore it client-side.
+    return this.request('/matches');
+  }
+
+  async deleteMatch(matchId: string) {
+    return this.request(`/matches/${matchId}`, {
+      method: 'DELETE',
     });
   }
 
@@ -182,17 +250,11 @@ class APIClient {
     const formData = new FormData();
     formData.append('file', file);
 
-    const token = localStorage.getItem('authToken');
-    const headers: any = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
     try {
       const apiBase = import.meta.env.VITE_API_URL || '/api';
       const response = await fetch(`${apiBase}/chats/${chatId}/upload`, {
         method: 'POST',
-        headers,
+        credentials: 'include', // Send cookies automatically
         body: formData,
       });
 
@@ -238,20 +300,24 @@ class APIClient {
     const formData = new FormData();
     formData.append('image', file);
 
-    const response = await fetch(`${API_BASE_URL}/upload/upload-image`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-      },
-      body: formData,
-    });
+    try {
+      const response = await fetch(`${API_BASE_URL}/upload/upload-image`, {
+        method: 'POST',
+        credentials: 'include', // send httpOnly cookie
+        body: formData,
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Upload Error: ${response.statusText}`);
+      if (!response.ok) {
+        let errBody: any = null;
+        try { errBody = await response.json(); } catch (e) { /* ignore */ }
+        throw new Error((errBody && errBody.error) || `Upload Error: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[ERROR apiClient] uploadImage failed:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   // Upload multiple images
@@ -261,20 +327,54 @@ class APIClient {
       formData.append('images', file);
     });
 
-    const response = await fetch(`${API_BASE_URL}/upload/upload-images`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-      },
-      body: formData,
-    });
+    try {
+      const response = await fetch(`${API_BASE_URL}/upload/upload-images`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Upload Error: ${response.statusText}`);
+      if (!response.ok) {
+        let errBody: any = null;
+        try { errBody = await response.json(); } catch (e) { /* ignore */ }
+        throw new Error((errBody && errBody.error) || `Upload Error: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('[ERROR apiClient] uploadImages failed:', error);
+      throw error;
     }
+  }
 
-    return response.json();
+  // Push / PWA
+  async getVapidPublicKey() {
+    return this.get('/push/vapid-public-key');
+  }
+
+  // Email verification
+  async requestEmailVerification(email: string) {
+    return this.post('/email-verification/register-verify', { email });
+  }
+
+  async verifyEmailOTP(email: string, otp: string) {
+    return this.post('/email-verification/verify-email', { email, otp });
+  }
+
+  async subscribePush(subscription: any) {
+    return this.post('/push/subscribe', { subscription });
+  }
+
+  async unsubscribePush(endpoint: string) {
+    return this.post('/push/unsubscribe', { endpoint });
+  }
+
+  async sendTestPush() {
+    return this.post('/push/send-test');
+  }
+
+  async notifyUser(userId: string, title: string, body: string, data?: any) {
+    return this.post('/push/notify-user', { userId, title, body, data });
   }
 
   async processPurchase(userId: string, amount: number, price: string, method: string = 'CARD', isPremiumUpgrade: boolean = false) {
@@ -328,6 +428,7 @@ class APIClient {
       method: 'GET',
     });
   }
+
 }
 
 export default new APIClient();
