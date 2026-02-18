@@ -62,11 +62,31 @@ router.get('/', async (req, res) => {
       }).sort({ lastUpdated: -1 });
     }
     
-    const chats = await query;
-    console.log('[DEBUG] Found', chats.length, 'chats for user:', req.userId);
+    const allChats = await query;
+    console.log('[DEBUG] Found', allChats.length, 'total chats for user:', req.userId);
 
-    // Attach unread count for requesting user to each chat object
-    const transformed = chats.map(c => {
+    // Deduplication: Group by participantsKey to keep only the latest chat per unique pair
+    const chatsByParticipantsKey = {};
+    const dedupedChats = [];
+    
+    for (const chat of allChats) {
+      const key = chat.participantsKey || [...chat.participants].sort().join(':');
+      
+      if (!chatsByParticipantsKey[key]) {
+        chatsByParticipantsKey[key] = chat;
+        dedupedChats.push(chat);
+      } else {
+        // Keep the one with later lastUpdated
+        if (chat.lastUpdated > chatsByParticipantsKey[key].lastUpdated) {
+          const idx = dedupedChats.indexOf(chatsByParticipantsKey[key]);
+          dedupedChats[idx] = chat;
+          chatsByParticipantsKey[key] = chat;
+        }
+      }
+    }
+    
+    console.log('[DEBUG] After deduplication:', dedupedChats.length, 'unique chats');\n    // Attach unread count for requesting user to each chat object
+    const transformed = dedupedChats.map(c => {
       const obj = c.toObject();
       if (isModerator) {
         // For moderators, attach participant count instead of unread count

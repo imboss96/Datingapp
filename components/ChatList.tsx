@@ -129,8 +129,33 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         ]);
 
         console.log('[DEBUG ChatList] Loaded', chatsData.length, 'chats and', usersData.length, 'users');
+        
+        // Frontend deduplication: Keep only the latest chat per unique pair of participants
+        const chatsByParticipantsKey: Record<string, any> = {};
+        const dedupedChats: any[] = [];
+        
+        for (const chat of chatsData) {
+          const key = [...(chat.participants || [])].sort().join(':');
+          
+          if (!chatsByParticipantsKey[key]) {
+            chatsByParticipantsKey[key] = chat;
+            dedupedChats.push(chat);
+          } else {
+            // Keep the one with later lastUpdated
+            if (chat.lastUpdated > chatsByParticipantsKey[key].lastUpdated) {
+              const idx = dedupedChats.indexOf(chatsByParticipantsKey[key]);
+              dedupedChats[idx] = chat;
+              chatsByParticipantsKey[key] = chat;
+            }
+          }
+        }
+        
+        if (dedupedChats.length < chatsData.length) {
+          console.log('[DEBUG ChatList] Deduplication removed', chatsData.length - dedupedChats.length, 'duplicate chats');
+        }
+        
         // Sort chats: unread first (descending unreadCount), then by lastUpdated
-        const sorted = chatsData.slice().sort((a: any, b: any) => {
+        const sorted = dedupedChats.slice().sort((a: any, b: any) => {
           const ua = (a.unreadCount || 0);
           const ub = (b.unreadCount || 0);
           if (ua !== ub) return ub - ua;
