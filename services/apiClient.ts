@@ -144,6 +144,15 @@ class APIClient {
     return this.request('/users');
   }
 
+  async getProfilesForSwiping(limit: number = 100, skip: number = 0, excludeSeen: boolean = true) {
+    const params = new URLSearchParams();
+    params.append('limit', String(limit));
+    params.append('skip', String(skip));
+    params.append('excludeSeen', String(excludeSeen));
+    
+    return this.request(`/users?${params.toString()}`, { method: 'GET' });
+  }
+
   async updateProfile(userId: string, updates: any) {
     console.log('[DEBUG apiClient] updateProfile called with:', { userId, updates });
     const result = await this.request(`/users/${userId}`, {

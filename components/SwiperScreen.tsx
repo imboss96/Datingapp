@@ -30,6 +30,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
   const [interestMatch, setInterestMatch] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const BATCH_SIZE = 100; // Load 100 profiles at a time instead of 50
   const cardRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
@@ -60,36 +63,90 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     return profiles.sort((a, b) => calculateMatchScore(b) - calculateMatchScore(a));
   };
 
+  // Fetch a batch of profiles with pagination
+  const fetchProfileBatch = async (batchNumber: number) => {
+    try {
+      const skip = batchNumber * BATCH_SIZE;
+      console.log(`[DEBUG SwiperScreen] Fetching batch ${batchNumber} (skip=${skip}, limit=${BATCH_SIZE})`);
+      
+      // Call API with limit and skip for pagination
+      const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, true);
+      
+      console.log(`[DEBUG SwiperScreen] Fetched ${batchUsers.length} profiles in batch ${batchNumber}`);
+      
+      // Filter out current user and sort by match score
+      const otherProfiles = batchUsers.filter((user: UserProfile) => user.id !== currentUser.id);
+      const sortedProfiles = sortByMatchScore(otherProfiles);
+      
+      return sortedProfiles;
+    } catch (err: any) {
+      console.error(`[ERROR SwiperScreen] Failed to fetch batch ${batchNumber}:`, err);
+      return [];
+    }
+  };
+      const otherProfiles = batchUsers.filter((user: UserProfile) => user.id !== currentUser.id);
+      const sortedProfiles = sortByMatchScore(otherProfiles);
+      
+      return sortedProfiles;
+    } catch (err: any) {
+      console.error(`[ERROR SwiperScreen] Failed to fetch batch ${batchNumber}:`, err);
+      return [];
+    }
+  };
+
+  // Initial load - fetch first batch
   useEffect(() => {
-    const fetchProfiles = async () => {
+    const loadInitialProfiles = async () => {
       try {
         setLoading(true);
         setError(null);
-        console.log('[DEBUG SwiperScreen] Fetching profiles from API');
+        console.log('[DEBUG SwiperScreen] Loading initial profiles batch');
         
-        // Get all users from the backend
-        const allUsers = await apiClient.getAllUsers();
-        console.log('[DEBUG SwiperScreen] Fetched', allUsers.length, 'total users');
-        
-        // Filter out current user and sort by match score
-        const otherProfiles = allUsers.filter((user: UserProfile) => user.id !== currentUser.id);
-        const sortedProfiles = sortByMatchScore(otherProfiles);
-        
-        console.log('[DEBUG SwiperScreen] Displaying', sortedProfiles.length, 'profiles (sorted by match score)');
-        setProfiles(sortedProfiles);
+        const initialProfiles = await fetchProfileBatch(0);
+        if (initialProfiles.length === 0) {
+          setError('No profiles available to swipe');
+        }
+        setProfiles(initialProfiles);
+        setCurrentBatch(0);
       } catch (err: any) {
-        console.error('[ERROR SwiperScreen] Failed to fetch profiles:', err);
+        console.error('[ERROR SwiperScreen] Failed to load initial profiles:', err);
         setError(err.message || 'Failed to load profiles');
-        setProfiles([]);
       } finally {
         setLoading(false);
       }
     };
-    fetchProfiles();
+    loadInitialProfiles();
   }, [currentUser.id]);
 
+  // Load more profiles when approaching end of current batch
+  const loadMoreProfilesIfNeeded = async (upcomingIndex: number) => {
+    // If within last 10 profiles of current batch, load next batch
+    if (upcomingIndex >= profiles.length - 10 && !isLoadingMore) {
+      setIsLoadingMore(true);
+      try {
+        const nextBatchNumber = currentBatch + 1;
+        console.log(`[DEBUG SwiperScreen] Loading next batch ${nextBatchNumber}`);
+        
+        const newBatchProfiles = await fetchProfileBatch(nextBatchNumber);
+        if (newBatchProfiles.length > 0) {
+          setProfiles(prev => [...prev, ...newBatchProfiles]);
+          setCurrentBatch(nextBatchNumber);
+          console.log(`[DEBUG SwiperScreen] Loaded ${newBatchProfiles.length} more profiles. Total now: ${profiles.length + newBatchProfiles.length}`);
+        }
+      } catch (err: any) {
+        console.error('[ERROR SwiperScreen] Failed to load more profiles:', err);
+      } finally {
+        setIsLoadingMore(false);
+      }
+    }
+  };
+
   const handleSwipe = (direction: 'left' | 'right') => {
-    setCurrentIndex(prev => prev + 1);
+    const nextIndex = currentIndex + 1;
+    setCurrentIndex(nextIndex);
+    
+    // Load more profiles if approaching end of current batch
+    loadMoreProfilesIfNeeded(nextIndex);
   };
 
   const handleLike = async () => {
@@ -282,15 +339,26 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  if (currentIndex >= profiles.length) return (
+  if (currentIndex >= profiles.length && isLoadingMore) return (
+    <div className="flex flex-col items-center justify-center h-full p-8">
+      <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+      <p className="mt-4 text-gray-500 font-medium">Loading more profiles...</p>
+    </div>
+  );
+
+  if (currentIndex >= profiles.length && !isLoadingMore) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-location-dot text-4xl text-red-500"></i>
       </div>
-      <h2 className="text-2xl font-bold text-gray-800">No more people!</h2>
-      <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">Try increasing your distance or adjusting your filters to see more profiles.</p>
+      <h2 className="text-2xl font-bold text-gray-800">You have swiped through everyone!</h2>
+      <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">Come back later for new people in your area.</p>
       <button 
-        onClick={() => setCurrentIndex(0)}
+        onClick={() => {
+          setCurrentIndex(0);
+          setCurrentBatch(0);
+          setProfiles([]);
+        }}
         className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
       >
         Refresh Discovery

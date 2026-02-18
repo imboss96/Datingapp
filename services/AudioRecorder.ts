@@ -108,7 +108,7 @@ export class AudioRecorder {
     const response = await fetch('/api/upload', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${userId}`
+        'Authorization': `Bearer ${userId}`  // userId is not a token!
       },
       body: formData
     });
