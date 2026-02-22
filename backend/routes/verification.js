@@ -495,7 +495,13 @@ router.get('/photo-status/:userId', async (req, res) => {
  */
 router.get('/pending-reviews', authMiddleware, async (req, res) => {
   try {
-    // TODO: Add admin role check middleware
+    // Check if user is admin/moderator
+    if (!['ADMIN', 'MODERATOR'].includes(req.userRole)) {
+      return res.status(403).json({
+        error: 'Admin access required',
+        code: 'FORBIDDEN'
+      });
+    }
 
     const pending = await PhotoVerification.find({ status: 'pending' })
       .sort({ submittedAt: -1 })
@@ -534,6 +540,153 @@ router.get('/pending-reviews', authMiddleware, async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /api/verification/analyze-photo/:verificationId
+ * AI-based face detection and quality analysis (admin only)
+ */
+router.post('/analyze-photo/:verificationId', authMiddleware, async (req, res) => {
+  try {
+    const { verificationId } = req.params;
+
+    // Check if user is admin/moderator
+    if (!['ADMIN', 'MODERATOR'].includes(req.userRole)) {
+      return res.status(403).json({
+        error: 'Admin access required',
+        code: 'FORBIDDEN'
+      });
+    }
+
+    const verification = await PhotoVerification.findById(verificationId);
+    if (!verification) {
+      return res.status(404).json({
+        error: 'Verification not found',
+        code: 'NOT_FOUND'
+      });
+    }
+
+    // Use Cloudinary's AI capabilities for analysis
+    const cloudinary = require('cloudinary').v2;
+    
+    try {
+      const result = await cloudinary.api.resource(verification.publicId, {
+        colors: true,
+        faces: true,
+        quality_analysis: true
+      });
+
+      // Calculate quality metrics
+      const qualityScore = calculatePhotoQuality(result);
+      const faceDetected = result.faces && result.faces.length > 0;
+      const faceCount = result.faces ? result.faces.length : 0;
+
+      // Determine if photo is suitable for verification
+      const suitableForVerification = faceDetected && faceCount === 1 && qualityScore >= 0.65;
+
+      const analysisResult = {
+        photoId: verification._id,
+        qualityScore: Math.round(qualityScore * 100) / 100,
+        faceDetected,
+        faceCount,
+        suitableForVerification,
+        analysisDetails: {
+          imageWidth: result.width,
+          imageHeight: result.height,
+          imageSize: Math.round(result.bytes / 1024) + ' KB',
+          aspectRatio: (Math.round((result.width / result.height) * 100) / 100) + ':1',
+          hasBackgroundClutter: result.colors && result.colors.length > 8
+        },
+        recommendations: getPhotoRecommendations(result, qualityScore, faceCount)
+      };
+
+      // Store analysis in database
+      verification.antiSpoofScore = qualityScore;
+      if (!verification.analysisMetadata) verification.analysisMetadata = {};
+      verification.analysisMetadata = analysisResult;
+      await verification.save();
+
+      res.json(analysisResult);
+    } catch (cloudinaryErr) {
+      console.error('[Cloudinary Analysis Error]:', cloudinaryErr.message);
+      // Return safe default analysis
+      res.json({
+        photoId: verification._id,
+        qualityScore: 0.5,
+        faceDetected: null,
+        suitableForVerification: null,
+        analysisDetails: { note: 'Analysis service temporarily unavailable' },
+        recommendations: ['Manual review required'],
+        error: 'Analysis service temporarily unavailable'
+      });
+    }
+  } catch (err) {
+    console.error('[ERROR] analyze-photo:', err);
+    res.status(500).json({
+      error: 'Failed to analyze photo',
+      code: 'ANALYSIS_ERROR'
+    });
+  }
+});
+
+/**
+ * Helper: Calculate photo quality score (0-1)
+ */
+function calculatePhotoQuality(cloudinaryResult) {
+  let score = 1.0;
+
+  // Check image dimensions (good: 800x600 or larger)
+  if (cloudinaryResult.width < 800 || cloudinaryResult.height < 600) {
+    score -= 0.15;
+  }
+
+  // Check image size (good: 100KB - 5MB)
+  const sizeInMB = cloudinaryResult.bytes / (1024 * 1024);
+  if (sizeInMB < 0.1 || sizeInMB > 5) {
+    score -= 0.1;
+  }
+
+  // Aspect ratio check (good: close to 1:1 or 4:3)
+  const aspectRatio = cloudinaryResult.width / cloudinaryResult.height;
+  if (aspectRatio < 0.7 || aspectRatio > 1.4) {
+    score -= 0.1;
+  }
+
+  return Math.max(0, Math.min(1, score));
+}
+
+/**
+ * Helper: Get recommendations based on photo analysis
+ */
+function getPhotoRecommendations(result, qualityScore, faceCount) {
+  const recommendations = [];
+
+  if (faceCount === 0) {
+    recommendations.push('⚠️ No face detected. Please ensure your face is clearly visible.');
+  } else if (faceCount > 1) {
+    recommendations.push(`⚠️ Multiple faces detected (${faceCount}). Please submit a photo with only your face.`);
+  }
+
+  if (qualityScore < 0.4) {
+    recommendations.push('⚠️ Poor image quality. Please submit a clearer photo.');
+  } else if (qualityScore < 0.65) {
+    recommendations.push('💡 Image quality could be improved. Better lighting recommended.');
+  }
+
+  if (result.width < 800) {
+    recommendations.push('⚠️ Image resolution too low. Use a higher resolution photo (800x600 minimum).');
+  }
+
+  const sizeInMB = result.bytes / (1024 * 1024);
+  if (sizeInMB > 5) {
+    recommendations.push('⚠️ Image file too large. Compress and try again (max 5MB).');
+  }
+
+  if (recommendations.length === 0 && faceCount === 1) {
+    recommendations.push('✅ Photo looks excellent! Ready for verification review.');
+  }
+
+  return recommendations;
+}
 
 /**
  * PUT /api/verification/review/:verificationId

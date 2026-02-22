@@ -21,6 +21,7 @@ import { authMiddleware } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { initCloudinary } from './utils/cloudinary.js';
 import { initWebSocket } from './utils/websocket.js';
+import lipanaRoutes from './routes/lipana.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,6 +86,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/transactions', transactionsRoutes);  // Auth middleware applied selectively in transactions.js
 app.use('/api/moderation', authMiddleware, moderationRoutes);  // Moderator-only routes
 app.use('/api/push', authMiddleware, pushRoutes);
+app.use('/api/lipana', lipanaRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

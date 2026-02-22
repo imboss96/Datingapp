@@ -227,6 +227,37 @@ router.post('/report-user', modOnlyMiddleware, async (req, res) => {
 });
 
 // Get moderation dashboard stats
+// Get flagged messages (pending moderation)
+router.get('/flagged-messages', modOnlyMiddleware, async (req, res) => {
+  try {
+    const chats = await Chat.find({
+      'messages.isFlagged': true
+    }).lean();
+
+    const flaggedMessages = [];
+    chats.forEach(chat => {
+      chat.messages.forEach((msg, idx) => {
+        if (msg.isFlagged) {
+          flaggedMessages.push({
+            id: msg._id?.toString() || `${chat.id}-${idx}`,
+            chatId: chat.id,
+            userId: msg.senderId,
+            message: msg.text,
+            flagReason: msg.flagReason || 'Flagged content',
+            timestamp: msg.timestamp,
+            status: 'pending'
+          });
+        }
+      });
+    });
+
+    res.json(flaggedMessages);
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to get flagged messages:', error);
+    res.status(500).json({ error: 'Failed to get flagged messages' });
+  }
+});
+
 router.get('/stats', modOnlyMiddleware, async (req, res) => {
   try {
     const bannedCount = await User.countDocuments({ banned: true });

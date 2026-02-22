@@ -7,9 +7,11 @@ import ChatList from './ChatList';
 interface SidebarProps {
   currentUser: UserProfile;
   isAdmin: boolean;
+  isModerator: boolean;
+  onOpenProfileSettings?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin, isModerator, onOpenProfileSettings }) => {
   const navigate = useNavigate();
 
   // Safety check for currentUser
@@ -27,7 +29,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
       <div className="p-4 spark-gradient text-white flex items-center justify-between">
         <div 
           className="flex items-center gap-3 cursor-pointer" 
-          onClick={() => navigate('/profile')}
+          onClick={() => onOpenProfileSettings?.()}
         >
           <div className="relative">
             <img 
@@ -46,12 +48,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
           </div>
         </div>
         <div className="flex gap-4 items-center">
-            {isAdmin && (
-                <NavLink to="/admin" className="text-white/80 hover:text-white transition-colors">
+            {(isAdmin || isModerator) && (
+                <NavLink to={isAdmin ? "/admin" : "/moderator"} className="text-white/80 hover:text-white transition-colors">
                     <i className="fa-solid fa-shield-halved"></i>
                 </NavLink>
             )}
-            <button onClick={() => navigate('/profile')} className="text-white/80 hover:text-white transition-colors">
+            <button onClick={() => onOpenProfileSettings?.()} className="text-white/80 hover:text-white transition-colors">
                 <i className="fa-solid fa-plus-circle"></i>
             </button>
         </div>
@@ -87,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, isAdmin }) => {
       {/* Global Economy CTA */}
       <div className="p-4">
           <div 
-            onClick={() => navigate('/profile')}
+            onClick={() => onOpenProfileSettings?.()}
             className={`${currentUser.isPremium ? 'bg-gray-900' : 'premium-gradient'} p-4 rounded-2xl text-white shadow-lg cursor-pointer hover:scale-[1.02] transition-transform group`}
           >
               <div className="flex items-center justify-between mb-2">

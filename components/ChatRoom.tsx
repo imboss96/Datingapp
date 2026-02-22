@@ -7,6 +7,7 @@ import { useAlert } from '../services/AlertContext';
 import { useWebSocket } from '../services/useWebSocket';
 import MediaRenderer from './MediaRenderer';
 import VideoCallRoom from './VideoCallRoom';
+import VerificationBadge from './VerificationBadge';
 import { createAudioRecorder, formatAudioDuration, AudioRecording } from '../services/AudioRecorder';
 
 interface ChatRoomProps {
@@ -394,11 +395,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         onDeductCoin();
       }
 
+      // Wait a moment for the database write to complete before fetching
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       // Refresh messages to include the new one
       const chatData = await apiClient.getChat(chatId);
+      console.log('[DEBUG ChatRoom] Refreshed chat data after send, messages count:', chatData.messages?.length || 0);
       setMessages(chatData.messages || []);
     } catch (err: any) {
       console.error('[ERROR ChatRoom] Failed to send message:', err);
+      console.error('[ERROR ChatRoom] Response status:', err.response?.status);
+      console.error('[ERROR ChatRoom] Response data:', err.response?.data);
       showAlert('Error', 'Failed to send message: ' + (err.message || 'Unknown error'));
       setInputText(inputText); // Restore the original message text
     }
@@ -470,7 +477,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           <>
             <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-11 h-11 rounded-full border border-gray-100 shadow-sm object-cover" alt="User" />
             <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-gray-900 text-lg leading-tight truncate">{chatUser.name}</h3>
+              <h3 className="font-bold text-gray-900 text-lg leading-tight truncate flex items-center gap-2">
+                {chatUser.name}
+                <VerificationBadge verified={chatUser.isPhotoVerified || (chatUser as any).photoVerificationStatus === 'approved'} size="sm" />
+              </h3>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Active Now</span>
@@ -899,7 +909,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 />
             </div>
             <button 
-                onClick={recordedAudio ? handleSendAudioMessage : handleSend}
+                onClick={recordedAudio ? (() => handleSendAudioMessage()) : handleSend}
                 className="w-12 h-12 rounded-2xl spark-gradient text-white flex items-center justify-center shadow-lg hover:shadow-red-500/20 active:scale-95 transition-all disabled:grayscale disabled:opacity-30"
                 disabled={!chatId || (!inputText.trim() && !selectedMedia && !recordedAudio) || uploadingMedia || isRecordingAudio}
                 title={!chatId ? 'Loading chat...' : recordedAudio ? 'Send audio message' : 'Send message'}

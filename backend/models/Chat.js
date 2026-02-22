@@ -55,6 +55,15 @@ const chatSchema = new mongoose.Schema({
     type: Map,
     of: Number,
     default: {}
+  },
+  // Moderator support fields
+  isStalled: { type: Boolean, default: false },
+  stalledSince: { type: Number }, // timestamp when marked as stalled
+  assignedModerator: { type: String }, // moderator user ID assigned to this chat
+  supportStatus: {
+    type: String,
+    enum: ['none', 'assigned', 'active', 'resolved'],
+    default: 'none'
   }
 });
 

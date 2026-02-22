@@ -131,7 +131,7 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden transform transition-all animate-in">
         {/* Header */}
         <div className="bg-gradient-to-r from-pink-500 to-red-500 p-6 text-white">

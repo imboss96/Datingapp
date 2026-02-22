@@ -205,8 +205,8 @@ const MatchesPage: React.FC<MatchesPageProps> = ({ currentUserId }) => {
                   {current.matchedUser?.location && <p className="text-sm text-gray-300"><i className="fa-solid fa-location-dot mr-2"></i>{current.matchedUser.location}</p>}
                 </div>
                 <div className="mt-4 flex gap-3">
-                  <button onClick={() => handleStartChat(current.id)} className="flex-1 py-3 bg-white/20 text-white rounded-full font-semibold"><i className="fa-solid fa-message mr-2"></i>Message</button>
-                  <button onClick={() => handleUnmatch(current.id)} className="flex-1 py-3 bg-gray-200 text-gray-800 rounded-full font-semibold"><i className="fa-solid fa-user-slash mr-2"></i>Unmatch</button>
+                  <button onClick={() => handleStartChat(current.id)} className="flex-1 py-3 sm:py-4 min-h-[44px] sm:min-h-[48px] bg-white/20 text-white rounded-full font-semibold transition-opacity hover:bg-white/30 active:opacity-75"><i className="fa-solid fa-message mr-2"></i>Message</button>
+                  <button onClick={() => handleUnmatch(current.id)} className="flex-1 py-3 sm:py-4 min-h-[44px] sm:min-h-[48px] bg-gray-200 text-gray-800 rounded-full font-semibold transition-opacity hover:bg-gray-300 active:opacity-75"><i className="fa-solid fa-user-slash mr-2"></i>Unmatch</button>
                 </div>
                 <p className="text-xs text-gray-300 text-center mt-3">Matched {new Date(current.createdAt).toLocaleDateString()}</p>
               </div>
@@ -222,10 +222,10 @@ const MatchesPage: React.FC<MatchesPageProps> = ({ currentUserId }) => {
             </div>
 
             {/* Controls */}
-            <div className="w-full flex items-center justify-center gap-4 mt-4">
-              <button onClick={() => handleSwipe('left')} className="w-12 h-12 rounded-full bg-white shadow-md flex items-center justify-center text-lg">◀</button>
-              <div className="text-sm text-gray-600">{currentIndex + 1} / {matches.length}</div>
-              <button onClick={() => handleSwipe('right')} className="w-12 h-12 rounded-full bg-white shadow-md flex items-center justify-center text-lg">▶</button>
+            <div className="w-full flex items-center justify-center gap-4 mt-4 sm:mt-6">
+              <button onClick={() => handleSwipe('left')} className="w-14 h-14 sm:w-12 sm:h-12 min-h-[48px] min-w-[48px] rounded-full bg-white shadow-md flex items-center justify-center text-lg hover:shadow-lg transition-shadow active:scale-95">◀</button>
+              <div className="text-sm text-gray-600 px-4">{currentIndex + 1} / {matches.length}</div>
+              <button onClick={() => handleSwipe('right')} className="w-14 h-14 sm:w-12 sm:h-12 min-h-[48px] min-w-[48px] rounded-full bg-white shadow-md flex items-center justify-center text-lg hover:shadow-lg transition-shadow active:scale-95">▶</button>
             </div>
           </div>
         )}

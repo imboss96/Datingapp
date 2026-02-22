@@ -3,8 +3,10 @@ import { UserProfile } from '../types';
 
 interface DiscoveryFilters {
   maxDistance: number;
+  distanceUnit: 'mi' | 'km';
   minAge: number;
   maxAge: number;
+  location: string;
   interests: string[];
   verifiedOnly: boolean;
 }
@@ -24,8 +26,10 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
 }) => {
   const [filters, setFilters] = useState<DiscoveryFilters>({
     maxDistance: 50,
+    distanceUnit: 'mi',
     minAge: 18,
     maxAge: 65,
+    location: '',
     interests: [],
     verifiedOnly: false,
   });
@@ -33,8 +37,8 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
   const [filteredProfiles, setFilteredProfiles] = useState<UserProfile[]>([]);
 
   // Calculate distance using Haversine formula
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 3959; // Earth's radius in miles
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number, unit: 'mi' | 'km'): number => {
+    const R = unit === 'km' ? 6371 : 3959; // km or miles
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLon = ((lon2 - lon1) * Math.PI) / 180;
     const a =
@@ -65,9 +69,17 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
           currentUser.coordinates.latitude,
           currentUser.coordinates.longitude,
           profile.coordinates.latitude,
-          profile.coordinates.longitude
+          profile.coordinates.longitude,
+          filters.distanceUnit
         );
         if (distance > filters.maxDistance) {
+          return false;
+        }
+      }
+
+      // Location filter (city/zip substring match, case-insensitive)
+      if (filters.location && profile.location) {
+        if (!profile.location.toLowerCase().includes(filters.location.toLowerCase())) {
           return false;
         }
       }
@@ -112,22 +124,45 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
       {showFilters && (
         <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-md space-y-4">
           {/* Distance Filter */}
-          <div>
-            <label className="flex items-center justify-between text-sm font-bold text-gray-700 mb-2">
-              <span>
-                <i className="fa-solid fa-location-crosshairs text-blue-500 mr-2"></i>
-                Distance
-              </span>
-              <span className="text-blue-500">{filters.maxDistance} mi</span>
-            </label>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              value={filters.maxDistance}
-              onChange={(e) => setFilters({ ...filters, maxDistance: parseInt(e.target.value) })}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-            />
+          <div className="flex gap-4 items-end">
+            <div className="flex-1">
+              <label className="flex items-center justify-between text-sm font-bold text-gray-700 mb-2">
+                <span>
+                  <i className="fa-solid fa-location-crosshairs text-blue-500 mr-2"></i>
+                  Distance
+                </span>
+                <span className="text-blue-500">{filters.maxDistance} {filters.distanceUnit}</span>
+              </label>
+              <input
+                type="range"
+                min="1"
+                max="500"
+                value={filters.maxDistance}
+                onChange={(e) => setFilters({ ...filters, maxDistance: parseInt(e.target.value) })}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Unit</label>
+              <select
+                value={filters.distanceUnit}
+                onChange={e => setFilters({ ...filters, distanceUnit: e.target.value as 'mi' | 'km' })}
+                className="px-2 py-1 border rounded"
+              >
+                <option value="mi">Miles</option>
+                <option value="km">Kilometers</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Location</label>
+              <input
+                type="text"
+                value={filters.location}
+                onChange={e => setFilters({ ...filters, location: e.target.value })}
+                className="px-2 py-1 border rounded w-32"
+                placeholder="City or Zip"
+              />
+            </div>
           </div>
 
           {/* Age Range Filter */}

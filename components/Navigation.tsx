@@ -4,11 +4,13 @@ import { NavLink } from 'react-router-dom';
 
 interface NavigationProps {
   isAdmin: boolean;
+  isModerator: boolean;
   coins: number;
   unreadCount?: number;
+  onOpenProfileSettings?: () => void;
 }
 
-const Navigation: React.FC<NavigationProps> = ({ isAdmin, coins, unreadCount = 0 }) => {
+const Navigation: React.FC<NavigationProps> = ({ isAdmin, isModerator, coins, unreadCount = 0, onOpenProfileSettings }) => {
   return (
     <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto glass-morphism border-t h-16 flex items-center justify-around z-20 md:hidden safe-area-bottom overflow-x-auto">
       <NavLink 
@@ -46,24 +48,24 @@ const Navigation: React.FC<NavigationProps> = ({ isAdmin, coins, unreadCount = 0
         </div>
       </NavLink>
 
-      <NavLink 
-        to="/profile" 
-        className={({ isActive }) => `flex flex-col items-center transition-colors ${isActive ? 'text-red-500' : 'text-gray-400'}`}
+      <button
+        onClick={() => onOpenProfileSettings?.()}
+        className="flex flex-col items-center transition-colors text-gray-400 hover:text-red-500"
       >
         <div className="flex flex-col items-center relative">
           <i className="fa-solid fa-user text-xl"></i>
           <span className="text-[10px] mt-1 font-medium">Profile</span>
           <span className="absolute -top-1 -right-3 bg-amber-500 text-white text-[8px] px-1 rounded-full font-black">{coins}</span>
         </div>
-      </NavLink>
+      </button>
 
-      {isAdmin && (
+      {(isAdmin || isModerator) && (
         <NavLink 
-          to="/admin" 
+          to={isAdmin ? "/admin" : "/moderator"} 
           className={({ isActive }) => `flex flex-col items-center transition-colors ${isActive ? 'text-red-500' : 'text-gray-400'}`}
         >
           <i className="fa-solid fa-shield-halved text-xl"></i>
-          <span className="text-[10px] mt-1 font-medium">Mod</span>
+          <span className="text-[10px] mt-1 font-medium">{isAdmin ? 'Admin' : 'Mod'}</span>
         </NavLink>
       )}
     </nav>

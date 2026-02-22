@@ -48,6 +48,7 @@ export interface UserProfile {
   id: string;
   name: string;
   username?: string;
+  email?: string;
   age: number;
   bio: string;
   images: string[];
@@ -113,6 +114,7 @@ export interface Chat {
   requestInitiatorFirstMessage?: boolean;
   blockedBy?: string[];
   isNewChat?: boolean;
+  unreadCount?: number;
 }
 
 export interface Report {

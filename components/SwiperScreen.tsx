@@ -84,15 +84,6 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       return [];
     }
   };
-      const otherProfiles = batchUsers.filter((user: UserProfile) => user.id !== currentUser.id);
-      const sortedProfiles = sortByMatchScore(otherProfiles);
-      
-      return sortedProfiles;
-    } catch (err: any) {
-      console.error(`[ERROR SwiperScreen] Failed to fetch batch ${batchNumber}:`, err);
-      return [];
-    }
-  };
 
   // Initial load - fetch first batch
   useEffect(() => {
@@ -171,6 +162,20 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     handleSwipe('right');
   };
 
+  const handlePass = async () => {
+    const profile = profiles[currentIndex];
+    if (profile && profile.id) {
+      try {
+        // Record the pass action
+        await apiClient.recordSwipe(currentUser.id, profile.id, 'pass');
+        console.log('[DEBUG SwiperScreen] Passed profile:', profile.id);
+      } catch (err) {
+        console.error('[ERROR SwiperScreen] Failed to record pass:', err);
+      }
+    }
+    handleSwipe('left');
+  };
+
   const handleMatchModalClose = () => {
     setShowMatchModal(false);
     setMatchedUser(null);
@@ -234,10 +239,10 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
     if (isLeftSwipe) {
       // Left swipe = pass / dislike
-      handleSwipe('left');
+      handlePass();
     } else if (isRightSwipe) {
       // Right swipe = like
-      handleSwipe('right');
+      handleLike();
     }
   };
 
@@ -495,7 +500,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
             )}
           </button>
           <button 
-            onClick={() => handleSwipe('left')}
+            onClick={handlePass}
             className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center text-red-500 text-xl md:text-2xl hover:bg-red-50 active:scale-90 transition-all"
           >
             <i className="fa-solid fa-xmark"></i>
@@ -511,7 +516,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
             )}
           </button>
           <button 
-            onClick={() => handleSwipe('right')}
+            onClick={handleLike}
             className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center text-emerald-500 text-xl md:text-2xl hover:bg-emerald-50 active:scale-90 transition-all"
             title="Like"
           >

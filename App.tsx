@@ -7,6 +7,7 @@ import SwiperScreen from './components/SwiperScreen';
 import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
 import ModeratorPanel from './components/ModeratorPanel';
+import ModeratorChatPanel from './components/ModeratorChatPanel';
 import ProfileSettings from './components/ProfileSettings';
 import ProfileSetup from './components/ProfileSetup';
 import Navigation from './components/Navigation';
@@ -20,7 +21,7 @@ import CookiePolicyPage from './components/CookiePolicyPage';
 import EmailVerificationModal from './components/EmailVerificationModal';
 import { WebSocketProvider } from './services/WebSocketProvider';
 import { AlertProvider } from './services/AlertContext';
-import { UserProfile, UserRole, Chat } from './types';
+import { UserProfile, UserRole, Chat, VerificationStatus } from './types';
 import { useWebSocket } from './services/useWebSocket';
 import apiClient from './services/apiClient';
 
@@ -35,10 +36,33 @@ const INITIAL_ME: UserProfile = {
   role: UserRole.ADMIN,
   location: 'New York, NY',
   interests: ['Design', 'Chess', 'Running'],
-  coins: 10 // Free starter coins
+  coins: 10, // Free starter coins
+  verification: { status: VerificationStatus.UNVERIFIED },
+  blockedUsers: [],
+  reportedUsers: []
 };
 
-const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean; showLoginModal: boolean; setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>>; showProfileSetup: boolean; setShowProfileSetup: React.Dispatch<React.SetStateAction<boolean>>; newSignupUser: UserProfile | null; setNewSignupUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; totalUnreadCount: number }> = ({ currentUser, setCurrentUser, isAdmin, showLoginModal, setShowLoginModal, showProfileSetup, setShowProfileSetup, newSignupUser, setNewSignupUser, totalUnreadCount }) => {
+const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean; isModerator: boolean; showLoginModal: boolean; setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>>; showProfileSetup: boolean; setShowProfileSetup: React.Dispatch<React.SetStateAction<boolean>>; newSignupUser: UserProfile | null; setNewSignupUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; totalUnreadCount: number }> = ({ currentUser, setCurrentUser, isAdmin, isModerator, showLoginModal, setShowLoginModal, showProfileSetup, setShowProfileSetup, newSignupUser, setNewSignupUser, totalUnreadCount }) => {
+  // Dark mode state
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') === 'dark' || window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const html = document.documentElement;
+    if (darkMode) {
+      html.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      html.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
+
+  const toggleDarkMode = () => setDarkMode((d) => !d);
   const location = useLocation();
   const isChatRoute = location.pathname.startsWith('/chat/');
   const [showEmailVerification, setShowEmailVerification] = useState(false);
@@ -46,6 +70,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showCookies, setShowCookies] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   
   // Check if user has accepted legal documents
   const hasAcceptedLegal = currentUser ? (
@@ -57,6 +82,14 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
   if (!currentUser || !currentUser.id) {
     return (
       <>
+        {/* Dark mode toggle button */}
+        <button
+          onClick={toggleDarkMode}
+          className="fixed top-4 right-4 z-50 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 rounded shadow hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+          aria-label="Toggle dark mode"
+        >
+          {darkMode ? '🌙 Dark' : '☀️ Light'}
+        </button>
         {!showTerms && !showPrivacy && !showCookies && !showProfileSetup && (
           <Routes>
             <Route path="/" element={<LandingPage onOpenLoginModal={() => setShowLoginModal(true)} />} />
@@ -273,7 +306,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         {showTerms && (
           <TermsPage 
             onAccept={() => {
-              const updated = { ...currentUser, termsOfServiceAccepted: true, legalAcceptanceDate: new Date().toISOString() } as UserProfile;
+              const updated = { ...currentUser, termsOfServiceAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
               setCurrentUser(updated);
               setShowTerms(false);
               (async () => {
@@ -299,7 +332,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         {showPrivacy && (
           <PrivacyPage 
             onAccept={() => {
-              const updated = { ...currentUser, privacyPolicyAccepted: true, legalAcceptanceDate: new Date().toISOString() } as UserProfile;
+              const updated = { ...currentUser, privacyPolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
               setCurrentUser(updated);
               setShowPrivacy(false);
               (async () => {
@@ -325,7 +358,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         {showCookies && (
           <CookiePolicyPage 
             onAccept={async () => {
-              const updated = { ...currentUser, cookiePolicyAccepted: true, legalAcceptanceDate: new Date().toISOString() } as UserProfile;
+              const updated = { ...currentUser, cookiePolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
                   setCurrentUser(updated);
                   setShowCookies(false);
                   if (currentUser && currentUser.id) {
@@ -361,7 +394,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
     <div className="flex h-screen w-full bg-[#f0f2f5] overflow-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden md:flex w-[375px] h-full bg-white border-r border-gray-200 flex-col shadow-lg z-20">
-        <Sidebar currentUser={currentUser} isAdmin={isAdmin} />
+        <Sidebar currentUser={currentUser} isAdmin={isAdmin} isModerator={isModerator} onOpenProfileSettings={() => setShowProfileSettings(true)} />
       </div>
 
       {/* Main Content Area */}
@@ -371,12 +404,14 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
           <Route path="/chats" element={<div className="md:hidden flex-1 overflow-y-auto"><ChatList currentUser={currentUser} /></div>} />
           <Route path="/chat/:id" element={<div className="flex-1 flex flex-col h-full"><ChatRoom currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} /></div>} />
           <Route path="/matches" element={<div className="flex-1 overflow-y-auto"><MatchesPage currentUserId={currentUser?.id} /></div>} />
-          <Route path="/profile" element={<div className="flex-1 overflow-y-auto"><ProfileSettings user={currentUser} setUser={setCurrentUser} /></div>} />
           <Route path="/terms" element={<div className="flex-1 overflow-y-auto"><TermsPage onAccept={() => setShowTerms(false)} isModal={false} /></div>} />
           <Route path="/privacy" element={<div className="flex-1 overflow-y-auto"><PrivacyPage onAccept={() => setShowPrivacy(false)} isModal={false} /></div>} />
           <Route path="/cookies" element={<div className="flex-1 overflow-y-auto"><CookiePolicyPage onAccept={() => setShowCookies(false)} isModal={false} /></div>} />
           {isAdmin && (
             <Route path="/admin" element={<div className="flex-1 overflow-y-auto"><ModeratorPanel /></div>} />
+          )}
+          {(isAdmin || isModerator) && (
+            <Route path="/moderator" element={<div className="flex-1 overflow-y-auto"><ModeratorChatPanel /></div>} />
           )}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
@@ -384,8 +419,17 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         {/* Mobile Navigation - Hidden on chat route */}
         {!isChatRoute && (
           <div className="md:hidden">
-            <Navigation isAdmin={isAdmin} coins={currentUser.coins} unreadCount={totalUnreadCount} />
+            <Navigation isAdmin={isAdmin} isModerator={isModerator} coins={currentUser.coins} unreadCount={totalUnreadCount} onOpenProfileSettings={() => setShowProfileSettings(true)} />
           </div>
+        )}
+
+        {/* Profile Settings Modal */}
+        {showProfileSettings && currentUser && (
+          <ProfileSettings 
+            user={currentUser} 
+            setUser={setCurrentUser}
+            onClose={() => setShowProfileSettings(false)}
+          />
         )}
       </div>
     </div>
@@ -408,7 +452,8 @@ const App: React.FC = () => {
     senderName?: string;
     timestamp: number;
   }>>([]);
-  const isAdmin = currentUser ? (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MODERATOR) : false;
+  const isAdmin = currentUser ? currentUser.role === UserRole.ADMIN : false;
+  const isModerator = currentUser ? (currentUser.role === UserRole.MODERATOR || currentUser.role === UserRole.ADMIN) : false;
 
   // Initialize WebSocket connection
   const handleMessageNotification = (data: any) => {
@@ -537,6 +582,7 @@ const App: React.FC = () => {
             currentUser={currentUser} 
             setCurrentUser={setCurrentUser} 
             isAdmin={isAdmin} 
+            isModerator={isModerator}
             showLoginModal={showLoginModal} 
             setShowLoginModal={setShowLoginModal}
             showProfileSetup={showProfileSetup}

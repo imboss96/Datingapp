@@ -438,6 +438,39 @@ class APIClient {
     });
   }
 
+  // Moderator support methods
+  async getStalledChats() {
+    return this.request('/chats/stalled', {
+      method: 'GET',
+    });
+  }
+
+  async assignModeratorToChat(chatId: string, moderatorId: string) {
+    return this.request(`/chats/${chatId}/assign-moderator`, {
+      method: 'POST',
+      body: JSON.stringify({ moderatorId }),
+    });
+  }
+
+  async getAssignedChats() {
+    return this.request('/chats/assigned', {
+      method: 'GET',
+    });
+  }
+
+  async sendModeratorMessage(chatId: string, text: string) {
+    return this.request(`/chats/${chatId}/moderator-message`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  async resolveSupportChat(chatId: string) {
+    return this.request(`/chats/${chatId}/resolve-support`, {
+      method: 'POST',
+    });
+  }
+
 }
 
 export default new APIClient();

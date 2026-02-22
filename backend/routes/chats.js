@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import Chat from '../models/Chat.js';
+import User from '../models/User.js';
 import { v4 as uuidv4 } from 'uuid';
 import { broadcastToChatParticipants } from '../utils/websocket.js';
 import { v2 as cloudinary } from 'cloudinary';
@@ -85,7 +86,8 @@ router.get('/', async (req, res) => {
       }
     }
     
-    console.log('[DEBUG] After deduplication:', dedupedChats.length, 'unique chats');\n    // Attach unread count for requesting user to each chat object
+    console.log('[DEBUG] After deduplication:', dedupedChats.length, 'unique chats');
+    // Attach unread count for requesting user to each chat object
     const transformed = dedupedChats.map(c => {
       const obj = c.toObject();
       if (isModerator) {
@@ -685,6 +687,238 @@ router.put('/:chatId/messages/:messageId/flag', async (req, res) => {
     res.json(message);
   } catch (err) {
     console.error('[ERROR] Failed to flag message:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get stalled chats (chats with unanswered messages for too long)
+router.get('/stalled', async (req, res) => {
+  try {
+    const isAdmin = req.userRole === 'ADMIN';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const STALLED_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    const now = Date.now();
+
+    // Find chats where:
+    // - Last message is more than 24 hours old
+    // - Last message sender is not the same as the current user (unanswered)
+    // - Not already assigned to a moderator
+    const stalledChats = await Chat.find({
+      lastUpdated: { $lt: now - STALLED_THRESHOLD },
+      assignedModerator: { $exists: false },
+      supportStatus: { $ne: 'resolved' }
+    }).sort({ lastUpdated: -1 });
+
+    // Filter to only include chats where the last message is unanswered
+    const filteredStalledChats = stalledChats.filter(chat => {
+      if (!chat.messages || chat.messages.length === 0) return false;
+      
+      const lastMessage = chat.messages[chat.messages.length - 1];
+      // Check if this chat has at least 2 participants and the last message is from one of them
+      return chat.participants.length >= 2 && chat.participants.includes(lastMessage.senderId);
+    });
+
+    // Enrich with user data
+    const enrichedChats = await Promise.all(
+      filteredStalledChats.map(async (chat) => {
+        const lastMessage = chat.messages[chat.messages.length - 1];
+        const sender = await User.findOne({ id: lastMessage.senderId }).select('name username profilePicture');
+        const receiver = await User.findOne({ 
+          id: chat.participants.find(p => p !== lastMessage.senderId) 
+        }).select('name username profilePicture');
+
+        return {
+          ...chat.toObject(),
+          lastMessage,
+          sender,
+          receiver,
+          hoursStalled: Math.floor((now - chat.lastUpdated) / (60 * 60 * 1000))
+        };
+      })
+    );
+
+    res.json({ stalledChats: enrichedChats });
+  } catch (err) {
+    console.error('[ERROR] Failed to get stalled chats:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Assign moderator to a stalled chat
+router.post('/:chatId/assign-moderator', async (req, res) => {
+  try {
+    const isAdmin = req.userRole === 'ADMIN';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { chatId } = req.params;
+    const { moderatorId } = req.body;
+
+    if (!moderatorId) {
+      return res.status(400).json({ error: 'Moderator ID required' });
+    }
+
+    // Verify moderator exists and has MODERATOR or ADMIN role
+    const moderator = await User.findOne({ 
+      id: moderatorId, 
+      role: { $in: ['MODERATOR', 'ADMIN'] } 
+    });
+    if (!moderator) {
+      return res.status(404).json({ error: 'Moderator not found' });
+    }
+
+    const chat = await Chat.findOne({ id: chatId });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Assign moderator
+    chat.assignedModerator = moderatorId;
+    chat.supportStatus = 'assigned';
+    chat.isStalled = false;
+    await chat.save();
+
+    res.json({ 
+      message: 'Moderator assigned successfully',
+      chat: chat.toObject(),
+      moderator: {
+        id: moderator.id,
+        name: moderator.name,
+        username: moderator.username
+      }
+    });
+  } catch (err) {
+    console.error('[ERROR] Failed to assign moderator:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get chats assigned to current moderator
+router.get('/assigned', async (req, res) => {
+  try {
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+    if (!isModerator) {
+      return res.status(403).json({ error: 'Moderator access required' });
+    }
+
+    const assignedChats = await Chat.find({
+      assignedModerator: req.userId,
+      supportStatus: { $in: ['assigned', 'active'] }
+    }).sort({ lastUpdated: -1 });
+
+    // Enrich with user data
+    const enrichedChats = await Promise.all(
+      assignedChats.map(async (chat) => {
+        const participants = await User.find({ 
+          id: { $in: chat.participants } 
+        }).select('name username profilePicture');
+
+        const participantMap = {};
+        participants.forEach(p => {
+          participantMap[p.id] = p;
+        });
+
+        return {
+          ...chat.toObject(),
+          participants: chat.participants.map(id => participantMap[id]).filter(Boolean)
+        };
+      })
+    );
+
+    res.json({ assignedChats: enrichedChats });
+  } catch (err) {
+    console.error('[ERROR] Failed to get assigned chats:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Send message as moderator in assigned chat
+router.post('/:chatId/moderator-message', async (req, res) => {
+  try {
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+    if (!isModerator) {
+      return res.status(403).json({ error: 'Moderator access required' });
+    }
+
+    const { chatId } = req.params;
+    const { text } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Message text required' });
+    }
+
+    const chat = await Chat.findOne({ id: chatId });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Verify moderator is assigned to this chat
+    if (chat.assignedModerator !== req.userId) {
+      return res.status(403).json({ error: 'Not assigned to this chat' });
+    }
+
+    const messageId = uuidv4();
+    const timestamp = Date.now();
+
+    const newMessage = {
+      id: messageId,
+      senderId: req.userId,
+      text: text.trim(),
+      timestamp,
+      isEditedByModerator: true,
+      isRead: false
+    };
+
+    chat.messages.push(newMessage);
+    chat.lastUpdated = timestamp;
+    chat.supportStatus = 'active';
+    await chat.save();
+
+    // Broadcast to all participants
+    broadcastToChatParticipants(chatId, {
+      type: 'new_message',
+      chatId,
+      message: newMessage
+    });
+
+    res.json({ message: newMessage });
+  } catch (err) {
+    console.error('[ERROR] Failed to send moderator message:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Resolve support chat (moderator done)
+router.post('/:chatId/resolve-support', async (req, res) => {
+  try {
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+    if (!isModerator) {
+      return res.status(403).json({ error: 'Moderator access required' });
+    }
+
+    const { chatId } = req.params;
+
+    const chat = await Chat.findOne({ id: chatId });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Verify moderator is assigned to this chat
+    if (chat.assignedModerator !== req.userId) {
+      return res.status(403).json({ error: 'Not assigned to this chat' });
+    }
+
+    chat.supportStatus = 'resolved';
+    chat.assignedModerator = undefined;
+    await chat.save();
+
+    res.json({ message: 'Support chat resolved' });
+  } catch (err) {
+    console.error('[ERROR] Failed to resolve support chat:', err);
     res.status(500).json({ error: err.message });
   }
 });

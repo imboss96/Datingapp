@@ -76,9 +76,9 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
           location: me.location || 'Not specified',
           interests: me.interests || [],
           coins: me.coins || 10,
-          verification: me.verification || { status: 'UNVERIFIED' as const },
-          blockedUsers: me.blockedUsers || [],
-          reportedUsers: me.reportedUsers || [],
+          verification: { status: 'UNVERIFIED' as const }, // Default verification status
+          blockedUsers: [], // Not implemented in backend yet
+          reportedUsers: [], // Not implemented in backend yet
           termsOfServiceAccepted: me.termsOfServiceAccepted || false,
           privacyPolicyAccepted: me.privacyPolicyAccepted || false,
           cookiePolicyAccepted: me.cookiePolicyAccepted || false,
@@ -109,9 +109,9 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
           location: me.location || 'Not specified',
           interests: me.interests || [],
           coins: me.coins || 10,
-          verification: me.verification || { status: 'UNVERIFIED' as const },
-          blockedUsers: me.blockedUsers || [],
-          reportedUsers: me.reportedUsers || [],
+          verification: { status: 'UNVERIFIED' as const }, // Default verification status
+          blockedUsers: [], // Not implemented in backend yet
+          reportedUsers: [], // Not implemented in backend yet
           termsOfServiceAccepted: me.termsOfServiceAccepted || false,
           privacyPolicyAccepted: me.privacyPolicyAccepted || false,
           cookiePolicyAccepted: me.cookiePolicyAccepted || false,
@@ -167,9 +167,9 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
         location: me.location || 'Not specified',
         interests: me.interests || [],
         coins: me.coins || 10,
-        verification: me.verification || { status: 'UNVERIFIED' as const },
-        blockedUsers: me.blockedUsers || [],
-        reportedUsers: me.reportedUsers || [],
+        verification: { status: 'UNVERIFIED' as const }, // Default verification status
+        blockedUsers: [], // Not implemented in backend yet
+        reportedUsers: [], // Not implemented in backend yet
         termsOfServiceAccepted: me.termsOfServiceAccepted || false,
         privacyPolicyAccepted: me.privacyPolicyAccepted || false,
         cookiePolicyAccepted: me.cookiePolicyAccepted || false,
