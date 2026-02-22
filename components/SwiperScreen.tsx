@@ -5,6 +5,7 @@ import { UserProfile, UserRole } from '../types';
 import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
 import MatchModal from './MatchModal';
+import UserProfileModal from './UserProfileModal';
 
 interface SwiperScreenProps {
   currentUser: UserProfile;
@@ -32,6 +33,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [interestMatch, setInterestMatch] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [currentBatch, setCurrentBatch] = useState(0);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const BATCH_SIZE = 100; // Load 100 profiles at a time instead of 50
   const cardRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
@@ -476,13 +478,22 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   </span>
                 ))}
               </div>
-              <button
-                onClick={() => navigate(`/chat/${profile.id}`, { state: { matchedProfile: profile } })}
-                className="w-full bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
-              >
-                <i className="fa-solid fa-message text-sm"></i>
-                Message
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowProfileModal(true)}
+                  className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-eye text-sm"></i>
+                  View Profile
+                </button>
+                <button
+                  onClick={() => navigate(`/chat/${profile.id}`, { state: { matchedProfile: profile } })}
+                  className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-message text-sm"></i>
+                  Message
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -525,6 +536,14 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         </div>
       </div>
       </div>
+
+      {/* User Profile Modal */}
+      {showProfileModal && profiles[currentIndex] && (
+        <UserProfileModal
+          user={profiles[currentIndex]}
+          onClose={() => setShowProfileModal(false)}
+        />
+      )}
     </>
   );
 };

@@ -8,6 +8,7 @@ import { useWebSocket } from '../services/useWebSocket';
 import MediaRenderer from './MediaRenderer';
 import VideoCallRoom from './VideoCallRoom';
 import VerificationBadge from './VerificationBadge';
+import UserProfileModal from './UserProfileModal';
 import { createAudioRecorder, formatAudioDuration, AudioRecording } from '../services/AudioRecorder';
 
 interface ChatRoomProps {
@@ -38,6 +39,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedAudio, setRecordedAudio] = useState<AudioRecording | null>(null);
+  const [showUserProfile, setShowUserProfile] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputFieldRef = useRef<HTMLInputElement>(null);
@@ -475,17 +477,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         </button>
         {chatUser && (
           <>
-            <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-11 h-11 rounded-full border border-gray-100 shadow-sm object-cover" alt="User" />
-            <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-gray-900 text-lg leading-tight truncate flex items-center gap-2">
-                {chatUser.name}
-                <VerificationBadge verified={chatUser.isPhotoVerified || (chatUser as any).photoVerificationStatus === 'approved'} size="sm" />
-              </h3>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Active Now</span>
+            <button
+              onClick={() => setShowUserProfile(true)}
+              className="flex items-center gap-2 md:gap-4 flex-1 min-w-0 hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
+            >
+              <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-11 h-11 rounded-full border border-gray-100 shadow-sm object-cover" alt="User" />
+              <div className="flex-1 min-w-0 text-left">
+                <h3 className="font-bold text-gray-900 text-lg leading-tight truncate flex items-center gap-2">
+                  {chatUser.name}
+                  <VerificationBadge verified={chatUser.isPhotoVerified || (chatUser as any).photoVerificationStatus === 'approved'} size="sm" />
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Active Now</span>
+                </div>
               </div>
-            </div>
+            </button>
           </>
         )}
         <div className="flex items-center gap-4">
@@ -918,6 +925,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             </button>
         </div>
       </div>
+
+      {/* User Profile Modal */}
+      {showUserProfile && chatUser && (
+        <UserProfileModal
+          user={chatUser}
+          onClose={() => setShowUserProfile(false)}
+        />
+      )}
     </div>
   );
 };
