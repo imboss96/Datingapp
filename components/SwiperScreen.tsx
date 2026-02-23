@@ -34,6 +34,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [currentBatch, setCurrentBatch] = useState(0);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [query, setQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const BATCH_SIZE = 100; // Load 100 profiles at a time instead of 50
   const cardRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
@@ -111,6 +113,18 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     loadInitialProfiles();
   }, [currentUser.id]);
 
+  // Filtered profiles by search query (username or name)
+  const filteredProfiles = profiles.filter((p) => {
+    if (!query || query.trim() === '') return true;
+    const q = query.trim().toLowerCase();
+    return (p.username && p.username.toLowerCase().includes(q)) || (p.name && p.name.toLowerCase().includes(q));
+  });
+
+  // Reset current index when query changes so we start at the top of filtered results
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [query]);
+
   // Load more profiles when approaching end of current batch
   const loadMoreProfilesIfNeeded = async (upcomingIndex: number) => {
     // If within last 10 profiles of current batch, load next batch
@@ -143,7 +157,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   };
 
   const handleLike = async () => {
-    const profile = profiles[currentIndex];
+    const profile = filteredProfiles[currentIndex];
     if (profile && profile.id) {
       try {
         // Record the like action
@@ -165,7 +179,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   };
 
   const handlePass = async () => {
-    const profile = profiles[currentIndex];
+    const profile = filteredProfiles[currentIndex];
     if (profile && profile.id) {
       try {
         // Record the pass action
@@ -197,7 +211,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       return;
     }
     
-    const profile = profiles[currentIndex];
+    const profile = filteredProfiles[currentIndex];
     if (profile && profile.id) {
       try {
         // Record the super like action
@@ -346,14 +360,39 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  if (currentIndex >= profiles.length && isLoadingMore) return (
+  // When we have profiles loaded but the current search query matches none
+  if (profiles.length > 0 && filteredProfiles.length === 0) return (
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
+      <div className="bg-gray-100 p-6 rounded-full mb-4 shadow-inner">
+        <i className="fa-solid fa-magnifying-glass text-4xl text-gray-400"></i>
+      </div>
+      <h2 className="text-2xl font-bold text-gray-800">No results for "{query}"</h2>
+      <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">Try a different username or full name.</p>
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => setQuery('')}
+          className="px-6 py-3 bg-white border rounded-lg font-bold"
+        >
+          Clear Search
+        </button>
+        <button
+          onClick={() => { setQuery(''); setProfiles([]); setCurrentBatch(0); }}
+          className="px-6 py-3 spark-gradient text-white rounded-lg font-bold"
+        >
+          Reset Discovery
+        </button>
+      </div>
+    </div>
+  );
+
+  if (currentIndex >= filteredProfiles.length && isLoadingMore) return (
     <div className="flex flex-col items-center justify-center h-full p-8">
       <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
       <p className="mt-4 text-gray-500 font-medium">Loading more profiles...</p>
     </div>
   );
 
-  if (currentIndex >= profiles.length && !isLoadingMore) return (
+  if (currentIndex >= filteredProfiles.length && !isLoadingMore) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-location-dot text-4xl text-red-500"></i>
@@ -362,6 +401,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">Come back later for new people in your area.</p>
       <button 
         onClick={() => {
+          setQuery('');
           setCurrentIndex(0);
           setCurrentBatch(0);
           setProfiles([]);
@@ -373,7 +413,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  const profile = profiles[currentIndex];
+  const profile = filteredProfiles[currentIndex];
 
   return (
     <>
@@ -403,6 +443,34 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       `}</style>
       <div className="h-full flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-white md:bg-gray-50 pt-2 md:pt-8">
         <div className="w-full flex-1 md:h-full max-w-[420px] md:max-h-[700px] flex flex-col relative group">
+        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-end pointer-events-auto">
+          {searchOpen ? (
+            <div className="w-full flex items-center gap-2">
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search username or name"
+                className="flex-1 px-3 py-2 rounded-full border border-gray-200 bg-white/90 text-sm"
+              />
+              <button
+                onClick={() => { setSearchOpen(false); }}
+                className="ml-2 px-3 py-2 bg-white rounded-full border"
+                title="Close search"
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="ml-auto w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border"
+              title="Search"
+            >
+              <i className="fa-solid fa-magnifying-glass"></i>
+            </button>
+          )}
+        </div>
         <div 
           ref={cardRef}
           className="flex-1 relative cursor-pointer select-none"
@@ -538,9 +606,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       </div>
 
       {/* User Profile Modal */}
-      {showProfileModal && profiles[currentIndex] && (
+      {showProfileModal && filteredProfiles[currentIndex] && (
         <UserProfileModal
-          user={profiles[currentIndex]}
+          user={filteredProfiles[currentIndex]}
           onClose={() => setShowProfileModal(false)}
         />
       )}
