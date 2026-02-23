@@ -333,7 +333,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   if (profiles.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-blue-50 p-6 rounded-full mb-4 shadow-inner">
-        <i className="fa-solid fa-search text-4xl text-blue-500"></i>
+        <i className="fa-solid fa-users text-4xl text-blue-500"></i>
       </div>
       <h2 className="text-2xl font-bold text-gray-800">No profiles available</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">There are no other users in your area yet. Check back later!</p>

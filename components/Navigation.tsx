@@ -21,13 +21,7 @@ const Navigation: React.FC<NavigationProps> = ({ isAdmin, isModerator, coins, un
         <span className="text-[10px] mt-1 font-medium">Swipe</span>
       </NavLink>
 
-      <NavLink 
-        to="/discover" 
-        className={({ isActive }) => `flex flex-col items-center transition-colors ${isActive ? 'text-red-500' : 'text-gray-400'}`}
-      >
-        <i className="fa-solid fa-magnifying-glass text-xl"></i>
-        <span className="text-[10px] mt-1 font-medium">Search</span>
-      </NavLink>
+      {/* Search tab removed for small screens per UI request */}
       
       <NavLink 
         to="/matches" 

@@ -35,6 +35,7 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
   });
   const [showFilters, setShowFilters] = useState(false);
   const [filteredProfiles, setFilteredProfiles] = useState<UserProfile[]>([]);
+  const [query, setQuery] = useState('');
 
   // Calculate distance using Haversine formula
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number, unit: 'mi' | 'km'): number => {
@@ -99,11 +100,18 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
         return false;
       }
 
+      // Text query filter (username or name)
+      if (query && query.trim() !== '') {
+        const q = query.trim().toLowerCase();
+        const userMatches = (profile.username && profile.username.toLowerCase().includes(q)) || (profile.name && profile.name.toLowerCase().includes(q));
+        if (!userMatches) return false;
+      }
+
       return true;
     });
 
     setFilteredProfiles(filtered);
-  }, [filters, allProfiles, currentUser, blockedUsers]);
+  }, [filters, allProfiles, currentUser, blockedUsers, query]);
 
   const availableInterests = Array.from(
     new Set(allProfiles.flatMap((p) => p.interests))
@@ -111,6 +119,16 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Text search */}
+      <div>
+        <input
+          type="text"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search by username or name"
+          className="w-full px-4 py-2 border border-gray-200 rounded-lg text-sm"
+        />
+      </div>
       {/* Filter Toggle */}
       <button
         onClick={() => setShowFilters(!showFilters)}
