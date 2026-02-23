@@ -417,6 +417,24 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   return (
     <>
+      {/* Desktop: top search bar */}
+      <div className="hidden md:flex w-full justify-center p-4 bg-transparent z-40">
+        <div className="w-full max-w-4xl flex items-center gap-2">
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search username or full name"
+            className="flex-1 px-4 py-2 border border-gray-200 rounded-full text-sm"
+          />
+          <button
+            onClick={() => setQuery('')}
+            className="ml-2 px-3 py-2 bg-white border rounded-full text-sm"
+            title="Clear search"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
       <style>{`
         @keyframes heartFloat {
           0% {
