@@ -26,13 +26,56 @@ export default defineConfig(({ mode }) => {
           }
         }
       },
+      build: {
+        // Optimize build output
+        target: 'esnext',
+        minify: 'terser',
+        terserOptions: {
+          compress: {
+            drop_console: true,
+            drop_debugger: true
+          }
+        },
+        // Code splitting for better caching
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'vendor': [
+                'react',
+                'react-dom',
+                'react-router-dom'
+              ],
+              'ui-libs': [
+                'bootstrap',
+                'jquery',
+                'swiper',
+                'isotope-layout'
+              ]
+            }
+          }
+        },
+        // Increase chunk size limits for vendors
+        chunkSizeWarningLimit: 1000
+      },
       plugins: [react()],
-      // No Gemini env vars defined (Gemini removed)
       define: {},
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      // Optimize dependencies for faster cold starts
+      optimizeDeps: {
+        include: [
+          'react',
+          'react-dom',
+          'react-router-dom',
+          'bootstrap',
+          'jquery',
+          'swiper',
+          'isotope-layout'
+        ]
       }
     };
 });
+

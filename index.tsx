@@ -5,6 +5,10 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import './src/globals.css';
 
+// Initialize all vendor libraries for Vite
+import { initializeVendors } from './src/lib/vendors';
+initializeVendors();
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
