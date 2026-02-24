@@ -81,22 +81,96 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
     <div>
       {/* Header */}
       <header className="header header--style2" id="navbar" style={{ position: 'sticky', top: 0, zIndex: 1000, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', backgroundColor: '#ffffff', padding: '8px 0' }}>
-        <div className="header__bottom" style={{ padding: '0' }}>
+        <div className="header__bottom" style={{ padding: 0 }}>
           <div className="container">
-            <nav className="navbar navbar-expand-lg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0', minHeight: 'auto', gap: '16px' }}>
-              <a className="navbar-brand" href="#" style={{ display: 'flex', alignItems: 'center', margin: 0, padding: 0, minHeight: '40px' }}><img src="/src/assets/images/logo/logo.png" alt="logo" style={{ height: '40px', width: 'auto', display: 'block' }} /></a>
-              <div className="navbar-collapse justify-content-end" id="navbarNavAltMarkup" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: 0, margin: 0 }}>
-                {/* Navigation links removed on landing page per request */}
-                <div className="button-group" style={{ display: 'flex', gap: 'clamp(8px, 2vw, 12px)', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button onClick={() => { if (onOpenLoginModal) { onOpenLoginModal(); } else { navigate('/login'); } }} className="btn btn-outline-primary" style={{ padding: 'clamp(6px, 1.5vw, 8px) clamp(16px, 4vw, 24px)', fontSize: 'clamp(12px, 2.5vw, 14px)', fontWeight: '600', border: '1.5px solid #2ba6cb', color: '#2ba6cb', backgroundColor: 'transparent', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 1vw, 8px)', whiteSpace: 'nowrap', minHeight: '40px' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f0f8fb'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                    <i className="fa-solid fa-user"></i>
-                    <span>Log In</span>
-                  </button>
-                  <button onClick={() => { if (onOpenLoginModal) { onOpenLoginModal(); } else { navigate('/login'); } }} className="btn btn-primary" style={{ padding: 'clamp(8px, 1.5vw, 10px) clamp(18px, 5vw, 28px)', fontSize: 'clamp(12px, 2.5vw, 14px)', fontWeight: '600', border: 'none', color: '#ffffff', backgroundColor: '#2ba6cb', borderRadius: '4px', cursor: 'pointer', transition: 'all 0.3s ease', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 1vw, 8px)', whiteSpace: 'nowrap', minHeight: '40px' }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1f8ba8'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(43, 166, 203, 0.3)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#2ba6cb'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
-                    <i className="fa-solid fa-user-plus"></i>
-                    <span>Sign Up</span>
-                  </button>
-                </div>
+            <nav className="navbar navbar-expand-lg" style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: 0,
+              minHeight: 'auto',
+              gap: '16px',
+              flexWrap: 'wrap',
+              position: 'relative',
+              width: '100%',
+            }}>
+              <a className="navbar-brand" href="#" style={{
+                display: 'flex',
+                alignItems: 'center',
+                margin: 0,
+                padding: 0,
+                minHeight: '40px',
+                height: '40px',
+              }}>
+                <span style={{
+                  fontFamily: 'Playfair Display, serif',
+                  fontWeight: 700,
+                  fontStyle: 'italic',
+                  fontSize: 'clamp(2.2rem, 7vw, 2.8rem)',
+                  background: 'linear-gradient(90deg, #f7c68b 10%, #f7c68b 40%, #eeb6b6 80%, #eeb6b6 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                  display: 'inline-block',
+                  letterSpacing: '0.01em',
+                  lineHeight: 1.1,
+                  height: 'auto',
+                  verticalAlign: 'middle',
+                  userSelect: 'none',
+                  padding: '0.15em 0.2em',
+                  margin: 0,
+                  textShadow: '0 2px 8px rgba(0,0,0,0.10)',
+                  borderRadius: '0.25em',
+                  boxShadow: '0 2px 12px 0 rgba(247,198,139,0.10)'
+                }}>LunesaLove</span>
+              </a>
+              <div className="navbar-buttons-desktop" style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'clamp(8px, 2vw, 12px)',
+                marginLeft: 'auto',
+                height: '100%',
+                ...(typeof window !== 'undefined' && window.innerWidth <= 768 ? { display: 'none' } : {}),
+              }}>
+                <button onClick={() => { if (onOpenLoginModal) { onOpenLoginModal(); } else { navigate('/login'); } }} className="btn btn-outline-primary" style={{
+                  padding: 'clamp(6px, 1.5vw, 8px) clamp(16px, 4vw, 24px)',
+                  fontSize: 'clamp(12px, 2.5vw, 14px)',
+                  fontWeight: 600,
+                  border: '1.5px solid #2ba6cb',
+                  color: '#2ba6cb',
+                  backgroundColor: 'transparent',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'clamp(4px, 1vw, 8px)',
+                  whiteSpace: 'nowrap',
+                  minHeight: '40px',
+                }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#f0f8fb'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                  <i className="fa-solid fa-user"></i>
+                  <span>Log In</span>
+                </button>
+                <button onClick={() => { if (onOpenLoginModal) { onOpenLoginModal(); } else { navigate('/login'); } }} className="btn btn-primary" style={{
+                  padding: 'clamp(8px, 1.5vw, 10px) clamp(18px, 5vw, 28px)',
+                  fontSize: 'clamp(12px, 2.5vw, 14px)',
+                  fontWeight: 600,
+                  border: 'none',
+                  color: '#ffffff',
+                  backgroundColor: '#2ba6cb',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'clamp(4px, 1vw, 8px)',
+                  whiteSpace: 'nowrap',
+                  minHeight: '40px',
+                }} onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1f8ba8'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(43, 166, 203, 0.3)'; }} onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#2ba6cb'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
+                  <i className="fa-solid fa-user-plus"></i>
+                  <span>Sign Up</span>
+                </button>
               </div>
             </nav>
           </div>
@@ -104,7 +178,7 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
       </header>
 
       {/* Banner Section */}
-      <div className="banner banner--style3 padding-top bg_img" style={{ backgroundImage: 'url(/images/banner/shape/home3/bg-3.jpg)' }}>
+      <div className="banner banner--style3 padding-top bg_img" style={{ backgroundImage: 'url(/images/banner/shape/home3/bg-3.jpg)', position: 'relative' }}>
         <div className="container">
           <div className="row g-0 justify-content-center justify-content-xl-between">
             <div className="col-lg-5 col-12 wow fadeInLeft" data-wow-duration="1.5s">
@@ -116,21 +190,35 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
                 </div>
               </div>
             </div>
-            <div className="col-lg-6 col-12 wow fadeInUp" data-wow-duration="1.5s">
+            <div className="col-lg-6 col-12 wow fadeInUp" data-wow-duration="1.5s" style={{ position: 'relative' }}>
               <div className="banner__thumb text-xl-end">
                 <img src="/images/banner/shape/home3/03.png" alt="banner" style={{ maxWidth: '100%', height: 'auto' }} />
-                <div className="banner__thumb--shape">
-                  <div className="shapeimg">
-                    <img src="/images/about/icon/home3/01.png" alt="dating thumb" />
-                  </div>
-                </div>
-                <div className="banner__thumb--title">
-                  <h4>Are You Waiting For Dating?</h4>
-                </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Floating Heart Icon */}
+      <div style={{ 
+        position: 'absolute',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        top: '520px',
+        zIndex: 20,
+        animation: 'float 3s ease-in-out infinite',
+      }}>
+        <img src="/images/about/icon/home3/01.png" alt="dating heart" style={{
+          width: '120px',
+          height: 'auto',
+          filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
+        }} />
+        <style>{`
+          @keyframes float {
+            0%, 100% { transform: translateX(-50%) translateY(0px); }
+            50% { transform: translateX(-50%) translateY(-20px); }
+          }
+        `}</style>
       </div>
 
       {/* Members / Only True People */}
@@ -328,21 +416,21 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
               </div>
               <div className="col-lg-3 col-sm-6 col-12">
                 <div className="footer__content--desc">
-                  <h4>Featured Members</h4>
+                  <h4 style={{ color: '#1a1a1a' }}>Featured Members</h4>
                   <ul>
-                    <li><a href="#0">Top Members</a></li>
-                    <li><a href="#0">New Members</a></li>
-                    <li><a href="#0">Online Now</a></li>
+                    <li><a href="#0" style={{ color: '#666' }}>Top Members</a></li>
+                    <li><a href="#0" style={{ color: '#666' }}>New Members</a></li>
+                    <li><a href="#0" style={{ color: '#666' }}>Online Now</a></li>
                   </ul>
                 </div>
               </div>
               <div className="col-lg-3 col-sm-6 col-12">
                 <div className="footer__content--desc">
-                  <h4>Support</h4>
+                  <h4 style={{ color: '#1a1a1a' }}>Support</h4>
                   <ul>
-                    <li><a href="#0">Contact Us</a></li>
-                    <li><a href="#0">FAQ</a></li>
-                    <li><a href="#0">Privacy Policy</a></li>
+                    <li><a href="#0" style={{ color: '#666' }}>Contact Us</a></li>
+                    <li><a href="#0" style={{ color: '#666' }}>FAQ</a></li>
+                    <li><a href="#0" style={{ color: '#666' }}>Privacy Policy</a></li>
                   </ul>
                 </div>
               </div>
@@ -364,7 +452,7 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
             <div className="row g-4 g-lg-0 justify-content-lg-between align-items-center">
               <div className="col-lg-6 col-12">
                 <div className="footer__content text-center">
-                  <p className="mb-0">All Rights Reserved © <a href="#0">lunesa</a> || Design By: CodexCoder</p>
+                  <p className="mb-0" style={{ color: '#666' }}>All Rights Reserved © <a href="#0" style={{ color: '#2ba6cb', textDecoration: 'none' }}>lunesa</a></p>
                 </div>
               </div>
               <div className="col-lg-6 col-12">
