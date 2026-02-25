@@ -1,12 +1,13 @@
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserProfile, UserRole } from '../types';
+import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
 import { calculateDistance, DISTANCE_RANGES, getDistanceRangeLabel } from '../services/distanceUtils';
 import MatchModal from './MatchModal';
 import UserProfileModal from './UserProfileModal';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface SwiperScreenProps {
   currentUser: UserProfile;
@@ -19,215 +20,337 @@ interface Heart {
   y: number;
 }
 
-const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }) => {
-  const navigate = useNavigate();
-  const { showAlert } = useAlert();
-  const [profiles, setProfiles] = useState<UserProfile[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [hearts, setHearts] = useState<Heart[]>([]);
-  const [tapCount, setTapCount] = useState(0);
-  const [lastTapTime, setLastTapTime] = useState(0);
-  const [showMatchModal, setShowMatchModal] = useState(false);
-  const [matchedUser, setMatchedUser] = useState<UserProfile | null>(null);
-  const [interestMatch, setInterestMatch] = useState(0);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [currentBatch, setCurrentBatch] = useState(0);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [query, setQuery] = useState('');
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [maxDistance, setMaxDistance] = useState<number>(DISTANCE_RANGES.THOUSAND_KM); // Default: 1000 km
-  const [showDistanceFilter, setShowDistanceFilter] = useState(false);
-  const BATCH_SIZE = 100; // Load 100 profiles at a time instead of 50
-  const cardRef = useRef<HTMLDivElement>(null);
-  const touchStartX = useRef(0);
-  const touchEndX = useRef(0);
-  const doubleTapTimeout = useRef<NodeJS.Timeout | null>(null);
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-  // Calculate distance between current user and another user
-  const getDistance = (profile: UserProfile): number | null => {
+const BATCH_SIZE        = 100;
+const PRELOAD_THRESHOLD = 10; // load next batch when this many profiles remain
+
+// ─── Helpers (outside component — never recreated) ────────────────────────────
+
+const calcMatchScore = (profile: UserProfile, currentUser: UserProfile): number => {
+  let score = 0;
+
+  if (profile.location === currentUser.location) score += 20;
+
+  if (currentUser.coordinates && profile.coordinates) {
+    const d = calculateDistance(currentUser.coordinates, profile.coordinates);
+    if      (d <=   1) score += 30;
+    else if (d <=   5) score += 25;
+    else if (d <=  10) score += 20;
+    else if (d <=  50) score += 10;
+  }
+
+  const common = profile.interests.filter(i => currentUser.interests.includes(i)).length;
+  if (common > 0) score += Math.min(common * 10, 50);
+
+  return score;
+};
+
+const getTimeAgoLabel = (timestamp: number): string => {
+  const diff  = Date.now() - timestamp;
+  const mins  = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  if (mins  <  1) return 'Just now';
+  if (mins  < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+};
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const ProfileImageSkeleton: React.FC = () => (
+  <div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 rounded-[2rem] animate-pulse flex items-center justify-center">
+    <i className="fa-solid fa-user text-6xl text-gray-400" />
+  </div>
+);
+
+const ActionButton: React.FC<{
+  onClick: () => void;
+  icon: string;
+  color: string;
+  hoverBg: string;
+  size?: 'sm' | 'lg';
+  coinCost?: boolean;
+  coinColor?: string;
+  title?: string;
+}> = ({ onClick, icon, color, hoverBg, size = 'sm', coinCost, coinColor = 'amber', title }) => (
+  <button
+    onClick={onClick}
+    title={title}
+    className={`relative rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center ${color} ${hoverBg} active:scale-90 transition-all ${
+      size === 'lg'
+        ? 'w-14 h-14 md:w-16 md:h-16 text-xl md:text-2xl'
+        : 'w-12 h-12 md:w-14 md:h-14 text-lg md:text-xl'
+    }`}
+  >
+    <i className={`fa-solid ${icon}`} />
+    {coinCost && (
+      <span className={`absolute -top-1 -right-1 bg-${coinColor}-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white`}>
+        1
+      </span>
+    )}
+  </button>
+);
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }) => {
+  const navigate    = useNavigate();
+  const { showAlert } = useAlert();
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [profiles,         setProfiles]         = useState<UserProfile[]>([]);
+  const [currentIndex,     setCurrentIndex]     = useState(0);
+  const [loading,          setLoading]          = useState(true);
+  const [error,            setError]            = useState<string | null>(null);
+  const [hearts,           setHearts]           = useState<Heart[]>([]);
+  const [tapCount,         setTapCount]         = useState(0);
+  const [lastTapTime,      setLastTapTime]      = useState(0);
+  const [showMatchModal,   setShowMatchModal]   = useState(false);
+  const [matchedUser,      setMatchedUser]      = useState<UserProfile | null>(null);
+  const [interestMatch,    setInterestMatch]    = useState(0);
+  const [isLoadingMore,    setIsLoadingMore]    = useState(false);
+  const [currentBatch,     setCurrentBatch]     = useState(0);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [query,            setQuery]            = useState('');
+  const [searchOpen,       setSearchOpen]       = useState(false);
+  const [maxDistance,      setMaxDistance]      = useState<number>(DISTANCE_RANGES.THOUSAND_KM);
+  const [showDistanceFilter, setShowDistanceFilter] = useState(false);
+  const [imgLoaded,        setImgLoaded]        = useState(false);
+
+  // ── Refs ───────────────────────────────────────────────────────────────────
+  const cardRef            = useRef<HTMLDivElement>(null);
+  const touchStartX        = useRef(0);
+  const touchEndX          = useRef(0);
+  const doubleTapTimeout   = useRef<NodeJS.Timeout | null>(null);
+  const profilesLengthRef  = useRef(0); // always up-to-date profiles.length for async callbacks
+  const isLoadingMoreRef   = useRef(false);
+
+  // Keep refs in sync
+  useEffect(() => { profilesLengthRef.current = profiles.length; }, [profiles]);
+  useEffect(() => { isLoadingMoreRef.current  = isLoadingMore;   }, [isLoadingMore]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
+  }, []);
+
+  // ── Distance / match helpers ───────────────────────────────────────────────
+
+  const getDistance = useCallback((profile: UserProfile): number | null => {
     if (!currentUser.coordinates || !profile.coordinates) return null;
     return calculateDistance(currentUser.coordinates, profile.coordinates);
-  };
+  }, [currentUser.coordinates]);
 
-  // Calculate match score based on location, distance, and interests
-  const calculateMatchScore = (profile: UserProfile): number => {
-    let score = 0;
-    
-    // Location match (20 points)
-    if (profile.location === currentUser.location) {
-      score += 20;
+  const matchScoreCache = useRef<Record<string, number>>({});
+
+  const getMatchScore = useCallback((profile: UserProfile): number => {
+    if (matchScoreCache.current[profile.id] === undefined) {
+      matchScoreCache.current[profile.id] = calcMatchScore(profile, currentUser);
     }
+    return matchScoreCache.current[profile.id];
+  }, [currentUser]);
 
-    // Distance proximity bonus (30 points max)
-    const distance = getDistance(profile);
-    if (distance !== null) {
-      if (distance <= 1) {
-        score += 30; // Same area
-      } else if (distance <= 5) {
-        score += 25; // Within 5 km
-      } else if (distance <= 10) {
-        score += 20; // Within 10 km
-      } else if (distance <= 50) {
-        score += 10; // Within 50 km
-      }
-    }
-    
-    // Interest overlap (50 points max)
-    const commonInterests = profile.interests.filter(interest => 
-      currentUser.interests.includes(interest)
-    ).length;
-    if (commonInterests > 0) {
-      score += Math.min(commonInterests * 10, 50);
-    }
-    
-    return score;
-  };
+  // ── Profile fetching ───────────────────────────────────────────────────────
 
-  // Sort profiles by match score (highest first)
-  const sortByMatchScore = (profiles: UserProfile[]): UserProfile[] => {
-    return profiles.sort((a, b) => calculateMatchScore(b) - calculateMatchScore(a));
-  };
-
-  // Filter profiles by distance
-  const filterByDistance = (profiles: UserProfile[]): UserProfile[] => {
-    if (!currentUser.coordinates) return profiles;
-    
-    return profiles.filter((profile) => {
-      const distance = getDistance(profile);
-      if (distance === null) return false;
-      return distance <= maxDistance;
-    });
-  };
-
-  // Fetch a batch of profiles with pagination and distance filtering
-  const fetchProfileBatch = async (batchNumber: number) => {
+  const fetchProfileBatch = useCallback(async (batchNumber: number, distance: number): Promise<UserProfile[]> => {
     try {
-      const skip = batchNumber * BATCH_SIZE;
-      console.log(`[DEBUG SwiperScreen] Fetching batch ${batchNumber} (skip=${skip}, limit=${BATCH_SIZE}, maxDistance=${maxDistance}km)`);
-      
-      // Call API with limit and skip for pagination
+      const skip      = batchNumber * BATCH_SIZE;
       const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, true);
-      
-      console.log(`[DEBUG SwiperScreen] Fetched ${batchUsers.length} profiles in batch ${batchNumber}`);
-      
-      // Filter out current user, apply distance filter, and sort by match score
-      const otherProfiles = batchUsers.filter((user: UserProfile) => user.id !== currentUser.id);
-      const distanceFiltered = filterByDistance(otherProfiles);
-      const sortedProfiles = sortByMatchScore(distanceFiltered);
-      
-      console.log(`[DEBUG SwiperScreen] After distance filter (${maxDistance}km): ${sortedProfiles.length} profiles`);
-      
-      return sortedProfiles;
-    } catch (err: any) {
-      console.error(`[ERROR SwiperScreen] Failed to fetch batch ${batchNumber}:`, err);
+      const others    = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
+
+      // Include profiles without coordinates rather than hiding them
+      const distanceFiltered = currentUser.coordinates
+        ? others.filter((p: UserProfile) => {
+            if (!p.coordinates) return true; // include if no location data
+            const d = calculateDistance(currentUser.coordinates!, p.coordinates);
+            return d <= distance;
+          })
+        : others;
+
+      return distanceFiltered.sort(
+        (a: UserProfile, b: UserProfile) => getMatchScore(b) - getMatchScore(a)
+      );
+    } catch (err) {
+      console.error('[SwiperScreen] Failed to fetch batch:', err);
       return [];
     }
-  };
+  }, [currentUser, getMatchScore]);
 
-  // Initial load - fetch first batch
+  // ── Initial load ───────────────────────────────────────────────────────────
+
   useEffect(() => {
-    const loadInitialProfiles = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log('[DEBUG SwiperScreen] Loading initial profiles batch');
-        
-        const initialProfiles = await fetchProfileBatch(0);
-        if (initialProfiles.length === 0) {
-          setError('No profiles available to swipe');
-        }
-        setProfiles(initialProfiles);
-        setCurrentBatch(0);
-      } catch (err: any) {
-        console.error('[ERROR SwiperScreen] Failed to load initial profiles:', err);
-        setError(err.message || 'Failed to load profiles');
-      } finally {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setProfiles([]);
+      setCurrentIndex(0);
+      setCurrentBatch(0);
+      matchScoreCache.current = {};
+
+      const initial = await fetchProfileBatch(0, maxDistance);
+      if (!cancelled) {
+        if (initial.length === 0) setError('No profiles available to swipe');
+        setProfiles(initial);
         setLoading(false);
       }
     };
-    loadInitialProfiles();
-  }, [currentUser.id]);
+    load();
+    return () => { cancelled = true; };
+  }, [currentUser.id, maxDistance, fetchProfileBatch]);
 
-  // Filtered profiles by search query (username or name)
-  const filteredProfiles = profiles.filter((p) => {
-    if (!query || query.trim() === '') return true;
+  // ── Preload next image ─────────────────────────────────────────────────────
+
+  const filteredProfiles = useMemo(() => {
+    if (!query.trim()) return profiles;
     const q = query.trim().toLowerCase();
-    return (p.username && p.username.toLowerCase().includes(q)) || (p.name && p.name.toLowerCase().includes(q));
-  });
+    return profiles.filter(p =>
+      p.username?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q)
+    );
+  }, [profiles, query]);
 
-  // Reset current index when query changes so we start at the top of filtered results
+  // Reset index when query changes
+  useEffect(() => { setCurrentIndex(0); }, [query]);
+
+  // Preload next profile image
   useEffect(() => {
-    setCurrentIndex(0);
-  }, [query]);
+    const next = filteredProfiles[currentIndex + 1];
+    if (next?.images?.[0]) {
+      const img = new Image();
+      img.src = next.images[0];
+    }
+  }, [currentIndex, filteredProfiles]);
 
-  // Load more profiles when approaching end of current batch
-  const loadMoreProfilesIfNeeded = async (upcomingIndex: number) => {
-    // If within last 10 profiles of current batch, load next batch
-    if (upcomingIndex >= profiles.length - 10 && !isLoadingMore) {
+  // Reset image loaded state on profile change
+  useEffect(() => { setImgLoaded(false); }, [currentIndex]);
+
+  // ── Load more when approaching end ─────────────────────────────────────────
+
+  const loadMoreIfNeeded = useCallback(async (upcomingIndex: number) => {
+    if (
+      upcomingIndex >= profilesLengthRef.current - PRELOAD_THRESHOLD &&
+      !isLoadingMoreRef.current
+    ) {
       setIsLoadingMore(true);
-      try {
-        const nextBatchNumber = currentBatch + 1;
-        console.log(`[DEBUG SwiperScreen] Loading next batch ${nextBatchNumber}`);
-        
-        const newBatchProfiles = await fetchProfileBatch(nextBatchNumber);
-        if (newBatchProfiles.length > 0) {
-          setProfiles(prev => [...prev, ...newBatchProfiles]);
-          setCurrentBatch(nextBatchNumber);
-          console.log(`[DEBUG SwiperScreen] Loaded ${newBatchProfiles.length} more profiles. Total now: ${profiles.length + newBatchProfiles.length}`);
-        }
-      } catch (err: any) {
-        console.error('[ERROR SwiperScreen] Failed to load more profiles:', err);
-      } finally {
-        setIsLoadingMore(false);
+      const nextBatch = currentBatch + 1;
+      const more = await fetchProfileBatch(nextBatch, maxDistance);
+      if (more.length > 0) {
+        setProfiles(prev => [...prev, ...more]);
+        setCurrentBatch(nextBatch);
       }
+      setIsLoadingMore(false);
     }
-  };
+  }, [currentBatch, maxDistance, fetchProfileBatch]);
 
-  const handleSwipe = (direction: 'left' | 'right') => {
-    const nextIndex = currentIndex + 1;
+  // ── Swipe actions ──────────────────────────────────────────────────────────
+
+  const advance = useCallback((nextIndex: number) => {
     setCurrentIndex(nextIndex);
-    
-    // Load more profiles if approaching end of current batch
-    loadMoreProfilesIfNeeded(nextIndex);
-  };
+    loadMoreIfNeeded(nextIndex);
+  }, [loadMoreIfNeeded]);
 
-  const handleLike = async () => {
+  const handleLike = useCallback(async () => {
     const profile = filteredProfiles[currentIndex];
-    if (profile && profile.id) {
-      try {
-        // Record the like action
-        const response = await apiClient.recordSwipe(currentUser.id, profile.id, 'like');
-        console.log('[DEBUG SwiperScreen] Liked profile:', profile.id, response);
-        
-        // Check if there's a match (demo matches or real mutual likes)
-        if (response.matched && response.matchedUser) {
-          console.log('[DEBUG SwiperScreen] MATCH FOUND!', response);
-          setMatchedUser(response.matchedUser);
-          setInterestMatch(response.interestMatch);
-          setShowMatchModal(true);
-        }
-      } catch (err) {
-        console.error('[ERROR SwiperScreen] Failed to record like:', err);
+    if (!profile?.id) return;
+    try {
+      const res = await apiClient.recordSwipe(currentUser.id, profile.id, 'like');
+      if (res.matched && res.matchedUser) {
+        setMatchedUser(res.matchedUser);
+        setInterestMatch(res.interestMatch);
+        setShowMatchModal(true);
       }
+    } catch (err) {
+      console.error('[SwiperScreen] Failed to record like:', err);
     }
-    handleSwipe('right');
-  };
+    advance(currentIndex + 1);
+  }, [filteredProfiles, currentIndex, currentUser.id, advance]);
 
-  const handlePass = async () => {
+  const handlePass = useCallback(async () => {
     const profile = filteredProfiles[currentIndex];
-    if (profile && profile.id) {
+    if (profile?.id) {
       try {
-        // Record the pass action
         await apiClient.recordSwipe(currentUser.id, profile.id, 'pass');
-        console.log('[DEBUG SwiperScreen] Passed profile:', profile.id);
       } catch (err) {
-        console.error('[ERROR SwiperScreen] Failed to record pass:', err);
+        console.error('[SwiperScreen] Failed to record pass:', err);
       }
     }
-    handleSwipe('left');
+    advance(currentIndex + 1);
+  }, [filteredProfiles, currentIndex, currentUser.id, advance]);
+
+  const handleSuperLike = useCallback(async () => {
+    if (!currentUser.isPremium && currentUser.coins < 1) {
+      showAlert('Out of Coins', 'Top up in your profile to keep swiping.');
+      return;
+    }
+    const profile = filteredProfiles[currentIndex];
+    if (profile?.id) {
+      try {
+        await apiClient.recordSwipe(currentUser.id, profile.id, 'superlike');
+      } catch (err) {
+        console.error('[SwiperScreen] Failed to record super like:', err);
+      }
+    }
+    if (!currentUser.isPremium) onDeductCoin();
+    advance(currentIndex + 1);
+  }, [filteredProfiles, currentIndex, currentUser, onDeductCoin, showAlert, advance]);
+
+  const handleRewind = useCallback(() => {
+    if (currentIndex === 0) return;
+    if (!currentUser.isPremium && currentUser.coins < 1) {
+      showAlert('Coins Required', 'Rewind costs 1 coin. Top up to undo your last choice!');
+      return;
+    }
+    if (!currentUser.isPremium) onDeductCoin();
+    setCurrentIndex(prev => prev - 1);
+  }, [currentIndex, currentUser, onDeductCoin, showAlert]);
+
+  // ── Touch / swipe gestures ─────────────────────────────────────────────────
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
   };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    touchEndX.current = e.changedTouches[0].clientX;
+    const diff = touchStartX.current - touchEndX.current;
+    if      (diff >  50) handlePass();
+    else if (diff < -50) handleLike();
+  };
+
+  // ── Double tap to like ─────────────────────────────────────────────────────
+
+  const addHeart = useCallback((x: number, y: number) => {
+    const id = `heart-${Date.now()}-${Math.random()}`;
+    setHearts(prev => [...prev, { id, x, y }]);
+    setTimeout(() => setHearts(prev => prev.filter(h => h.id !== id)), 1000);
+  }, []);
+
+  const handleCardTap = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const now      = Date.now();
+    const timeDiff = now - lastTapTime;
+
+    if (timeDiff < 300 && tapCount > 0) {
+      // Double tap
+      if (cardRef.current) {
+        const rect   = cardRef.current.getBoundingClientRect();
+        const clientX = 'clientX' in e ? e.clientX : rect.left + rect.width  / 2;
+        const clientY = 'clientY' in e ? e.clientY : rect.top  + rect.height / 2;
+        addHeart(clientX - rect.left, clientY - rect.top);
+      }
+      if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
+      handleLike();
+      setTapCount(0);
+      setLastTapTime(0);
+    } else {
+      setTapCount(prev => prev + 1);
+      setLastTapTime(now);
+      if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
+      doubleTapTimeout.current = setTimeout(() => setTapCount(0), 500);
+    }
+  }, [lastTapTime, tapCount, addHeart, handleLike]);
+
+  // ── Match modal ────────────────────────────────────────────────────────────
 
   const handleMatchModalClose = () => {
     setShowMatchModal(false);
@@ -242,125 +365,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
   };
 
-  const handleSuperLike = async () => {
-    if (!currentUser.isPremium && currentUser.coins < 1) {
-      showAlert('Out of Coins', 'Top up in your profile to keep swiping.');
-      return;
-    }
-    
-    const profile = filteredProfiles[currentIndex];
-    if (profile && profile.id) {
-      try {
-        // Record the super like action
-        await apiClient.recordSwipe(currentUser.id, profile.id, 'superlike');
-        console.log('[DEBUG SwiperScreen] Super liked profile:', profile.id);
-      } catch (err) {
-        console.error('[ERROR SwiperScreen] Failed to record super like:', err);
-      }
-    }
-    
-    if (!currentUser.isPremium) onDeductCoin();
-    handleSwipe('right');
-  };
-
-  const handleRewind = () => {
-    if (currentIndex === 0) return;
-    if (!currentUser.isPremium && currentUser.coins < 1) {
-      showAlert('Coins Required', 'Rewind costs 1 coin. Top up to undo your last choice!');
-      return;
-    }
-    if (!currentUser.isPremium) onDeductCoin();
-    setCurrentIndex(prev => prev - 1);
-  };
-
-  // Handle touch start
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-
-  // Handle touch end
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    touchEndX.current = e.changedTouches[0].clientX;
-    handleSwipeGesture();
-  };
-
-  // Detect swipe direction
-  const handleSwipeGesture = () => {
-    const difference = touchStartX.current - touchEndX.current;
-    const isLeftSwipe = difference > 50;
-    const isRightSwipe = difference < -50;
-
-    if (isLeftSwipe) {
-      // Left swipe = pass / dislike
-      handlePass();
-    } else if (isRightSwipe) {
-      // Right swipe = like
-      handleLike();
-    }
-  };
-
-  // Handle double tap to like
-  const handleCardTap = (e: React.MouseEvent | React.TouchEvent) => {
-    const now = Date.now();
-    const timeDiff = now - lastTapTime;
-
-    // Double tap detected (within 300ms)
-    if (timeDiff < 300 && tapCount > 0) {
-      // Add heart animation
-      const clientX = 'clientX' in e ? e.clientX : e.currentTarget.getBoundingClientRect().left + e.currentTarget.getBoundingClientRect().width / 2;
-      const clientY = 'clientY' in e ? e.clientY : e.currentTarget.getBoundingClientRect().top + e.currentTarget.getBoundingClientRect().height / 2;
-      
-      if (cardRef.current) {
-        const rect = cardRef.current.getBoundingClientRect();
-        const heartX = clientX - rect.left;
-        const heartY = clientY - rect.top;
-        
-        addHeart(heartX, heartY);
-      }
-
-      // Clear the timeout since we have a double tap
-      if (doubleTapTimeout.current) {
-        clearTimeout(doubleTapTimeout.current);
-      }
-
-      // Perform like action
-      handleLike();
-      setTapCount(0);
-      setLastTapTime(0);
-    } else {
-      setTapCount(prev => prev + 1);
-      setLastTapTime(now);
-
-      // Clear previous timeout
-      if (doubleTapTimeout.current) {
-        clearTimeout(doubleTapTimeout.current);
-      }
-
-      // Reset tap count after 500ms if no second tap
-      doubleTapTimeout.current = setTimeout(() => {
-        setTapCount(0);
-      }, 500);
-    }
-  };
-
-  // Add heart animation
-  const addHeart = (x: number, y: number) => {
-    const newHeart: Heart = {
-      id: `heart-${Date.now()}-${Math.random()}`,
-      x,
-      y,
-    };
-    setHearts(prev => [...prev, newHeart]);
-
-    // Remove heart after animation
-    setTimeout(() => {
-      setHearts(prev => prev.filter(h => h.id !== newHeart.id));
-    }, 1000);
-  };
+  // ── Early returns (loading / error / empty states) ─────────────────────────
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-full">
-      <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
       <p className="mt-4 text-gray-500 font-medium">Finding potential matches...</p>
     </div>
   );
@@ -368,11 +377,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   if (error) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center">
       <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
-        <i className="fa-solid fa-exclamation-circle text-4xl text-red-500"></i>
+        <i className="fa-solid fa-exclamation-circle text-4xl text-red-500" />
       </div>
       <h2 className="text-2xl font-bold text-gray-800">Oops!</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">{error}</p>
-      <button 
+      <button
         onClick={() => window.location.reload()}
         className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
       >
@@ -384,11 +393,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   if (profiles.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-blue-50 p-6 rounded-full mb-4 shadow-inner">
-        <i className="fa-solid fa-users text-4xl text-blue-500"></i>
+        <i className="fa-solid fa-users text-4xl text-blue-500" />
       </div>
       <h2 className="text-2xl font-bold text-gray-800">No profiles available</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">There are no other users in your area yet. Check back later!</p>
-      <button 
+      <button
         onClick={() => window.location.reload()}
         className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
       >
@@ -397,19 +406,15 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  // When we have profiles loaded but the current search query matches none
   if (profiles.length > 0 && filteredProfiles.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-gray-100 p-6 rounded-full mb-4 shadow-inner">
-        <i className="fa-solid fa-magnifying-glass text-4xl text-gray-400"></i>
+        <i className="fa-solid fa-magnifying-glass text-4xl text-gray-400" />
       </div>
       <h2 className="text-2xl font-bold text-gray-800">No results for "{query}"</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">Try a different username or full name.</p>
       <div className="flex gap-3 mt-6">
-        <button
-          onClick={() => setQuery('')}
-          className="px-6 py-3 bg-white border rounded-lg font-bold"
-        >
+        <button onClick={() => setQuery('')} className="px-6 py-3 bg-white border rounded-lg font-bold">
           Clear Search
         </button>
         <button
@@ -424,25 +429,20 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   if (currentIndex >= filteredProfiles.length && isLoadingMore) return (
     <div className="flex flex-col items-center justify-center h-full p-8">
-      <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+      <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
       <p className="mt-4 text-gray-500 font-medium">Loading more profiles...</p>
     </div>
   );
 
-  if (currentIndex >= filteredProfiles.length && !isLoadingMore) return (
+  if (currentIndex >= filteredProfiles.length) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
-        <i className="fa-solid fa-location-dot text-4xl text-red-500"></i>
+        <i className="fa-solid fa-location-dot text-4xl text-red-500" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-800">You have swiped through everyone!</h2>
+      <h2 className="text-2xl font-bold text-gray-800">You've seen everyone!</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">Come back later for new people in your area.</p>
-      <button 
-        onClick={() => {
-          setQuery('');
-          setCurrentIndex(0);
-          setCurrentBatch(0);
-          setProfiles([]);
-        }}
+      <button
+        onClick={() => { setQuery(''); setCurrentIndex(0); setCurrentBatch(0); setProfiles([]); }}
         className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
       >
         Refresh Discovery
@@ -450,11 +450,17 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  const profile = filteredProfiles[currentIndex];
+  // ── Current profile ────────────────────────────────────────────────────────
+
+  const profile    = filteredProfiles[currentIndex];
+  const matchScore = getMatchScore(profile);
+  const distance   = getDistance(profile);
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* Desktop: top search bar */}
+      {/* Desktop search bar */}
       <div className="hidden md:flex w-full justify-center p-4 bg-transparent z-40">
         <div className="w-full max-w-4xl flex items-center gap-2">
           <input
@@ -463,255 +469,269 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
             placeholder="Search username or full name"
             className="flex-1 px-4 py-2 border border-gray-200 rounded-full text-sm"
           />
-          <button
-            onClick={() => setQuery('')}
-            className="ml-2 px-3 py-2 bg-white border rounded-full text-sm"
-            title="Clear search"
-          >
-            Clear
-          </button>
-        </div>
-      </div>
-      <style>{`
-        @keyframes heartFloat {
-          0% {
-            transform: translate(0, 0) scale(1);
-            opacity: 1;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            transform: translate(0, -80px) scale(0.5);
-            opacity: 0;
-          }
-        }
-        
-        @keyframes heartPulse {
-          0%, 100% {
-            transform: scale(1);
-          }
-          50% {
-            transform: scale(1.2);
-          }
-        }
-      `}</style>
-      <div className="h-full flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-white md:bg-gray-50 pt-2 md:pt-8">
-        <div className="w-full flex-1 md:h-full max-w-[420px] md:max-h-[700px] flex flex-col relative group">
-        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto gap-2">
-          {searchOpen ? (
-            <div className="flex-1 flex items-center gap-2">
-              <input
-                autoFocus
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search username or name"
-                className="flex-1 px-3 py-2 rounded-full border border-gray-200 bg-white/90 text-sm"
-              />
-              <button
-                onClick={() => { setSearchOpen(false); }}
-                className="ml-2 px-3 py-2 bg-white rounded-full border"
-                title="Close search"
-              >
-                <i className="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-          ) : (
-            <>
-              {/* Distance Filter Button */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowDistanceFilter(!showDistanceFilter)}
-                  className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border hover:bg-white transition-colors"
-                  title="Distance filter"
-                >
-                  <i className="fa-solid fa-location-crosshairs text-red-500"></i>
-                </button>
-                {showDistanceFilter && (
-                  <div className="absolute top-12 left-0 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 w-56 z-50">
-                    <h3 className="font-bold text-gray-800 mb-3 text-sm">Distance Range</h3>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {[
-                        DISTANCE_RANGES.ONE_KM,
-                        DISTANCE_RANGES.FIVE_KM,
-                        DISTANCE_RANGES.TEN_KM,
-                        DISTANCE_RANGES.FIFTY_KM,
-                        DISTANCE_RANGES.HUNDRED_KM,
-                        DISTANCE_RANGES.FIVE_HUNDRED_KM,
-                        DISTANCE_RANGES.THOUSAND_KM,
-                        DISTANCE_RANGES.WORLDWIDE,
-                      ].map((distance) => (
-                        <button
-                          key={distance}
-                          onClick={() => {
-                            setMaxDistance(distance);
-                            setCurrentIndex(0);
-                            setCurrentBatch(0);
-                            setProfiles([]);
-                            setShowDistanceFilter(false);
-                          }}
-                          className={`w-full px-3 py-2 rounded-lg text-sm text-left transition-colors ${
-                            maxDistance === distance
-                              ? 'bg-red-100 text-red-700 font-bold border border-red-300'
-                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100'
-                          }`}
-                        >
-                          {getDistanceRangeLabel(distance)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => setSearchOpen(true)}
-                className="ml-auto w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border hover:bg-white transition-colors"
-                title="Search"
-              >
-                <i className="fa-solid fa-magnifying-glass"></i>
-              </button>
-            </>
+          {query && (
+            <button onClick={() => setQuery('')} className="ml-2 px-3 py-2 bg-white border rounded-full text-sm">
+              Clear
+            </button>
           )}
         </div>
-        <div 
-          ref={cardRef}
-          className="flex-1 relative cursor-pointer select-none"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onClick={handleCardTap}
-        >
-          <div className="absolute inset-0 bg-gray-200 rounded-[2rem] overflow-hidden shadow-2xl swipe-card ring-1 ring-black/5">
-            <img 
-              src={profile.images[0]} 
-              alt={profile.name} 
-              className="w-full h-full object-cover select-none"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
-            
-            {/* Hearts Animation Overlay */}
-            <div className="absolute inset-0 pointer-events-none">
-              {hearts.map((heart) => (
-                <div
-                  key={heart.id}
-                  className="absolute animate-pulse"
-                  style={{
-                    left: `${heart.x}px`,
-                    top: `${heart.y}px`,
-                    animation: `heartFloat 1s ease-out forwards`,
-                  }}
-                >
-                  <i className="fa-solid fa-heart text-red-500 text-4xl drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.6))' }}></i>
-                </div>
-              ))}
-            </div>
+      </div>
 
-            {/* Double tap indicator */}
-            {tapCount > 0 && (
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                <div className="text-white text-sm font-bold bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm">
-                  🎯 Tap again to like!
-                </div>
+      {/* Heart float animation */}
+      <style>{`
+        @keyframes heartFloat {
+          0%   { transform: translate(0,0) scale(1); opacity: 1; }
+          50%  { opacity: 1; }
+          100% { transform: translate(0,-80px) scale(0.5); opacity: 0; }
+        }
+      `}</style>
+
+      <div className="h-full flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-white md:bg-gray-50 pt-2 md:pt-8">
+        <div className="w-full flex-1 md:h-full max-w-[420px] md:max-h-[700px] flex flex-col relative group">
+
+          {/* ── Top overlay controls ── */}
+          <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto gap-2">
+            {searchOpen ? (
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Search username or name"
+                  className="flex-1 px-3 py-2 rounded-full border border-gray-200 bg-white/90 text-sm"
+                />
+                <button
+                  onClick={() => setSearchOpen(false)}
+                  className="ml-2 px-3 py-2 bg-white rounded-full border"
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
               </div>
+            ) : (
+              <>
+                {/* Distance filter */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowDistanceFilter(v => !v)}
+                    className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border hover:bg-white transition-colors"
+                    title="Distance filter"
+                  >
+                    <i className="fa-solid fa-location-crosshairs text-red-500" />
+                  </button>
+
+                  {showDistanceFilter && (
+                    <div className="absolute top-12 left-0 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 w-56 z-50">
+                      <h3 className="font-bold text-gray-800 mb-3 text-sm">Distance Range</h3>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {[
+                          DISTANCE_RANGES.ONE_KM,
+                          DISTANCE_RANGES.FIVE_KM,
+                          DISTANCE_RANGES.TEN_KM,
+                          DISTANCE_RANGES.FIFTY_KM,
+                          DISTANCE_RANGES.HUNDRED_KM,
+                          DISTANCE_RANGES.FIVE_HUNDRED_KM,
+                          DISTANCE_RANGES.THOUSAND_KM,
+                          DISTANCE_RANGES.WORLDWIDE,
+                        ].map(d => (
+                          <button
+                            key={d}
+                            onClick={() => {
+                              setMaxDistance(d);
+                              setShowDistanceFilter(false);
+                            }}
+                            className={`w-full px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                              maxDistance === d
+                                ? 'bg-red-100 text-red-700 font-bold border border-red-300'
+                                : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100'
+                            }`}
+                          >
+                            {getDistanceRangeLabel(d)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setSearchOpen(true)}
+                  className="ml-auto w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border hover:bg-white transition-colors"
+                  title="Search"
+                >
+                  <i className="fa-solid fa-magnifying-glass" />
+                </button>
+              </>
             )}
-            
-            <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
-              <div className="flex items-center gap-3 mb-1">
-                <h3 className="text-3xl font-extrabold tracking-tight">{profile.username || profile.name}, {profile.age}</h3>
-                {profile.isPremium && (
-                  <span className="premium-gradient px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest text-white shadow-lg">
-                    Premium
-                  </span>
-                )}
-              </div>
-              
-              {/* Match Score Badge */}
-              <div className="mb-3 flex items-center gap-2">
-                <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1.5">
-                  <i className="fa-solid fa-heart text-red-400"></i>
-                  <span>{calculateMatchScore(profile)}% Match</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2 text-sm text-gray-300 mb-4">
-                <i className="fa-solid fa-location-arrow text-[10px]"></i>
-                <span className="font-medium">{profile.location}</span>
-              </div>
-              <p className="text-sm line-clamp-3 text-gray-100 mb-6 leading-relaxed font-normal">{profile.bio}</p>
-              <div className="flex flex-wrap gap-2.5 mb-6">
-                {profile.interests.map(interest => (
-                  <span key={interest} className={`px-4 py-1.5 rounded-full text-[11px] font-semibold ${
-                    currentUser.interests.includes(interest)
-                      ? 'bg-green-500/30 ring-1 ring-green-400/50'
-                      : 'bg-white/10 ring-1 ring-white/20'
-                  }`}>
-                    {interest}
-                  </span>
+          </div>
+
+          {/* ── Profile Card ── */}
+          <div
+            ref={cardRef}
+            className="flex-1 relative cursor-pointer select-none"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onClick={handleCardTap}
+          >
+            <div className="absolute inset-0 bg-gray-200 rounded-[2rem] overflow-hidden shadow-2xl swipe-card ring-1 ring-black/5">
+
+              {/* Skeleton while image loads */}
+              {!imgLoaded && <ProfileImageSkeleton />}
+
+              <img
+                key={profile.id}
+                src={profile.images?.[0]}
+                alt={profile.name}
+                onLoad={() => setImgLoaded(true)}
+                className={`w-full h-full object-cover select-none transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+              />
+
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+
+              {/* Hearts */}
+              <div className="absolute inset-0 pointer-events-none">
+                {hearts.map(heart => (
+                  <div
+                    key={heart.id}
+                    className="absolute"
+                    style={{ left: heart.x, top: heart.y, animation: 'heartFloat 1s ease-out forwards' }}
+                  >
+                    <i className="fa-solid fa-heart text-red-500 text-4xl drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 8px rgba(239,68,68,0.6))' }} />
+                  </div>
                 ))}
               </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowProfileModal(true)}
-                  className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
-                >
-                  <i className="fa-solid fa-eye text-sm"></i>
-                  View Profile
-                </button>
-                <button
-                  onClick={() => navigate(`/chat/${profile.id}`, { state: { matchedProfile: profile } })}
-                  className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
-                >
-                  <i className="fa-solid fa-message text-sm"></i>
-                  Message
-                </button>
+
+              {/* Double-tap hint */}
+              {tapCount > 0 && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                  <div className="text-white text-sm font-bold bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm">
+                    🎯 Tap again to like!
+                  </div>
+                </div>
+              )}
+
+              {/* Profile info overlay */}
+              <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
+                <div className="flex items-center gap-3 mb-1">
+                  <h3 className="text-3xl font-extrabold tracking-tight">
+                    {profile.username || profile.name}, {profile.age}
+                  </h3>
+                  {profile.isPremium && (
+                    <span className="premium-gradient px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest text-white shadow-lg">
+                      Premium
+                    </span>
+                  )}
+                </div>
+
+                {/* Match score + distance */}
+                <div className="mb-3 flex items-center gap-2 flex-wrap">
+                  <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1.5">
+                    <i className="fa-solid fa-heart text-red-400" />
+                    <span>{matchScore}% Match</span>
+                  </div>
+                  {distance !== null && (
+                    <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1.5">
+                      <i className="fa-solid fa-location-dot text-blue-300" />
+                      <span>{distance < 1 ? '<1 km' : `${Math.round(distance)} km`}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-sm text-gray-300 mb-4">
+                  <i className="fa-solid fa-location-arrow text-[10px]" />
+                  <span className="font-medium">{profile.location}</span>
+                </div>
+
+                <p className="text-sm line-clamp-3 text-gray-100 mb-6 leading-relaxed">{profile.bio}</p>
+
+                <div className="flex flex-wrap gap-2.5 mb-6">
+                  {profile.interests.map(interest => (
+                    <span
+                      key={interest}
+                      className={`px-4 py-1.5 rounded-full text-[11px] font-semibold ${
+                        currentUser.interests.includes(interest)
+                          ? 'bg-green-500/30 ring-1 ring-green-400/50'
+                          : 'bg-white/10 ring-1 ring-white/20'
+                      }`}
+                    >
+                      {interest}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowProfileModal(true)}
+                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-eye text-sm" />
+                    View Profile
+                  </button>
+                  <button
+                    onClick={() => navigate(`/chat/${profile.id}`, { state: { matchedProfile: profile } })}
+                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                  >
+                    <i className="fa-solid fa-message text-sm" />
+                    Message
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Action Controls */}
-        <div className="flex justify-center gap-3 md:gap-5 mt-4 md:mt-8 pb-2 md:pb-4">
-          <button 
-            onClick={handleRewind}
-            className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center text-amber-500 text-lg md:text-xl hover:bg-amber-50 active:scale-90 transition-all group/btn"
-            title="Rewind (1 Coin)"
-          >
-            <i className="fa-solid fa-rotate-left"></i>
-            {!currentUser.isPremium && (
-              <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">1</span>
-            )}
-          </button>
-          <button 
-            onClick={handlePass}
-            className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center text-red-500 text-xl md:text-2xl hover:bg-red-50 active:scale-90 transition-all"
-          >
-            <i className="fa-solid fa-xmark"></i>
-          </button>
-          <button 
-            onClick={handleSuperLike}
-            className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center text-blue-400 text-lg md:text-xl hover:bg-blue-50 active:scale-90 transition-all relative"
-            title="Super Like (1 Coin)"
-          >
-            <i className="fa-solid fa-star"></i>
-             {!currentUser.isPremium && (
-              <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white">1</span>
-            )}
-          </button>
-          <button 
-            onClick={handleLike}
-            className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center text-emerald-500 text-xl md:text-2xl hover:bg-emerald-50 active:scale-90 transition-all"
-            title="Like"
-          >
-            <i className="fa-solid fa-heart"></i>
-          </button>
+          {/* ── Action Controls ── */}
+          <div className="flex justify-center gap-3 md:gap-5 mt-4 md:mt-8 pb-2 md:pb-4">
+            <ActionButton
+              onClick={handleRewind}
+              icon="fa-rotate-left"
+              color="text-amber-500"
+              hoverBg="hover:bg-amber-50"
+              title="Rewind (1 Coin)"
+              coinCost={!currentUser.isPremium}
+              coinColor="amber"
+            />
+            <ActionButton
+              onClick={handlePass}
+              icon="fa-xmark"
+              color="text-red-500"
+              hoverBg="hover:bg-red-50"
+              size="lg"
+            />
+            <ActionButton
+              onClick={handleSuperLike}
+              icon="fa-star"
+              color="text-blue-400"
+              hoverBg="hover:bg-blue-50"
+              title="Super Like (1 Coin)"
+              coinCost={!currentUser.isPremium}
+              coinColor="blue"
+            />
+            <ActionButton
+              onClick={handleLike}
+              icon="fa-heart"
+              color="text-emerald-500"
+              hoverBg="hover:bg-emerald-50"
+              size="lg"
+              title="Like"
+            />
+          </div>
         </div>
       </div>
-      </div>
 
-      {/* User Profile Modal */}
-      {showProfileModal && filteredProfiles[currentIndex] && (
+      {/* Profile Modal */}
+      {showProfileModal && profile && (
         <UserProfileModal
-          user={filteredProfiles[currentIndex]}
+          user={profile}
           onClose={() => setShowProfileModal(false)}
+        />
+      )}
+
+      {/* Match Modal */}
+      {showMatchModal && matchedUser && (
+        <MatchModal
+          matchedUser={matchedUser}
+          interestMatch={interestMatch}
+          onClose={handleMatchModalClose}
+          onMessage={handleMatchMessage}
         />
       )}
     </>

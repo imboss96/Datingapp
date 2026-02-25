@@ -1,11 +1,38 @@
 import { WebSocketServer } from 'ws';
+import User from '../models/User.js';
 
 // Store connected users: userId -> WebSocket
 const connectedUsers = new Map();
 
 /**
+ * Update user online status in database
+ */
+const setUserOnline = async (userId) => {
+  try {
+    await User.findOneAndUpdate(
+      { id: userId },
+      { isOnline: true, lastActiveAt: new Date() },
+      { new: true }
+    );
+  } catch (err) {
+    console.error(`[WebSocket] Failed to set user ${userId} online:`, err.message);
+  }
+};
+
+const setUserOffline = async (userId) => {
+  try {
+    await User.findOneAndUpdate(
+      { id: userId },
+      { isOnline: false, lastActiveAt: new Date() },
+      { new: true }
+    );
+  } catch (err) {
+    console.error(`[WebSocket] Failed to set user ${userId} offline:`, err.message);
+  }
+};
+
+/**
  * Initialize WebSocket server
- * @param {http.Server} server - Express server instance
  */
 export function initWebSocket(server) {
   const wss = new WebSocketServer({ server });
@@ -15,7 +42,6 @@ export function initWebSocket(server) {
 
     let userId = null;
 
-    // Handle incoming messages
     ws.on('message', (data) => {
       try {
         const message = JSON.parse(data);
@@ -25,20 +51,35 @@ export function initWebSocket(server) {
           userId = message.userId;
           connectedUsers.set(userId, ws);
           console.log(`[WebSocket] User ${userId} registered`);
+
+          // Mark user as online in DB
+          setUserOnline(userId);
+
           ws.send(JSON.stringify({ type: 'registered', success: true }));
+
+          // Broadcast online status to all connected users
+          broadcastUserStatus(userId, true);
         }
-        // Ping to keep connection alive
+
+        // Ping to keep connection alive + update lastSeen
         else if (message.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }));
+          // Update lastActiveAt on every ping to keep it fresh
+          if (userId) {
+            User.findOneAndUpdate(
+              { id: userId },
+              { lastActiveAt: new Date() }
+            ).catch(() => {});
+          }
         }
-        // Handle typing status
+
+        // Typing status
         else if (message.type === 'typing_status') {
-          console.log(`[WebSocket] User ${userId} typing in chat: ${message.chatId}`);
           const typingMessage = {
             type: 'typing_status',
-            userId: userId,
+            userId,
             chatId: message.chatId,
-            isTyping: message.isTyping
+            isTyping: message.isTyping,
           };
           connectedUsers.forEach((userWs, connectedUserId) => {
             if (connectedUserId !== userId && userWs.readyState === 1) {
@@ -46,78 +87,43 @@ export function initWebSocket(server) {
             }
           });
         }
-        // Handle call incoming notification
+
+        // Call incoming
         else if (message.type === 'call_incoming') {
-          console.log(`[WebSocket] Call incoming from ${userId} to ${message.to} (video: ${message.isVideo})`);
           const targetWs = connectedUsers.get(message.to);
-          if (targetWs && targetWs.readyState === 1) {
+          if (targetWs?.readyState === 1) {
             targetWs.send(JSON.stringify({
               type: 'call_incoming',
               from: userId,
               fromName: message.fromName,
               isVideo: message.isVideo,
-              chatId: message.chatId
+              chatId: message.chatId,
             }));
-          } else {
-            console.log(`[WebSocket] Target user ${message.to} not online`);
           }
         }
-        // Handle call offer (WebRTC signaling)
-        else if (message.type === 'call_offer') {
-          console.log(`[WebSocket] Call offer from ${userId} to ${message.to}`);
+
+        // WebRTC signaling
+        else if (['call_offer', 'call_answer', 'ice_candidate'].includes(message.type)) {
           const targetWs = connectedUsers.get(message.to);
-          if (targetWs && targetWs.readyState === 1) {
+          if (targetWs?.readyState === 1) {
             targetWs.send(JSON.stringify({
-              type: 'call_offer',
+              type: message.type,
               from: userId,
-              offer: message.offer
+              ...(message.offer     && { offer:     message.offer }),
+              ...(message.answer    && { answer:    message.answer }),
+              ...(message.candidate && { candidate: message.candidate }),
             }));
           }
         }
-        // Handle call answer (WebRTC signaling)
-        else if (message.type === 'call_answer') {
-          console.log(`[WebSocket] Call answer from ${userId} to ${message.to}`);
+
+        // Call end / reject
+        else if (['call_end', 'call_reject'].includes(message.type)) {
           const targetWs = connectedUsers.get(message.to);
-          if (targetWs && targetWs.readyState === 1) {
-            targetWs.send(JSON.stringify({
-              type: 'call_answer',
-              from: userId,
-              answer: message.answer
-            }));
+          if (targetWs?.readyState === 1) {
+            targetWs.send(JSON.stringify({ type: message.type }));
           }
         }
-        // Handle ICE candidates
-        else if (message.type === 'ice_candidate') {
-          console.log(`[WebSocket] ICE candidate from ${userId} to ${message.to}`);
-          const targetWs = connectedUsers.get(message.to);
-          if (targetWs && targetWs.readyState === 1) {
-            targetWs.send(JSON.stringify({
-              type: 'ice_candidate',
-              from: userId,
-              candidate: message.candidate
-            }));
-          }
-        }
-        // Handle call end
-        else if (message.type === 'call_end') {
-          console.log(`[WebSocket] Call ended by ${userId}`);
-          const targetWs = connectedUsers.get(message.to);
-          if (targetWs && targetWs.readyState === 1) {
-            targetWs.send(JSON.stringify({
-              type: 'call_end'
-            }));
-          }
-        }
-        // Handle call rejection
-        else if (message.type === 'call_reject') {
-          console.log(`[WebSocket] Call rejected by ${userId}`);
-          const targetWs = connectedUsers.get(message.to);
-          if (targetWs && targetWs.readyState === 1) {
-            targetWs.send(JSON.stringify({
-              type: 'call_reject'
-            }));
-          }
-        }
+
       } catch (err) {
         console.error('[WebSocket] Error parsing message:', err);
       }
@@ -128,10 +134,15 @@ export function initWebSocket(server) {
       if (userId) {
         connectedUsers.delete(userId);
         console.log(`[WebSocket] User ${userId} disconnected`);
+
+        // Mark user as offline in DB
+        setUserOffline(userId);
+
+        // Broadcast offline status to all connected users
+        broadcastUserStatus(userId, false);
       }
     });
 
-    // Handle errors
     ws.on('error', (err) => {
       console.error('[WebSocket] Connection error:', err);
     });
@@ -141,15 +152,30 @@ export function initWebSocket(server) {
 }
 
 /**
+ * Broadcast a user's online/offline status to all connected users
+ */
+function broadcastUserStatus(userId, isOnline) {
+  const statusMessage = JSON.stringify({
+    type: 'user_status',
+    userId,
+    isOnline,
+    lastSeen: Date.now(),
+  });
+
+  connectedUsers.forEach((ws, connectedUserId) => {
+    if (connectedUserId !== userId && ws.readyState === 1) {
+      ws.send(statusMessage);
+    }
+  });
+}
+
+/**
  * Send notification to a specific user
- * @param {string} userId - Target user ID
- * @param {Object} notification - Notification object
  */
 export function sendNotification(userId, notification) {
   const ws = connectedUsers.get(userId);
-  if (ws && ws.readyState === 1) { // 1 = OPEN
+  if (ws?.readyState === 1) {
     ws.send(JSON.stringify(notification));
-    console.log(`[WebSocket] Sent notification to ${userId}:`, notification.type);
     return true;
   }
   return false;
@@ -157,22 +183,17 @@ export function sendNotification(userId, notification) {
 
 /**
  * Broadcast message to chat participants
- * @param {Array<string>} userIds - Target user IDs
- * @param {Object} data - Data to send
  */
 export function broadcastToChatParticipants(userIds, data) {
-  userIds.forEach(userId => {
-    sendNotification(userId, data);
-  });
+  userIds.forEach(userId => sendNotification(userId, data));
 }
 
 /**
  * Check if user is connected
- * @param {string} userId - User ID to check
  */
 export function isUserOnline(userId) {
   const ws = connectedUsers.get(userId);
-  return ws && ws.readyState === 1;
+  return ws?.readyState === 1;
 }
 
 /**

@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
 import { formatLastSeen } from '../services/lastSeenUtils';
 import ChatOptionsModal from './ChatOptionsModal';
 import { useAlert } from '../services/AlertContext';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ChatData {
   id: string;
@@ -19,104 +21,164 @@ interface ChatData {
   unreadCount?: number;
 }
 
-interface MatchProfile {
-  id: string;
-  name: string;
-  username?: string;
-  age: number;
-  location: string;
-  bio: string;
-  images: string[];
-  interests: string[];
-  image: string;
-}
+// ─── Cache Helpers ────────────────────────────────────────────────────────────
 
 const CACHE_KEY_CHATS = 'cached_chats';
 const CACHE_KEY_USERS = 'cached_users';
+const CACHE_KEY_TIME  = 'cached_chats_time';
+const CACHE_TTL_MS    = 5 * 60 * 1000; // 5 minutes
+
+const readCache = <T,>(key: string): T[] => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeCache = (key: string, value: unknown): void => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch { /* storage full – ignore */ }
+};
+
+const isCacheStale = (): boolean => {
+  const ts = localStorage.getItem(CACHE_KEY_TIME);
+  return !ts || Date.now() - parseInt(ts, 10) > CACHE_TTL_MS;
+};
+
+// ─── Pure Helpers ─────────────────────────────────────────────────────────────
+
+const deduplicateAndSort = (chatsData: ChatData[]): ChatData[] => {
+  const seen: Record<string, ChatData> = {};
+  const result: ChatData[] = [];
+
+  for (const chat of chatsData) {
+    const key = [...(chat.participants ?? [])].sort().join(':');
+    if (!seen[key]) {
+      seen[key] = chat;
+      result.push(chat);
+    } else if (chat.lastUpdated > seen[key].lastUpdated) {
+      result[result.indexOf(seen[key])] = chat;
+      seen[key] = chat;
+    }
+  }
+
+  return result.sort((a, b) => {
+    const unreadDiff = (b.unreadCount ?? 0) - (a.unreadCount ?? 0);
+    return unreadDiff !== 0 ? unreadDiff : b.lastUpdated - a.lastUpdated;
+  });
+};
+
+const getLastMessage = (chat: ChatData): string =>
+  chat.messages?.length ? chat.messages[chat.messages.length - 1].text : 'No messages yet';
+
+const getTimeAgo = (timestamp: number): string => {
+  const diff  = Date.now() - timestamp;
+  const mins  = Math.floor(diff / 60_000);
+  const hours = Math.floor(diff / 3_600_000);
+  const days  = Math.floor(diff / 86_400_000);
+  if (mins  <  1) return 'now';
+  if (mins  < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+};
+
+// ─── Skeleton Loader ──────────────────────────────────────────────────────────
+
+const ChatSkeleton: React.FC = () => (
+  <div className="divide-y divide-gray-50">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="flex items-center gap-4 p-4 animate-pulse">
+        <div className="w-14 h-14 rounded-full bg-gray-200 shrink-0" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 bg-gray-200 rounded w-1/3" />
+          <div className="h-3 bg-gray-200 rounded w-2/3" />
+          <div className="h-2 bg-gray-100 rounded w-1/4" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+// ─── Avatar with fallback ─────────────────────────────────────────────────────
+
+const Avatar: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
+  const [errored, setErrored] = useState(false);
+  const initials = alt.slice(0, 2).toUpperCase();
+
+  if (!src || errored) {
+    return (
+      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg shadow-sm border border-gray-100">
+        {initials}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onError={() => setErrored(true)}
+      className="w-14 h-14 rounded-full object-cover shadow-sm border border-gray-100"
+    />
+  );
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
-  const navigate = useNavigate();
-  const { showAlert } = useAlert();
-  const fetchingUsersRef = React.useRef<Record<string, boolean>>({});
+  const navigate          = useNavigate();
+  const { showAlert }     = useAlert();
+  const fetchingUsersRef  = useRef<Record<string, boolean>>({});
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load cached data immediately for instant display
-  const getCachedChats = (): ChatData[] => {
-    try {
-      const cached = localStorage.getItem(CACHE_KEY_CHATS);
-      return cached ? JSON.parse(cached) : [];
-    } catch { return []; }
-  };
+  // Initialise from cache immediately so the UI is never blank
+  const initialChats = readCache<ChatData>(CACHE_KEY_CHATS);
+  const initialUsers = readCache<UserProfile>(CACHE_KEY_USERS);
 
-  const getCachedUsers = (): UserProfile[] => {
-    try {
-      const cached = localStorage.getItem(CACHE_KEY_USERS);
-      return cached ? JSON.parse(cached) : [];
-    } catch { return []; }
-  };
-
-  const [chats, setChats] = useState<ChatData[]>(getCachedChats);
-  const [allUsers, setAllUsers] = useState<UserProfile[]>(getCachedUsers);
-  const [loading, setLoading] = useState(chats.length === 0); // only show spinner if no cache
+  const [chats,      setChats]      = useState<ChatData[]>(initialChats);
+  const [allUsers,   setAllUsers]   = useState<UserProfile[]>(initialUsers);
+  const [loading,    setLoading]    = useState(initialChats.length === 0);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [selectedMatch, setSelectedMatch] = useState<MatchProfile | null>(null);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  // Options modal
+  const [optionsModalOpen,     setOptionsModalOpen]     = useState(false);
+  const [selectedChatId,       setSelectedChatId]       = useState<string | null>(null);
+  const [selectedChatUsername, setSelectedChatUsername] = useState('');
+  const [optionsLoading,       setOptionsLoading]       = useState(false);
 
-  // Long-press state
-  const [optionsModalOpen, setOptionsModalOpen] = useState(false);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-  const [selectedChatUsername, setSelectedChatUsername] = useState<string>('');
-  const [optionsLoading, setOptionsLoading] = useState(false);
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  // ── Data loading ────────────────────────────────────────────────────────────
 
-  const deduplicateAndSort = (chatsData: ChatData[]): ChatData[] => {
-    const chatsByParticipantsKey: Record<string, ChatData> = {};
-    const dedupedChats: ChatData[] = [];
-
-    for (const chat of chatsData) {
-      const key = [...(chat.participants || [])].sort().join(':');
-      if (!chatsByParticipantsKey[key]) {
-        chatsByParticipantsKey[key] = chat;
-        dedupedChats.push(chat);
-      } else if (chat.lastUpdated > chatsByParticipantsKey[key].lastUpdated) {
-        const idx = dedupedChats.indexOf(chatsByParticipantsKey[key]);
-        dedupedChats[idx] = chat;
-        chatsByParticipantsKey[key] = chat;
-      }
-    }
-
-    return dedupedChats.sort((a, b) => {
-      const ua = a.unreadCount || 0;
-      const ub = b.unreadCount || 0;
-      if (ua !== ub) return ub - ua;
-      return b.lastUpdated - a.lastUpdated;
-    });
-  };
-
-  const loadData = useCallback(async (isBackground = false) => {
+  const loadData = useCallback(async (silent: boolean) => {
     try {
-      if (!isBackground) setLoading(true);
-      else setRefreshing(true);
+      silent ? setRefreshing(true) : setLoading(true);
 
       const [chatsData, usersData] = await Promise.all([
         apiClient.getChats(),
         apiClient.getAllUsers(),
       ]);
 
-      const sorted = deduplicateAndSort(chatsData);
-      const saneUsers = (usersData || []).filter((u: any) => u && u.id);
+      const sorted    = deduplicateAndSort(chatsData);
+      const saneUsers = (usersData ?? [])
+      .filter((u: any) => u?.id)
+      .map((u: any) => ({
+      ...u,
+      lastSeen: u.lastActiveAt ? new Date(u.lastActiveAt).getTime() : undefined,
+      isOnline: u.isOnline ?? false,
+  })) as UserProfile[];
+      
 
       setChats(sorted);
       setAllUsers(saneUsers);
 
-      // Save to cache for next visit
-      try {
-        localStorage.setItem(CACHE_KEY_CHATS, JSON.stringify(sorted));
-        localStorage.setItem(CACHE_KEY_USERS, JSON.stringify(saneUsers));
-      } catch { /* storage full, ignore */ }
-
-    } catch (err: any) {
-      console.error('[ERROR ChatList] Failed to load data:', err);
+      writeCache(CACHE_KEY_CHATS, sorted);
+      writeCache(CACHE_KEY_USERS, saneUsers);
+      writeCache(CACHE_KEY_TIME,  Date.now());
+    } catch (err) {
+      console.error('[ChatList] Failed to load data:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -124,36 +186,83 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   }, []);
 
   useEffect(() => {
-    // If we have cached data, load in background silently
-    // If no cache, show spinner
-    const hasCache = chats.length > 0;
-    loadData(!hasCache);
-  }, []);
+    // Always show cached data instantly.
+    // Only hit the network if cache is stale or empty.
+    const silent = initialChats.length > 0;
+    if (!silent || isCacheStale()) loadData(silent);
+  }, [loadData]);
 
-  // Long-press handlers
+  // ── User resolution ─────────────────────────────────────────────────────────
+
+  const getOtherUser = useCallback((chat: ChatData): UserProfile | null => {
+    if (!currentUser) return null;
+    const otherId = chat.participants.find(id => id !== currentUser.id);
+    if (!otherId) return null;
+
+    const found = allUsers.find(u => u?.id === otherId);
+
+    // Lazy-fetch unknown participants and merge into cache
+    if (!found && !fetchingUsersRef.current[otherId]) {
+      fetchingUsersRef.current[otherId] = true;
+      apiClient.getUser(otherId)
+       .then(u => {
+       if (!u) return;
+       const mapped = {
+       ...u,
+       lastSeen: u.lastActiveAt ? new Date(u.lastActiveAt).getTime() : undefined,
+       isOnline: u.isOnline ?? false,
+      };
+     setAllUsers(prev => {
+      if (prev.find(p => p?.id === mapped.id)) return prev;
+      const updated = [...prev, mapped];
+      writeCache(CACHE_KEY_USERS, updated);
+      return updated;
+     });
+     })
+     .catch(() => {})
+     .finally(() => { fetchingUsersRef.current[otherId] = false; });
+     }
+
+    return found ?? null;
+  }, [currentUser, allUsers]);
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+
+  const openChat = useCallback((chatId: string, otherUser: UserProfile | null) => {
+    navigate(`/chat/${otherUser?.id ?? chatId}`, { state: { matchedProfile: otherUser } });
+  }, [navigate]);
+
+  const handleChatClick = (e: React.MouseEvent, chatId: string, otherUser: UserProfile | null) => {
+    if (optionsModalOpen) { e.stopPropagation(); return; }
+    e.stopPropagation();
+    openChat(chatId, otherUser);
+  };
+
+  // ── Long-press ──────────────────────────────────────────────────────────────
+
   const handleTouchStart = (chatId: string, username: string) => {
-    const timer = setTimeout(() => {
+    longPressTimerRef.current = setTimeout(() => {
       setSelectedChatId(chatId);
       setSelectedChatUsername(username);
       setOptionsModalOpen(true);
     }, 500);
-    setLongPressTimer(timer);
   };
 
   const handleTouchEnd = () => {
-    if (longPressTimer) {
-      clearTimeout(longPressTimer);
-      setLongPressTimer(null);
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
   };
 
-  const handleChatItemClick = (e: React.MouseEvent, chatId: string, otherUser: UserProfile | null) => {
-    if (optionsModalOpen) {
-      e.stopPropagation();
-      return;
-    }
-    e.stopPropagation();
-    handleChatClick(chatId, otherUser);
+  // ── Chat actions ────────────────────────────────────────────────────────────
+
+  const removeChat = (id: string) => {
+    setChats(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      writeCache(CACHE_KEY_CHATS, updated);
+      return updated;
+    });
   };
 
   const handleDeleteChat = async () => {
@@ -161,13 +270,9 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     try {
       setOptionsLoading(true);
       await apiClient.deleteChat(selectedChatId);
-      setChats(prev => {
-        const updated = prev.filter(c => c.id !== selectedChatId);
-        localStorage.setItem(CACHE_KEY_CHATS, JSON.stringify(updated));
-        return updated;
-      });
+      removeChat(selectedChatId);
       setOptionsModalOpen(false);
-    } catch (err: any) {
+    } catch {
       showAlert('Error', 'Failed to delete chat. Please try again.');
     } finally {
       setOptionsLoading(false);
@@ -181,13 +286,9 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     try {
       setOptionsLoading(true);
       await apiClient.blockChatRequest(selectedChatId);
-      setChats(prev => {
-        const updated = prev.filter(c => c.id !== selectedChatId);
-        localStorage.setItem(CACHE_KEY_CHATS, JSON.stringify(updated));
-        return updated;
-      });
+      removeChat(selectedChatId);
       setOptionsModalOpen(false);
-    } catch (err: any) {
+    } catch {
       showAlert('Error', 'Failed to block chat. Please try again.');
     } finally {
       setOptionsLoading(false);
@@ -196,57 +297,18 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     }
   };
 
-  // Get the other user in a chat - memoized to avoid excess renders
-  const getOtherUser = useCallback((chat: ChatData): UserProfile | null => {
-    if (!currentUser) return null;
-    const otherUserId = chat.participants.find(id => id !== currentUser.id);
-    if (!otherUserId) return null;
-
-    const otherUser = allUsers.find(u => u && (u as any).id === otherUserId) as UserProfile | undefined;
-
-    if (!otherUser && !fetchingUsersRef.current[otherUserId]) {
-      fetchingUsersRef.current[otherUserId] = true;
-      apiClient.getUser(otherUserId).then((u) => {
-        if (!u) return;
-        setAllUsers(prev => {
-          if (prev.find(p => p && p.id === u.id)) return prev;
-          const updated = [...prev, u];
-          localStorage.setItem(CACHE_KEY_USERS, JSON.stringify(updated));
-          return updated;
-        });
-      }).catch(() => {}).finally(() => {
-        fetchingUsersRef.current[otherUserId] = false;
-      });
-    }
-
-    return otherUser || null;
-  }, [currentUser, allUsers]);
-
-  const handleChatClick = (chatId: string, otherUser: UserProfile | null) => {
-    navigate(`/chat/${otherUser?.id || chatId}`, {
-      state: { matchedProfile: otherUser }
-    });
+  const closeOptionsModal = () => {
+    setOptionsModalOpen(false);
+    setSelectedChatId(null);
+    setSelectedChatUsername('');
   };
 
-  const getLastMessage = (chat: ChatData): string => {
-    if (!chat.messages || chat.messages.length === 0) return 'No messages yet';
-    return chat.messages[chat.messages.length - 1].text;
-  };
-
-  const getTimeAgo = (timestamp: number): string => {
-    const now = Date.now();
-    const diff = now - timestamp;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-    if (minutes < 1) return 'now';
-    if (minutes < 60) return `${minutes}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    return `${days}d ago`;
-  };
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="h-full bg-white flex flex-col pointer-events-auto">
+
+      {/* Header */}
       <div className="md:hidden p-4 border-b flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-800">Messages</h2>
         {refreshing && (
@@ -254,13 +316,9 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         )}
       </div>
 
+      {/* Body */}
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-            <p className="text-gray-500 text-sm">Loading chats...</p>
-          </div>
-        </div>
+        <ChatSkeleton />
       ) : (
         <div className="flex-1 overflow-y-auto">
           <div className="px-4 pt-6">
@@ -268,58 +326,63 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
               Conversations ({chats.length})
             </h3>
           </div>
+
           {chats.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
-              <i className="fa-solid fa-message text-4xl text-gray-300 mb-3"></i>
+              <i className="fa-solid fa-message text-4xl text-gray-300 mb-3" />
               <p className="text-gray-500 text-sm">No conversations yet. Start swiping to match!</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {chats.map((chat) => {
+              {chats.map(chat => {
                 const otherUser = getOtherUser(chat);
                 if (!otherUser) return null;
+
+                const unread   = chat.unreadCount ?? 0;
+                const username = otherUser.username || otherUser.name;
 
                 return (
                   <div
                     key={chat.id}
-                    onClick={(e) => handleChatItemClick(e, chat.id, otherUser)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleChatClick(chat.id, otherUser);
-                      }
-                    }}
-                    onTouchStart={() => handleTouchStart(chat.id, otherUser.username || otherUser.name)}
-                    onTouchEnd={handleTouchEnd}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      setSelectedChatId(chat.id);
-                      setSelectedChatUsername(otherUser.username || otherUser.name);
-                      setOptionsModalOpen(true);
-                    }}
-                    className={`flex items-center gap-4 p-4 transition-colors cursor-pointer group pointer-events-auto ${
-                      (chat.unreadCount || 0) > 0 ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 active:bg-gray-100'
-                    }`}
                     role="button"
                     tabIndex={0}
+                    onClick={e => handleChatClick(e, chat.id, otherUser)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openChat(chat.id, otherUser);
+                      }
+                    }}
+                    onTouchStart={() => handleTouchStart(chat.id, username)}
+                    onTouchEnd={handleTouchEnd}
+                    onContextMenu={e => {
+                      e.preventDefault();
+                      setSelectedChatId(chat.id);
+                      setSelectedChatUsername(username);
+                      setOptionsModalOpen(true);
+                    }}
+                    className={`flex items-center gap-4 p-4 transition-colors cursor-pointer pointer-events-auto ${
+                      unread > 0 ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 active:bg-gray-100'
+                    }`}
                   >
-                    <div className="relative">
-                      <img
-                        src={otherUser.images?.[0] || 'https://via.placeholder.com/56'}
-                        className="w-14 h-14 rounded-full object-cover shadow-sm border border-gray-100"
-                        alt={otherUser.username || otherUser.name}
-                        loading="lazy"
-                      />
+                    {/* Avatar with online indicator */}
+                    <div className="relative shrink-0">
+                      <Avatar src={otherUser.images?.[0]} alt={username} />
+                      {otherUser.isOnline && (
+                        <span className="absolute bottom-0.5 right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full" />
+                      )}
                     </div>
+
+                    {/* Chat info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-center mb-0.5">
-                        <h4 className={`text-gray-900 truncate text-sm ${(chat.unreadCount || 0) > 0 ? 'font-black' : 'font-bold'}`}>
-                          {otherUser.username || otherUser.name}
+                        <h4 className={`text-gray-900 truncate text-sm ${unread > 0 ? 'font-black' : 'font-bold'}`}>
+                          {username}
                         </h4>
-                        <div className="flex items-center gap-2">
-                          {(chat.unreadCount || 0) > 0 && (
+                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                          {unread > 0 && (
                             <span className="inline-flex items-center justify-center bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-                              {(chat.unreadCount || 0) > 9 ? '9+' : chat.unreadCount}
+                              {unread > 9 ? '9+' : unread}
                             </span>
                           )}
                           <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
@@ -327,16 +390,14 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between mb-1">
-                        <p className={`text-xs truncate font-medium ${(chat.unreadCount || 0) > 0 ? 'text-gray-600 font-semibold' : 'text-gray-400'}`}>
-                          {getLastMessage(chat)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-semibold uppercase tracking-tight ${otherUser.isOnline ? 'text-emerald-600' : 'text-gray-500'}`}>
-                          {formatLastSeen(otherUser.lastSeen, !!otherUser.isOnline)}
-                        </span>
-                      </div>
+
+                      <p className={`text-xs truncate font-medium ${unread > 0 ? 'text-gray-600 font-semibold' : 'text-gray-400'}`}>
+                        {getLastMessage(chat)}
+                      </p>
+
+                      <span className={`text-[10px] font-semibold uppercase tracking-tight ${otherUser.isOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        {formatLastSeen(otherUser.lastSeen, !!otherUser.isOnline)}
+                      </span>
                     </div>
                   </div>
                 );
@@ -346,13 +407,10 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         </div>
       )}
 
+      {/* Options Modal */}
       <ChatOptionsModal
         isOpen={optionsModalOpen}
-        onClose={() => {
-          setOptionsModalOpen(false);
-          setSelectedChatId(null);
-          setSelectedChatUsername('');
-        }}
+        onClose={closeOptionsModal}
         onDelete={handleDeleteChat}
         onBlock={handleBlockChat}
         chatUsername={selectedChatUsername}
