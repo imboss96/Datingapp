@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { UserProfile, UserRole } from '../types';
 import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
+import { calculateDistance, DISTANCE_RANGES, getDistanceRangeLabel } from '../services/distanceUtils';
 import MatchModal from './MatchModal';
 import UserProfileModal from './UserProfileModal';
 
@@ -36,27 +37,49 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [maxDistance, setMaxDistance] = useState<number>(DISTANCE_RANGES.THOUSAND_KM); // Default: 1000 km
+  const [showDistanceFilter, setShowDistanceFilter] = useState(false);
   const BATCH_SIZE = 100; // Load 100 profiles at a time instead of 50
   const cardRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
   const doubleTapTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  // Calculate match score based on location and interests
+  // Calculate distance between current user and another user
+  const getDistance = (profile: UserProfile): number | null => {
+    if (!currentUser.coordinates || !profile.coordinates) return null;
+    return calculateDistance(currentUser.coordinates, profile.coordinates);
+  };
+
+  // Calculate match score based on location, distance, and interests
   const calculateMatchScore = (profile: UserProfile): number => {
     let score = 0;
     
-    // Location match (30 points)
+    // Location match (20 points)
     if (profile.location === currentUser.location) {
-      score += 30;
+      score += 20;
+    }
+
+    // Distance proximity bonus (30 points max)
+    const distance = getDistance(profile);
+    if (distance !== null) {
+      if (distance <= 1) {
+        score += 30; // Same area
+      } else if (distance <= 5) {
+        score += 25; // Within 5 km
+      } else if (distance <= 10) {
+        score += 20; // Within 10 km
+      } else if (distance <= 50) {
+        score += 10; // Within 50 km
+      }
     }
     
-    // Interest overlap (70 points max)
+    // Interest overlap (50 points max)
     const commonInterests = profile.interests.filter(interest => 
       currentUser.interests.includes(interest)
     ).length;
     if (commonInterests > 0) {
-      score += Math.min(commonInterests * 10, 70);
+      score += Math.min(commonInterests * 10, 50);
     }
     
     return score;
@@ -67,20 +90,34 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     return profiles.sort((a, b) => calculateMatchScore(b) - calculateMatchScore(a));
   };
 
-  // Fetch a batch of profiles with pagination
+  // Filter profiles by distance
+  const filterByDistance = (profiles: UserProfile[]): UserProfile[] => {
+    if (!currentUser.coordinates) return profiles;
+    
+    return profiles.filter((profile) => {
+      const distance = getDistance(profile);
+      if (distance === null) return false;
+      return distance <= maxDistance;
+    });
+  };
+
+  // Fetch a batch of profiles with pagination and distance filtering
   const fetchProfileBatch = async (batchNumber: number) => {
     try {
       const skip = batchNumber * BATCH_SIZE;
-      console.log(`[DEBUG SwiperScreen] Fetching batch ${batchNumber} (skip=${skip}, limit=${BATCH_SIZE})`);
+      console.log(`[DEBUG SwiperScreen] Fetching batch ${batchNumber} (skip=${skip}, limit=${BATCH_SIZE}, maxDistance=${maxDistance}km)`);
       
       // Call API with limit and skip for pagination
       const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, true);
       
       console.log(`[DEBUG SwiperScreen] Fetched ${batchUsers.length} profiles in batch ${batchNumber}`);
       
-      // Filter out current user and sort by match score
+      // Filter out current user, apply distance filter, and sort by match score
       const otherProfiles = batchUsers.filter((user: UserProfile) => user.id !== currentUser.id);
-      const sortedProfiles = sortByMatchScore(otherProfiles);
+      const distanceFiltered = filterByDistance(otherProfiles);
+      const sortedProfiles = sortByMatchScore(distanceFiltered);
+      
+      console.log(`[DEBUG SwiperScreen] After distance filter (${maxDistance}km): ${sortedProfiles.length} profiles`);
       
       return sortedProfiles;
     } catch (err: any) {
@@ -461,9 +498,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       `}</style>
       <div className="h-full flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-white md:bg-gray-50 pt-2 md:pt-8">
         <div className="w-full flex-1 md:h-full max-w-[420px] md:max-h-[700px] flex flex-col relative group">
-        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-end pointer-events-auto">
+        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto gap-2">
           {searchOpen ? (
-            <div className="w-full flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2">
               <input
                 autoFocus
                 value={query}
@@ -480,13 +517,60 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="ml-auto w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border"
-              title="Search"
-            >
-              <i className="fa-solid fa-magnifying-glass"></i>
-            </button>
+            <>
+              {/* Distance Filter Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowDistanceFilter(!showDistanceFilter)}
+                  className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border hover:bg-white transition-colors"
+                  title="Distance filter"
+                >
+                  <i className="fa-solid fa-location-crosshairs text-red-500"></i>
+                </button>
+                {showDistanceFilter && (
+                  <div className="absolute top-12 left-0 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 w-56 z-50">
+                    <h3 className="font-bold text-gray-800 mb-3 text-sm">Distance Range</h3>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {[
+                        DISTANCE_RANGES.ONE_KM,
+                        DISTANCE_RANGES.FIVE_KM,
+                        DISTANCE_RANGES.TEN_KM,
+                        DISTANCE_RANGES.FIFTY_KM,
+                        DISTANCE_RANGES.HUNDRED_KM,
+                        DISTANCE_RANGES.FIVE_HUNDRED_KM,
+                        DISTANCE_RANGES.THOUSAND_KM,
+                        DISTANCE_RANGES.WORLDWIDE,
+                      ].map((distance) => (
+                        <button
+                          key={distance}
+                          onClick={() => {
+                            setMaxDistance(distance);
+                            setCurrentIndex(0);
+                            setCurrentBatch(0);
+                            setProfiles([]);
+                            setShowDistanceFilter(false);
+                          }}
+                          className={`w-full px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                            maxDistance === distance
+                              ? 'bg-red-100 text-red-700 font-bold border border-red-300'
+                              : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {getDistanceRangeLabel(distance)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="ml-auto w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border hover:bg-white transition-colors"
+                title="Search"
+              >
+                <i className="fa-solid fa-magnifying-glass"></i>
+              </button>
+            </>
           )}
         </div>
         <div 
