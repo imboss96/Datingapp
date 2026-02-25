@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
+import { formatLastSeen } from '../services/lastSeenUtils';
 import displayName from '../src/utils/formatName';
 
 interface Match {
@@ -154,6 +155,16 @@ const MatchesList: React.FC<MatchesListProps> = ({ currentUser, onSelectMatch })
                   className="w-full h-full object-cover"
                 />
                 
+                {/* Online Status Indicator */}
+                <div className="absolute top-4 left-4">
+                  <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-full ${
+                    match.user.isOnline ? 'bg-emerald-500' : 'bg-gray-500'
+                  } text-white text-[10px] font-bold uppercase shadow-lg`}>
+                    <span className={`w-2 h-2 rounded-full ${match.user.isOnline ? 'bg-white animate-pulse' : 'bg-gray-300'}`}></span>
+                    {match.user.isOnline ? 'Active Now' : 'Offline'}
+                  </div>
+                </div>
+                
                 {/* Match Score Badge */}
                 <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1.5 rounded-full flex items-center gap-1 font-bold shadow-lg">
                   <i className="fa-solid fa-heart text-sm"></i>
@@ -176,6 +187,9 @@ const MatchesList: React.FC<MatchesListProps> = ({ currentUser, onSelectMatch })
                     <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
                       <i className="fa-solid fa-map-pin text-red-500 text-xs"></i>
                       {match.user.location}
+                    </p>
+                    <p className={`text-xs font-semibold mt-1 ${match.user.isOnline ? 'text-emerald-600' : 'text-gray-600'}`}>
+                      {formatLastSeen(match.user.lastSeen, !!match.user.isOnline)}
                     </p>
                   </div>
                 </div>
