@@ -5,6 +5,7 @@ import { UserProfile, Message, UserRole, MediaFile } from '../types';
 import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
 import { useWebSocket } from '../services/useWebSocket';
+import { formatLastSeen } from '../services/lastSeenUtils';
 import MediaRenderer from './MediaRenderer';
 import VideoCallRoom from './VideoCallRoom';
 import VerificationBadge from './VerificationBadge';
@@ -488,8 +489,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                   <VerificationBadge verified={chatUser.isPhotoVerified || (chatUser as any).photoVerificationStatus === 'approved'} size="sm" />
                 </h3>
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">Active Now</span>
+                  <span className={`w-2 h-2 rounded-full ${chatUser.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`}></span>
+                  <span className={`text-[11px] font-bold uppercase tracking-widest ${chatUser.isOnline ? 'text-emerald-600' : 'text-gray-500'}`}>
+                    {formatLastSeen(chatUser.lastSeen, !!chatUser.isOnline)}
+                  </span>
                 </div>
               </div>
             </button>

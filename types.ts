@@ -73,6 +73,9 @@ export interface UserProfile {
   // Account Status
   suspended?: boolean;
   banned?: boolean;
+  // Online Status
+  isOnline?: boolean;
+  lastSeen?: number; // Timestamp of last activity (milliseconds)
 }
 
 export interface MediaFile {

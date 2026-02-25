@@ -18,11 +18,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
   const messageHandlersRef = useRef<Set<(data: any) => void>>(new Set());
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isConnectingRef = useRef(false);
+  const isMountedRef = useRef(true);
   const [isConnected, setIsConnected] = React.useState(false);
 
   const connect = useCallback(() => {
-    if (!userId) {
-      console.log('[WebSocketProvider] Cannot connect: userId not provided');
+    if (!userId || isConnectingRef.current) {
+      console.log('[WebSocketProvider] Cannot connect: userId not provided or already connecting');
       return;
     }
 
@@ -31,6 +33,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
       return;
     }
 
+    isConnectingRef.current = true;
     let wsUrl: string;
 
     const wsEnv = import.meta.env.VITE_WS_URL;
@@ -50,6 +53,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        isConnectingRef.current = false;
         console.log('[WebSocketProvider] 🟢 Connected successfully');
         setIsConnected(true);
         ws.send(JSON.stringify({
@@ -86,39 +90,49 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
 
       ws.onerror = (error) => {
         console.error('[WebSocketProvider] ❌ Error:', error);
+        isConnectingRef.current = false;
         setIsConnected(false);
       };
 
       ws.onclose = () => {
+        isConnectingRef.current = false;
         console.log('[WebSocketProvider] 🔴 Disconnected, attempting to reconnect in 5 seconds...');
         setIsConnected(false);
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
 
         if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('[WebSocketProvider] Reconnecting...');
-          connect();
-        }, 5000);
+        if (isMountedRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('[WebSocketProvider] Reconnecting...');
+            connect();
+          }, 5000);
+        }
       };
 
       wsRef.current = ws;
     } catch (err) {
       console.error('[WebSocketProvider] ❌ Connection error:', err);
+      isConnectingRef.current = false;
       setIsConnected(false);
     }
   }, [userId]);
 
   useEffect(() => {
-    connect();
+    isMountedRef.current = true;
+    if (userId) {
+      connect();
+    }
 
     return () => {
+      isMountedRef.current = false;
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
     };
-  }, [userId, connect]);
+  }, [userId]);
 
   const addMessageHandler = useCallback((handler: (data: any) => void) => {
     console.log('[WebSocketProvider] Adding message handler');

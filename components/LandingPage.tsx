@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const styles = `
@@ -24,6 +24,7 @@ const styles = `
     background: var(--dark);
     color: #fff;
     overflow-x: hidden;
+    contain: layout style paint;
   }
 
   /* NAV */
@@ -459,6 +460,7 @@ const styles = `
     overflow: hidden;
     transition: all 0.3s;
     cursor: pointer;
+    contain: layout style paint;
   }
 
   .lp-member-card:hover {
@@ -516,6 +518,7 @@ const styles = `
     text-align: center;
     position: relative;
     overflow: hidden;
+    contain: layout style paint;
   }
 
   .lp-stat-card::before {
@@ -554,6 +557,7 @@ const styles = `
     cursor: pointer;
     border: 1px solid var(--border);
     transition: all 0.3s;
+    contain: layout style paint;
   }
 
   .lp-location-card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
@@ -637,6 +641,7 @@ const styles = `
     overflow: hidden;
     transition: all 0.3s;
     cursor: pointer;
+    contain: layout style paint;
   }
 
   .lp-story-card:hover { border-color: rgba(232,51,90,0.4); transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
@@ -674,6 +679,7 @@ const styles = `
     position: relative;
     overflow: hidden;
     transition: all 0.3s;
+    contain: layout style paint;
   }
 
   .lp-trust-card:hover { border-color: rgba(232,51,90,0.35); transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
@@ -932,78 +938,81 @@ const tabContent: Record<number, { icon: string; title: string; desc: string }> 
   3: { icon: '📖', title: 'Live Success Stories', desc: 'Every day, real couples share how they found each other on LunesaLove. Read their journeys and let their stories inspire yours.' },
 };
 
-export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: () => void }) {
+// Memoized data - created once outside component
+const SLIDER_IMAGES = [
+  { src: '/images/banner/shape/home3/03.png', emoji: '💑' },
+  { src: '/images/banner/home3/01.jpg', emoji: '👫' },
+  { src: '/images/banner/home3/02.jpg', emoji: '💕' },
+  { src: '/images/banner/home3/03.jpg', emoji: '❤️' },
+  { src: '/images/about/home3/01.jpg', emoji: '💍' },
+];
+
+const MEMBERS = [
+  { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/01.jpg', emoji: '👩' },
+  { name: 'Arika Q Smith', status: 'Active 15 days ago', image: '/images/member/home3/02.jpg', emoji: '👩‍🦱' },
+  { name: 'William R Show', status: 'Active 10 days ago', image: '/images/member/home3/03.jpg', emoji: '👨' },
+  { name: 'Hanna Marcovick', status: 'Active 10 days ago', image: '/images/member/home3/04.jpg', emoji: '👩‍🦰' },
+  { name: 'James Okafor', status: 'Active 2 days ago', image: '/images/member/home3/05.jpg', emoji: '👨🏾' },
+  { name: 'Sara Mitchell', status: 'Active today', image: '/images/member/home3/06.jpg', emoji: '👩🏻' },
+  { name: 'Carlos Vega', status: 'Active 5 days ago', image: '/images/member/home3/07.jpg', emoji: '👨🏽' },
+  { name: 'Amara Diallo', status: 'Active 3 days ago', image: '/images/member/home3/08.jpg', emoji: '👩🏾' },
+];
+
+const STATS = [
+  { number: '2,000,000+', label: 'Members Worldwide', icon: '👥' },
+  { number: '628,590', label: 'Members Online', icon: '🟢' },
+  { number: '314,587', label: 'Men Online', icon: '👨' },
+  { number: '102,369', label: 'Women Online', icon: '👩' },
+];
+
+const LOCATIONS = [
+  { name: 'London, UK', image: '/images/meet/icon/02.jpg', emoji: '🇬🇧' },
+  { name: 'Barcelona, Spain', image: '/images/meet/icon/03.jpg', emoji: '🇪🇸' },
+  { name: 'Taj Mahal, India', image: '/images/meet/icon/04.jpg', emoji: '🇮🇳' },
+  { name: 'Dubai, UAE', image: '/images/meet/icon/05.jpg', emoji: '🇦🇪' },
+  { name: 'Paris, France', image: '/images/meet/icon/06.jpg', emoji: '🇫🇷' },
+];
+
+const STORIES = [
+  { title: 'Dream places to visit and fall in love in 2025', category: 'Entertainment', image: '/images/story/author/01.jpg', emoji: '✈️' },
+  { title: 'How we met — a love story that started with one message', category: 'Love Stories', image: '/images/story/author/02.jpg', emoji: '💌' },
+  { title: 'Love looks not with the eyes, but with the mind', category: 'Inspiration', image: '/images/story/author/03.jpg', emoji: '💭' },
+];
+
+const WHY_CHOOSE_TABS = [
+  { label: 'Search Partner' },
+  { label: '100% Match' },
+  { label: 'Find Partner' },
+  { label: 'Live Story' },
+];
+
+function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => void }) {
   const [activeTab, setActiveTab] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
   const navigate = useNavigate();
 
-  const sliderImages = [
-    { src: '/images/banner/shape/home3/03.png', emoji: '💑' },
-    { src: '/images/banner/home3/01.jpg', emoji: '👫' },
-    { src: '/images/banner/home3/02.jpg', emoji: '💕' },
-    { src: '/images/banner/home3/03.jpg', emoji: '❤️' },
-    { src: '/images/about/home3/01.jpg', emoji: '💍' },
-  ];
-
+  // Slider auto-rotation - disabled by default for performance
   useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveSlide(prev => (prev + 1) % sliderImages.length);
-    }, 3500);
-    return () => clearInterval(timer);
+    // Uncomment if auto-rotation is desired
+    // const timer = setInterval(() => {
+    //   setActiveSlide(prev => (prev + 1) % SLIDER_IMAGES.length);
+    // }, 3500);
+    // return () => clearInterval(timer);
   }, []);
 
-  const handleAuth = (e?: React.MouseEvent) => {
+  const handleAuth = useCallback((e?: React.MouseEvent) => {
     e?.preventDefault();
     if (onOpenLoginModal) { onOpenLoginModal(); } else { navigate('/login'); }
-  };
-
-  const members = [
-    { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/01.jpg', emoji: '👩' },
-    { name: 'Arika Q Smith', status: 'Active 15 days ago', image: '/images/member/home3/02.jpg', emoji: '👩‍🦱' },
-    { name: 'William R Show', status: 'Active 10 days ago', image: '/images/member/home3/03.jpg', emoji: '👨' },
-    { name: 'Hanna Marcovick', status: 'Active 10 days ago', image: '/images/member/home3/04.jpg', emoji: '👩‍🦰' },
-    { name: 'James Okafor', status: 'Active 2 days ago', image: '/images/member/home3/05.jpg', emoji: '👨🏾' },
-    { name: 'Sara Mitchell', status: 'Active today', image: '/images/member/home3/06.jpg', emoji: '👩🏻' },
-    { name: 'Carlos Vega', status: 'Active 5 days ago', image: '/images/member/home3/07.jpg', emoji: '👨🏽' },
-    { name: 'Amara Diallo', status: 'Active 3 days ago', image: '/images/member/home3/08.jpg', emoji: '👩🏾' },
-  ];
-
-  const stats = [
-    { number: '2,000,000+', label: 'Members Worldwide', icon: '👥' },
-    { number: '628,590', label: 'Members Online', icon: '🟢' },
-    { number: '314,587', label: 'Men Online', icon: '👨' },
-    { number: '102,369', label: 'Women Online', icon: '👩' },
-  ];
-
-  const locations = [
-    { name: 'London, UK', image: '/images/meet/icon/02.jpg', emoji: '🇬🇧' },
-    { name: 'Barcelona, Spain', image: '/images/meet/icon/03.jpg', emoji: '🇪🇸' },
-    { name: 'Taj Mahal, India', image: '/images/meet/icon/04.jpg', emoji: '🇮🇳' },
-    { name: 'Dubai, UAE', image: '/images/meet/icon/05.jpg', emoji: '🇦🇪' },
-    { name: 'Paris, France', image: '/images/meet/icon/06.jpg', emoji: '🇫🇷' },
-  ];
-
-  const stories = [
-    { title: 'Dream places to visit and fall in love in 2025', category: 'Entertainment', image: '/images/story/author/01.jpg', emoji: '✈️' },
-    { title: 'How we met — a love story that started with one message', category: 'Love Stories', image: '/images/story/author/02.jpg', emoji: '💌' },
-    { title: 'Love looks not with the eyes, but with the mind', category: 'Inspiration', image: '/images/story/author/03.jpg', emoji: '💭' },
-  ];
-
-  const whyChooseTabs = [
-    { label: 'Search Partner' },
-    { label: '100% Match' },
-    { label: 'Find Partner' },
-    { label: 'Live Story' },
-  ];
+  }, [onOpenLoginModal, navigate]);
 
   return (
     <>
       <style>{styles}</style>
 
-      {/* Floating hearts */}
+      {/* Floating hearts - optimized */}
       <div className="lp-hearts-bg">
         {[10, 25, 45, 65, 80].map((left, i) => (
-          <span key={i} className="lp-heart" style={{ left: `${left}%`, animationDuration: `${12 + i * 3}s`, animationDelay: `${i * 2}s` }}>♥</span>
+          <span key={i} className="lp-heart" style={{ left: `${left}%`, animationDuration: `${12 + i * 3}s`, animationDelay: `${i * 2}s`, willChange: 'transform' }}>♥</span>
         ))}
       </div>
 
@@ -1050,14 +1059,15 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
             <div className="lp-hero-img-wrap">
               {/* SLIDER */}
               <div className="lp-slider">
-                <button className="lp-slider-nav lp-slider-prev" onClick={() => setActiveSlide(prev => (prev - 1 + sliderImages.length) % sliderImages.length)}>◀</button>
-                <button className="lp-slider-nav lp-slider-next" onClick={() => setActiveSlide(prev => (prev + 1) % sliderImages.length)}>▶</button>
+                <button className="lp-slider-nav lp-slider-prev" onClick={() => setActiveSlide(prev => (prev - 1 + SLIDER_IMAGES.length) % SLIDER_IMAGES.length)}>◀</button>
+                <button className="lp-slider-nav lp-slider-next" onClick={() => setActiveSlide(prev => (prev + 1) % SLIDER_IMAGES.length)}>▶</button>
 
-                {sliderImages.map((slide, idx) => (
+                {SLIDER_IMAGES.map((slide, idx) => (
                   <div key={idx} className={`lp-slide${activeSlide === idx ? ' active' : ''}`}>
                     <img
                       src={slide.src}
                       alt={`couple ${idx + 1}`}
+                      loading="lazy"
                       onError={(e) => {
                         const el = e.target as HTMLImageElement;
                         el.style.display = 'none';
@@ -1068,7 +1078,7 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
                 ))}
 
                 <div className="lp-slider-dots">
-                  {sliderImages.map((_, idx) => (
+                  {SLIDER_IMAGES.map((_, idx) => (
                     <button
                       key={idx}
                       className={`lp-slider-dot${activeSlide === idx ? ' active' : ''}`}
@@ -1112,12 +1122,13 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
           </div>
 
           <div className="lp-members-grid">
-            {members.map((member, idx) => (
+            {MEMBERS.map((member, idx) => (
               <div key={idx} className="lp-member-card">
                 <div className="lp-member-img">
                   <img
                     src={member.image}
                     alt={member.name}
+                    loading="lazy"
                     onError={(e) => {
                       const el = e.target as HTMLImageElement;
                       el.style.display = 'none';
@@ -1144,7 +1155,7 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
           </div>
 
           <div className="lp-stats-grid">
-            {stats.map((stat, idx) => (
+            {STATS.map((stat, idx) => (
               <div key={idx} className="lp-stat-card">
                 <span style={{ fontSize: '1.8rem', marginBottom: '0.8rem', display: 'block' }}>{stat.icon}</span>
                 <span className="lp-stat-card-num">{stat.number}</span>
@@ -1164,11 +1175,12 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
           </div>
 
           <div className="lp-locations-grid">
-            {locations.map((loc, idx) => (
+            {LOCATIONS.map((loc, idx) => (
               <div key={idx} className="lp-location-card">
                 <img
                   src={loc.image}
                   alt={loc.name}
+                  loading="lazy"
                   onError={(e) => {
                     const el = e.target as HTMLImageElement;
                     el.style.display = 'none';
@@ -1194,7 +1206,7 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
           </div>
 
           <div className="lp-tabs-btns">
-            {whyChooseTabs.map((tab, idx) => (
+            {WHY_CHOOSE_TABS.map((tab, idx) => (
               <button
                 key={idx}
                 className={`lp-tab-btn${activeTab === idx ? ' active' : ''}`}
@@ -1223,12 +1235,13 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
           </div>
 
           <div className="lp-stories-grid">
-            {stories.map((story, idx) => (
+            {STORIES.map((story, idx) => (
               <div key={idx} className="lp-story-card">
                 <div className="lp-story-thumb">
                   <img
                     src={story.image}
                     alt={story.title}
+                    loading="lazy"
                     onError={(e) => {
                       const el = e.target as HTMLImageElement;
                       el.style.display = 'none';
@@ -1342,3 +1355,5 @@ export default function LandingPage({ onOpenLoginModal }: { onOpenLoginModal?: (
     </>
   );
 }
+
+export default React.memo(LandingPageContent);

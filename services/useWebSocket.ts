@@ -8,13 +8,21 @@ export const useWebSocket = (userId: string, onMessageNotification: any = null, 
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const messageHandlersRef = useRef<Set<(data: any) => void>>(new Set());
+  const isConnectingRef = useRef(false);
+  const isMountedRef = useRef(true);
 
   const connect = useCallback(() => {
-    if (!userId) {
-      console.debug('[WebSocket] Cannot connect: userId not provided');
+    if (!userId || isConnectingRef.current) {
+      console.debug('[WebSocket] Cannot connect: userId not provided or already connecting');
       return;
     }
 
+    if (wsRef.current?.readyState === 1) {
+      console.log('[WebSocket] Already connected');
+      return;
+    }
+
+    isConnectingRef.current = true;
     let wsUrl: string;
     
     const wsEnv = import.meta.env.VITE_WS_URL;
@@ -34,6 +42,7 @@ export const useWebSocket = (userId: string, onMessageNotification: any = null, 
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        isConnectingRef.current = false;
         console.log('[WebSocket] Connected');
         ws.send(JSON.stringify({
           type: 'register',
@@ -80,35 +89,45 @@ export const useWebSocket = (userId: string, onMessageNotification: any = null, 
 
       ws.onerror = (error) => {
         console.error('[WebSocket] Error:', error);
+        isConnectingRef.current = false;
       };
 
       ws.onclose = () => {
+        isConnectingRef.current = false;
         console.log('[WebSocket] Disconnected, attempting to reconnect in 5 seconds...');
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         
         if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, 5000);
+        if (isMountedRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, 5000);
+        }
       };
 
       wsRef.current = ws;
     } catch (err) {
       console.error('[WebSocket] Connection error:', err);
+      isConnectingRef.current = false;
     }
   }, [userId, onMessageNotification, onTypingIndicator]);
 
   useEffect(() => {
-    connect();
+    isMountedRef.current = true;
+    if (userId) {
+      connect();
+    }
 
     return () => {
+      isMountedRef.current = false;
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
     };
-  }, [userId, connect]);
+  }, [userId]);
 
   const sendTypingStatus = useCallback((chatId: string, isTyping: boolean) => {
     if (wsRef.current && wsRef.current.readyState === 1) {
