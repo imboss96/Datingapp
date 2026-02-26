@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import apiClient from '../services/apiClient';
 
@@ -17,11 +17,59 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
   const [age, setAge] = useState('');
   const [bio, setBio] = useState('');
   const [location, setLocation] = useState('');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [interests, setInterests] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [imageUrl, setImageUrl] = useState(profilePicture || '');
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+
+  // Auto-fill location from GPS
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          setLatitude(latitude);
+          setLongitude(longitude);
+          // Optionally, reverse geocode to get city/country
+          try {
+            const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
+            if (response.ok) {
+              const data = await response.json();
+              const locationString = data.city ? `${data.city}, ${data.countryName}` : data.countryName || `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+              setLocation(locationString);
+            } else {
+              setLocation(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
+            }
+          } catch {
+            setLocation(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
+          }
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          // Fallback to IP location
+          fetch('https://ipapi.co/json/')
+            .then(res => res.json())
+            .then(data => {
+              const locationString = data.city && data.country_name ? `${data.city}, ${data.country_name}` : data.country_name || 'Unknown';
+              setLocation(locationString);
+            })
+            .catch(() => setLocation(''));
+        }
+      );
+    } else {
+      // Fallback to IP
+      fetch('https://ipapi.co/json/')
+        .then(res => res.json())
+        .then(data => {
+          const locationString = data.city && data.country_name ? `${data.city}, ${data.country_name}` : data.country_name || 'Unknown';
+          setLocation(locationString);
+        })
+        .catch(() => setLocation(''));
+    }
+  }, []);
 
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
@@ -84,7 +132,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
       // Update user profile in MongoDB
       console.log('[DEBUG ProfileSetup] Updating profile with:', { userId, username, name, age: parseInt(age), bio, location, interests: selectedInterests });
       const allImages = [...uploadedImages, imageUrl].filter(img => img);
-      const updatedUser = await apiClient.updateProfile(userId, {
+      const updateData: any = {
         username,
         name,
         age: parseInt(age),
@@ -93,7 +141,11 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
         interests: selectedInterests,
         images: allImages,
         profilePicture: allImages[0] || profilePicture
-      });
+      };
+      if (latitude !== null && longitude !== null) {
+        updateData.coordinates = [longitude, latitude]; // GeoJSON: [lng, lat]
+      }
+      const updatedUser = await apiClient.updateProfile(userId, updateData);
       console.log('[DEBUG ProfileSetup] Profile update response:', updatedUser);
 
       onComplete(updatedUser);

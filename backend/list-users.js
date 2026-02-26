@@ -19,7 +19,7 @@ async function listAllUsers() {
     console.log('-'.repeat(80));
     
     users.forEach(u => {
-      const id = u.id.substring(0, 12) + '...';
+      const id = u.id;
       const name = u.name || 'N/A';
       const username = u.username || 'N/A';
       const role = u.role || 'USER';

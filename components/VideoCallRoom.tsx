@@ -4,7 +4,7 @@ import { UserProfile } from '../types';
 import { useAlert } from '../services/AlertContext';
 import displayName from '../src/utils/formatName';
 import { useWebRTC } from '../services/useWebRTC';
-import { useWebSocket } from '../services/useWebSocket';
+import { useWebSocketContext } from '../services/WebSocketProvider';
 
 interface VideoCallRoomProps {
   currentUser: UserProfile;
@@ -37,7 +37,8 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   const webRtcRef = useRef<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  const { sendMessage, addMessageHandler } = useWebSocket(currentUser.id);
+  // ── Replaced useWebSocket with useWebSocketContext ──
+  const { sendMessage, addMessageHandler } = useWebSocketContext();
 
   // Define endCall before callbacks that use it
   const endCall = useCallback(() => {
@@ -47,10 +48,12 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     navigate('/chats');
   }, [onCallEnd, navigate]);
 
-  // Define callbacks BEFORE using them in hooks (prevents TDZ errors)
   const handleConnectionStateChange = useCallback((state: RTCPeerConnectionState) => {
     console.log('[VideoCallRoom] Connection state:', state);
-    setConnectionStatus(state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : 'disconnected');
+    setConnectionStatus(
+      state === 'connected' ? 'connected' :
+      state === 'connecting' ? 'connecting' : 'disconnected'
+    );
   }, []);
 
   const handleRemoteStream = useCallback((stream: MediaStream) => {
@@ -59,7 +62,6 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       tracks: stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled }))
     });
     if (remoteVideoRef.current) {
-      console.log('[VideoCallRoom] Assigning remote stream to video element');
       remoteVideoRef.current.srcObject = stream;
     } else {
       console.warn('[VideoCallRoom] remoteVideoRef not available');
@@ -68,7 +70,6 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   const handleWebSocketMessage = useCallback((data: any) => {
     console.log('[VideoCallRoom] WebSocket message:', data.type);
-    
     if (data.type === 'call_offer' && webRtcRef.current) {
       webRtcRef.current.handleOffer(data.offer);
     } else if (data.type === 'call_answer' && webRtcRef.current) {
@@ -90,13 +91,12 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   const handleWSSignaling = useCallback((data: any) => {
     const transformedData = {
       ...data,
-      type: data.type.replace('send_', '') // Convert 'send_ice_candidate' to 'ice_candidate' etc.
+      type: data.type.replace('send_', '')
     };
     console.log('[VideoCallRoom] Sending WebRTC signal:', transformedData.type);
     sendMessage(transformedData);
   }, [sendMessage]);
 
-  // Initialize WebRTC hook at component level (not in useEffect)
   const webRtcHook = useWebRTC({
     userId: currentUser.id,
     otherUserId: otherUserId,
@@ -109,7 +109,6 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     wsMessageHandler: handleWSSignaling
   });
 
-  // Setup WebRTC ref with hook data
   useEffect(() => {
     if (webRtcHook) {
       webRtcRef.current = webRtcHook;
@@ -125,23 +124,14 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   // Update local video stream
   useEffect(() => {
-    console.log('[VideoCallRoom] Local stream update:', {
-      hasWebRtcHook: !!webRtcHook,
-      hasLocalStream: !!webRtcHook?.localStream,
-      localStreamTracks: webRtcHook?.localStream?.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled }))
-    });
-    
     if (webRtcHook?.localStream && localVideoRef.current) {
-      console.log('[VideoCallRoom] Assigning local stream to video element');
       localVideoRef.current.srcObject = webRtcHook.localStream;
     }
   }, [webRtcHook]);
 
   // Call timer
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCallDuration((prev) => prev + 1);
-    }, 1000);
+    const interval = setInterval(() => setCallDuration(prev => prev + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -155,33 +145,26 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   }, []);
 
   const formatTime = (seconds: number) => {
-    const hours = Math.floor(seconds / 3600);
+    const hours   = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
+    const secs    = seconds % 60;
+    if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   const getQualityIcon = () => {
     switch (callQuality) {
-      case 'good':
-        return { icon: 'fa-signal', color: 'text-emerald-500' };
-      case 'moderate':
-        return { icon: 'fa-signal', color: 'text-amber-500' };
-      case 'poor':
-        return { icon: 'fa-triangle-exclamation', color: 'text-red-500' };
+      case 'good':     return { icon: 'fa-signal', color: 'text-emerald-500' };
+      case 'moderate': return { icon: 'fa-signal', color: 'text-amber-500' };
+      case 'poor':     return { icon: 'fa-triangle-exclamation', color: 'text-red-500' };
     }
   };
 
   const quality = getQualityIcon();
-
-  // Debug info - show if streams are missing
-  const hasLocalStream = webRtcHook?.localStream;
-  const localTracks = webRtcHook?.localStream?.getTracks() || [];
-  const hasVideoTrack = localTracks.some(t => t.kind === 'video');
-  const hasAudioTrack = localTracks.some(t => t.kind === 'audio');
+  const hasLocalStream  = webRtcHook?.localStream;
+  const localTracks     = webRtcHook?.localStream?.getTracks() || [];
+  const hasVideoTrack   = localTracks.some((t: MediaStreamTrack) => t.kind === 'video');
+  const hasAudioTrack   = localTracks.some((t: MediaStreamTrack) => t.kind === 'audio');
 
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden flex items-center justify-center group">
@@ -204,7 +187,6 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
               <i className="fa-solid fa-exclamation-triangle text-4xl text-red-500 mb-4 block"></i>
               <h2 className="text-2xl font-bold text-gray-800 mb-2">Device Error</h2>
               <p className="text-gray-600 mb-6">{streamError}</p>
-              
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
                 <p className="text-sm font-bold text-blue-900 mb-2">To fix this:</p>
                 <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
@@ -215,8 +197,7 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
                   <li>If in RDP/VM, enable device redirection</li>
                 </ul>
               </div>
-              
-              <button 
+              <button
                 onClick={() => endCall()}
                 className="w-full px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition"
               >
@@ -226,18 +207,14 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           </div>
         </div>
       )}
+
       {/* Main Video Grid */}
       <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-0">
         {/* Remote Video */}
         <div className="relative bg-gray-900 flex items-center justify-center">
           {isVideo ? (
             <>
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="w-full h-full object-cover"
-              />
+              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50"></div>
               <div className="absolute bottom-8 left-8 z-10">
                 <div className="flex items-center gap-3">
@@ -274,13 +251,7 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         {/* Local Video */}
         {isVideo && (
           <div className="hidden md:flex relative bg-gray-900 items-center justify-center border-l border-gray-700">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
+            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent"></div>
             <div className="absolute top-8 right-8 z-10">
               <div className="text-right text-white">
@@ -319,22 +290,21 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 bg-black/60 backdrop-blur px-4 py-2 rounded-full">
               <i className="fa-solid fa-signal text-emerald-500 animate-pulse"></i>
-              <span className="text-sm font-bold">{connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}</span>
+              <span className="text-sm font-bold">
+                {connectionStatus === 'connected' ? 'Connected' :
+                 connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
+              </span>
             </div>
             <div className="bg-black/60 backdrop-blur px-4 py-2 rounded-full font-bold text-lg">
               {formatTime(callDuration)}
             </div>
           </div>
-          <button
-            onClick={() => setShowCallInfo(false)}
-            className="text-gray-300 hover:text-white transition p-2"
-          >
+          <button onClick={() => setShowCallInfo(false)} className="text-gray-300 hover:text-white transition p-2">
             <i className="fa-solid fa-chevron-up"></i>
           </button>
         </div>
       )}
 
-      {/* Collapse Button */}
       {!showCallInfo && (
         <button
           onClick={() => setShowCallInfo(true)}
@@ -381,7 +351,7 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
             </button>
           )}
 
-          {/* Call Duration Display */}
+          {/* Call Duration */}
           <div className="bg-black/60 backdrop-blur px-6 py-3 rounded-full text-white font-bold text-lg">
             {formatTime(callDuration)}
           </div>
@@ -397,7 +367,7 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         </div>
       </div>
 
-      {/* Call Stats (Mobile) */}
+      {/* Call Stats Mobile */}
       <div className="md:hidden absolute bottom-40 left-8 right-8 bg-black/60 backdrop-blur rounded-2xl p-4 z-20">
         <div className="grid grid-cols-2 gap-4 text-white text-center">
           <div>

@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
-import { UserProfile, UserRole } from '../types';
+import { UserProfile, UserRole, VerificationStatus } from '../types';
 import apiClient from '../services/apiClient';
 import PasswordResetModal from './PasswordResetModal';
-import EmailVerificationModal from './EmailVerificationModal';
+// ...existing code...
 
 const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boolean) => void; onClose?: () => void; isModal?: boolean }> = ({ onLoginSuccess, onClose, isModal = false }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -59,32 +61,25 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
         }
 
         // Call register endpoint and then fetch authoritative user (includes role)
-        await apiClient.register(email, password, name, 25);
-        // Request OTP for email verification
-        try { await apiClient.requestEmailVerification(email); } catch (e) { /* ignore */ }
-        setShowEmailVerificationModal(true);
-        const me = await apiClient.getCurrentUser();
-        const user: UserProfile = {
-          id: me.id,
-          name: me.name,
-          username: me.username || '',
-          age: me.age || 25,
-          bio: me.bio || 'Welcome to lunesa!',
-          images: me.images || [],
-          isPremium: me.isPremium || false,
-          role: (me.role as UserRole) || UserRole.USER,
-          location: me.location || 'Not specified',
-          interests: me.interests || [],
-          coins: me.coins || 10,
-          verification: { status: 'UNVERIFIED' as const }, // Default verification status
-          blockedUsers: [], // Not implemented in backend yet
-          reportedUsers: [], // Not implemented in backend yet
-          termsOfServiceAccepted: me.termsOfServiceAccepted || false,
-          privacyPolicyAccepted: me.privacyPolicyAccepted || false,
-          cookiePolicyAccepted: me.cookiePolicyAccepted || false,
-        };
-        // New signup always needs profile setup; wait until verification or continue
-        onLoginSuccess?.(user, true);
+        try {
+          await apiClient.register(email, password, name, 25);
+          // Request OTP for email verification
+          try { await apiClient.requestEmailVerification(email); } catch (e) { /* ignore */ }
+          // Show in-page prompt and redirect
+          if (onClose) onClose();
+          navigate('/verify-email-info', { state: { email, justResent: false } });
+          return;
+        } catch (err: any) {
+          if (err.message && err.message.includes('Email registered but not verified')) {
+            // If backend says email is registered but not verified, redirect and show resend
+            if (onClose) onClose();
+            navigate('/verify-email-info', { state: { email, justResent: true } });
+            return;
+          }
+          setError(err.message || 'Registration failed');
+          setLoading(false);
+          return;
+        }
       } else {
         // Sign in validation
         if (!email || !password) {
@@ -93,31 +88,41 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
           return;
         }
 
-        // Call login endpoint and fetch authoritative user
-        await apiClient.login(email, password);
-        const me = await apiClient.getCurrentUser();
-        console.log('[DEBUG LoginPage] Fetched current user after login:', me);
-        const user: UserProfile = {
-          id: me.id,
-          name: me.name,
-          username: me.username || '',
-          age: me.age || 25,
-          bio: me.bio || 'Welcome to lunesa!',
-          images: me.images || [],
-          isPremium: me.isPremium || false,
-          role: (me.role as UserRole) || UserRole.USER,
-          location: me.location || 'Not specified',
-          interests: me.interests || [],
-          coins: me.coins || 10,
-          verification: { status: 'UNVERIFIED' as const }, // Default verification status
-          blockedUsers: [], // Not implemented in backend yet
-          reportedUsers: [], // Not implemented in backend yet
-          termsOfServiceAccepted: me.termsOfServiceAccepted || false,
-          privacyPolicyAccepted: me.privacyPolicyAccepted || false,
-          cookiePolicyAccepted: me.cookiePolicyAccepted || false,
-        };
-        // For sign-in, report as not a signup; App will decide if profile setup is needed
-        onLoginSuccess?.(user, false);
+        try {
+          await apiClient.login(email, password);
+          const me = await apiClient.getCurrentUser();
+          console.log('[DEBUG LoginPage] Fetched current user after login:', me);
+          const user: UserProfile = {
+            id: me.id,
+            name: me.name,
+            username: me.username || '',
+            age: me.age || 25,
+            bio: me.bio || 'Welcome to lunesa!',
+            images: me.images || [],
+            isPremium: me.isPremium || false,
+            role: (me.role as UserRole) || UserRole.USER,
+            location: me.location || 'Not specified',
+            interests: me.interests || [],
+            coins: me.coins || 10,
+            verification: { status: VerificationStatus.UNVERIFIED }, // Default verification status
+            blockedUsers: [], // Not implemented in backend yet
+            reportedUsers: [], // Not implemented in backend yet
+            termsOfServiceAccepted: me.termsOfServiceAccepted || false,
+            privacyPolicyAccepted: me.privacyPolicyAccepted || false,
+            cookiePolicyAccepted: me.cookiePolicyAccepted || false,
+          };
+          // For sign-in, report as not a signup; App will decide if profile setup is needed
+          onLoginSuccess?.(user, false);
+        } catch (err: any) {
+          if (err.message && err.message.toLowerCase().includes('email not verified')) {
+            // Redirect to verify email info page and trigger resend
+            if (onClose) onClose();
+            navigate('/verify-email-info', { state: { email, justResent: true } });
+            return;
+          }
+          setError(err.message || 'Authentication failed');
+          setLoading(false);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -167,7 +172,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
         location: me.location || 'Not specified',
         interests: me.interests || [],
         coins: me.coins || 10,
-        verification: { status: 'UNVERIFIED' as const }, // Default verification status
+        verification: { status: VerificationStatus.UNVERIFIED }, // Default verification status
         blockedUsers: [], // Not implemented in backend yet
         reportedUsers: [], // Not implemented in backend yet
         termsOfServiceAccepted: me.termsOfServiceAccepted || false,
@@ -347,18 +352,7 @@ const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boole
     </div>
   );
 
-  return (
-    <>
-      {content}
-      {showEmailVerificationModal && (
-        <EmailVerificationModal
-          email={email}
-          onClose={() => setShowEmailVerificationModal(false)}
-          onVerified={() => { /* optional hook */ }}
-        />
-      )}
-    </>
-  );
+  // ...existing code...
 };
 
 export default LoginPage;

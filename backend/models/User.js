@@ -57,6 +57,9 @@ const userSchema = new mongoose.Schema({
   resetTokenExpiry: { type: Date },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+  // Email verification
+  verificationToken: { type: String, sparse: true },
+  verificationTokenExpiry: { type: Date },
 });
 
 // Indexes

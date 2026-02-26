@@ -46,6 +46,8 @@ router.get('/:userId', async (req, res) => {
 // Query params: lat, lon, limit, skip, minAge, maxAge, interests (csv), excludeSeen=true
 router.get('/', async (req, res) => {
   try {
+    console.log('[DEBUG Backend] GET /users called by user:', req.userId);
+    console.log('[DEBUG Backend] Query params:', req.query);
     const {
       lat,
       lon,
@@ -111,6 +113,7 @@ router.get('/', async (req, res) => {
 
     // Fallback: paginated find with projection
     const users = await User.find(q).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 200));
+    console.log('[DEBUG Backend] Fallback query executed, returning', users.length, 'users');
     res.json(users);
   } catch (err) {
     console.error('[ERROR] Discovery /users failed:', err);
@@ -126,7 +129,7 @@ router.put('/:userId', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    const { name, age, bio, location, interests, images, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted, legalAcceptanceDate } = req.body;
+    const { name, age, bio, location, interests, images, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted, legalAcceptanceDate, coordinates } = req.body;
     console.log('[DEBUG Backend] Updating user profile with:', { name, age, bio, location, interests, images, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted });
     
     // If username is being updated, check if it's available
@@ -142,6 +145,9 @@ router.put('/:userId', async (req, res) => {
     }
 
     const updateData = { name, age, bio, location, interests, images, updatedAt: new Date() };
+    if (coordinates) {
+      updateData.coordinates = { type: 'Point', coordinates };
+    }
     if (username) {
       updateData.username = username.toLowerCase();
     }

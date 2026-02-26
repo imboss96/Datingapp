@@ -1,18 +1,24 @@
 import React from 'react';
 import { UserProfile } from '../types';
 import VerificationBadge from './VerificationBadge';
+import { calculateDistance } from '../services/distanceUtils';
 
 interface UserProfileModalProps {
   user: UserProfile;
   onClose: () => void;
+  currentUser?: UserProfile;
+  coords?: [number, number] | null;
 }
 
-const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClose }) => {
+const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClose, currentUser, coords }) => {
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
     'Sports', 'Cooking', 'Photography', 'Dance', 'Hiking', 'Movies',
     'Yoga', 'Fashion', 'Technology', 'Pets', 'Volunteering'
   ];
+
+  // Calculate distance if coords available
+  const distance = coords && user.coordinates ? calculateDistance(coords, user.coordinates) : null;
 
   return (
     <div
@@ -79,6 +85,11 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClose }) =>
               <div className="mt-2 bg-white/20 backdrop-blur-md px-4 py-1 rounded-full border border-white/30 flex items-center gap-2">
                 <i className="fa-solid fa-map-marker-alt text-white text-xs"></i>
                 <span className="text-white text-xs font-medium">{user.location || 'Location not set'}</span>
+                {distance !== null && (
+                  <span className="text-white/80 text-xs">
+                    • {distance < 1 ? 'Less than 1 km away' : `${Math.round(distance)} km away`}
+                  </span>
+                )}
               </div>
             </div>
           </div>

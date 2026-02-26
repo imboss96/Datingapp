@@ -14,7 +14,7 @@ class APIClient {
   private async request(endpoint: string, options: RequestInit = {}) {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
-      credentials: 'include', // Send cookies automatically
+      credentials: 'include',
       headers: {
         ...this.getHeaders(),
         ...(options.headers || {}),
@@ -29,7 +29,6 @@ class APIClient {
     return response.json();
   }
 
-  // Generic HTTP methods for moderation and other endpoints
   async get(endpoint: string) {
     return this.request(endpoint, { method: 'GET' });
   }
@@ -58,7 +57,6 @@ class APIClient {
       method: 'POST',
       body: JSON.stringify({ email, password, name, age, location }),
     });
-    // Token is now set as httpOnly cookie by server, no need to manage it here
     return data;
   }
 
@@ -67,7 +65,6 @@ class APIClient {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    // Token is now set as httpOnly cookie by server, no need to manage it here
     return data;
   }
 
@@ -76,31 +73,27 @@ class APIClient {
       method: 'POST',
       body: JSON.stringify({ googleToken, email, name, profilePicture }),
     });
-    // Token is now set as httpOnly cookie by server, no need to manage it here
     return data;
   }
 
-  // Logout - clear cookie on server
   async logout() {
     return this.request('/auth/logout', {
       method: 'POST',
     });
   }
 
-  // Get current user based on cookie
   async getCurrentUser() {
     return this.request('/auth/me');
   }
 
-  // Request password reset
   async requestPasswordReset(email: string) {
     return this.request('/auth/request-password-reset', {
       method: 'POST',
       body: JSON.stringify({ email }),
+      credentials: 'omit',
     });
   }
 
-  // Reset password with token
   async resetPassword(email: string, resetToken: string, newPassword: string) {
     return this.request('/auth/reset-password', {
       method: 'POST',
@@ -108,7 +101,6 @@ class APIClient {
     });
   }
 
-  // Change password for authenticated user
   async changePassword(currentPassword: string, newPassword: string) {
     return this.request('/auth/change-password', {
       method: 'POST',
@@ -123,11 +115,8 @@ class APIClient {
       const resp = await fetch(`${apiBase}/users/${userId}`, {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
-
       if (resp.status === 404) return null;
       if (!resp.ok) {
         let errBody = null;
@@ -144,12 +133,25 @@ class APIClient {
     return this.request('/users');
   }
 
-  async getProfilesForSwiping(limit: number = 100, skip: number = 0, excludeSeen: boolean = true) {
+  // ✅ UPDATED: now accepts lat/lon to enable geo-based profile fetching
+  async getProfilesForSwiping(
+    limit: number = 100,
+    skip: number = 0,
+    excludeSeen: boolean = true,
+    lat?: number | null,
+    lon?: number | null
+  ) {
     const params = new URLSearchParams();
     params.append('limit', String(limit));
     params.append('skip', String(skip));
     params.append('excludeSeen', String(excludeSeen));
-    
+
+    // Pass coordinates so backend uses $geoNear aggregation
+    if (lat != null && lon != null) {
+      params.append('lat', String(lat));
+      params.append('lon', String(lon));
+    }
+
     return this.request(`/users?${params.toString()}`, { method: 'GET' });
   }
 
@@ -164,12 +166,10 @@ class APIClient {
   }
 
   async checkUsernameAvailable(username: string, userId?: string) {
-    const url = userId 
+    const url = userId
       ? `/users/check-username/${username}?userId=${userId}`
       : `/users/check-username/${username}`;
-    return this.request(url, {
-      method: 'POST',
-    });
+    return this.request(url, { method: 'POST' });
   }
 
   async updateNotificationSettings(userId: string, settings: any) {
@@ -190,21 +190,15 @@ class APIClient {
   }
 
   async getMatches(userId: string) {
-    // Matches API lives at /api/matches and derives the user from the auth token on the server.
-    // Keep optional userId for compatibility, but ignore it client-side.
     return this.request('/matches');
   }
 
   async deleteMatch(matchId: string) {
-    return this.request(`/matches/${matchId}`, {
-      method: 'DELETE',
-    });
+    return this.request(`/matches/${matchId}`, { method: 'DELETE' });
   }
 
   async deductCoin(userId: string) {
-    return this.request(`/users/${userId}/deduct-coin`, {
-      method: 'POST',
-    });
+    return this.request(`/users/${userId}/deduct-coin`, { method: 'POST' });
   }
 
   // Chats
@@ -238,39 +232,28 @@ class APIClient {
   }
 
   async deleteMessage(chatId: string, messageId: string) {
-    return this.request(`/chats/${chatId}/messages/${messageId}`, {
-      method: 'DELETE',
-    });
+    return this.request(`/chats/${chatId}/messages/${messageId}`, { method: 'DELETE' });
   }
 
   async markMessageAsRead(chatId: string, messageId: string) {
-    return this.request(`/chats/${chatId}/messages/${messageId}/read`, {
-      method: 'PUT',
-    });
+    return this.request(`/chats/${chatId}/messages/${messageId}/read`, { method: 'PUT' });
   }
 
   async markAllMessagesAsRead(chatId: string) {
-    return this.request(`/chats/${chatId}/read-all`, {
-      method: 'PUT',
-    });
+    return this.request(`/chats/${chatId}/read-all`, { method: 'PUT' });
   }
 
   async uploadChatMedia(chatId: string, file: File) {
     const formData = new FormData();
     formData.append('file', file);
-
     try {
       const apiBase = import.meta.env.VITE_API_URL || '/api';
       const response = await fetch(`${apiBase}/chats/${chatId}/upload`, {
         method: 'POST',
-        credentials: 'include', // Send cookies automatically
+        credentials: 'include',
         body: formData,
       });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-
+      if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
       return await response.json();
     } catch (error) {
       console.error('[ERROR apiClient] Upload media failed:', error);
@@ -304,24 +287,20 @@ class APIClient {
     });
   }
 
-  // Upload single image
   async uploadImage(file: File) {
     const formData = new FormData();
     formData.append('image', file);
-
     try {
       const response = await fetch(`${API_BASE_URL}/upload/upload-image`, {
         method: 'POST',
-        credentials: 'include', // send httpOnly cookie
+        credentials: 'include',
         body: formData,
       });
-
       if (!response.ok) {
         let errBody: any = null;
         try { errBody = await response.json(); } catch (e) { /* ignore */ }
         throw new Error((errBody && errBody.error) || `Upload Error: ${response.statusText}`);
       }
-
       return await response.json();
     } catch (error) {
       console.error('[ERROR apiClient] uploadImage failed:', error);
@@ -329,26 +308,20 @@ class APIClient {
     }
   }
 
-  // Upload multiple images
   async uploadImages(files: File[]) {
     const formData = new FormData();
-    files.forEach((file) => {
-      formData.append('images', file);
-    });
-
+    files.forEach((file) => formData.append('images', file));
     try {
       const response = await fetch(`${API_BASE_URL}/upload/upload-images`, {
         method: 'POST',
         credentials: 'include',
         body: formData,
       });
-
       if (!response.ok) {
         let errBody: any = null;
         try { errBody = await response.json(); } catch (e) { /* ignore */ }
         throw new Error((errBody && errBody.error) || `Upload Error: ${response.statusText}`);
       }
-
       return await response.json();
     } catch (error) {
       console.error('[ERROR apiClient] uploadImages failed:', error);
@@ -356,12 +329,10 @@ class APIClient {
     }
   }
 
-  // Push / PWA
   async getVapidPublicKey() {
     return this.get('/push/vapid-public-key');
   }
 
-  // Email verification
   async requestEmailVerification(email: string) {
     return this.post('/email-verification/register-verify', { email });
   }
@@ -390,13 +361,7 @@ class APIClient {
     console.log('[DEBUG apiClient] processPurchase called with:', { userId, amount, price, method, isPremiumUpgrade });
     const result = await this.request('/transactions/purchase', {
       method: 'POST',
-      body: JSON.stringify({
-        userId,
-        amount,
-        price,
-        method,
-        isPremiumUpgrade,
-      }),
+      body: JSON.stringify({ userId, amount, price, method, isPremiumUpgrade }),
     });
     console.log('[DEBUG apiClient] processPurchase response:', result);
     return result;
@@ -404,14 +369,11 @@ class APIClient {
 
   async getTransactionHistory(userId: string) {
     console.log('[DEBUG apiClient] getTransactionHistory called for userId:', userId);
-    const result = await this.request(`/transactions/history/${userId}`, {
-      method: 'GET',
-    });
+    const result = await this.request(`/transactions/history/${userId}`, { method: 'GET' });
     console.log('[DEBUG apiClient] getTransactionHistory response:', result);
     return result;
   }
 
-  // Chat request methods
   async acceptChatRequest(chatId: string) {
     return this.request(`/chats/${chatId}/accept-request`, {
       method: 'PUT',
@@ -427,22 +389,15 @@ class APIClient {
   }
 
   async deleteChat(chatId: string) {
-    return this.request(`/chats/${chatId}`, {
-      method: 'DELETE',
-    });
+    return this.request(`/chats/${chatId}`, { method: 'DELETE' });
   }
 
   async getPendingChatRequests() {
-    return this.request('/chats/requests/pending', {
-      method: 'GET',
-    });
+    return this.request('/chats/requests/pending', { method: 'GET' });
   }
 
-  // Moderator support methods
   async getStalledChats() {
-    return this.request('/chats/stalled', {
-      method: 'GET',
-    });
+    return this.request('/chats/stalled', { method: 'GET' });
   }
 
   async assignModeratorToChat(chatId: string, moderatorId: string) {
@@ -453,9 +408,7 @@ class APIClient {
   }
 
   async getAssignedChats() {
-    return this.request('/chats/assigned', {
-      method: 'GET',
-    });
+    return this.request('/chats/assigned', { method: 'GET' });
   }
 
   async sendModeratorMessage(chatId: string, text: string) {
@@ -466,11 +419,8 @@ class APIClient {
   }
 
   async resolveSupportChat(chatId: string) {
-    return this.request(`/chats/${chatId}/resolve-support`, {
-      method: 'POST',
-    });
+    return this.request(`/chats/${chatId}/resolve-support`, { method: 'POST' });
   }
-
 }
 
 export default new APIClient();

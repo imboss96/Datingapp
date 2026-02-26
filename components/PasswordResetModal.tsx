@@ -17,16 +17,9 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
 }) => {
   const { showAlert } = useAlert();
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'request' | 'token'>('request');
 
-  // Request/Reset form states
+  // Form states
   const [email, setEmail] = useState(userEmail);
-  const [resetToken, setResetToken] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
-  // Change password form states
-  const [currentPassword, setCurrentPassword] = useState('');
 
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,8 +31,8 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
     setLoading(true);
     try {
       const response = await apiClient.requestPasswordReset(email);
-      showAlert('Check Email', 'Password reset link has been sent to your email');
-      setStep('token');
+      showAlert('Check Email', 'Password reset link has been sent to your email. Please check your inbox and click the link to reset your password.');
+      handleClose();
     } catch (err: any) {
       showAlert('Error', err.message || 'Failed to request password reset');
     } finally {
@@ -120,11 +113,6 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
   const handleClose = () => {
     // Reset form states
     setEmail(userEmail);
-    setResetToken('');
-    setNewPassword('');
-    setConfirmPassword('');
-    setCurrentPassword('');
-    setStep('request');
     onClose();
   };
 
@@ -145,81 +133,29 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
           onSubmit={
             mode === 'change'
               ? handleChangePassword
-              : step === 'token'
-              ? handleResetPassword
               : handleRequestReset
           }
           className="p-6 space-y-4"
         >
-          {/* Request/Reset Mode */}
-          {mode !== 'change' && (
-            <>
-              {step === 'request' ? (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="your@email.com"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
-                    disabled={loading}
-                  />
-                  <p className="text-xs text-gray-500 mt-2">
-                    Enter your email to receive a password reset code
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Reset Code
-                    </label>
-                    <input
-                      type="text"
-                      value={resetToken}
-                      onChange={(e) => setResetToken(e.target.value)}
-                      placeholder="Enter code from email"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
-                      disabled={loading}
-                    />
-                    <p className="text-xs text-gray-500 mt-2">
-                      Check your email for the reset code (valid for 15 minutes)
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      New Password
-                    </label>
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="At least 6 characters"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
-                      disabled={loading}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Confirm Password
-                    </label>
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Confirm new password"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
-                      disabled={loading}
-                    />
-                  </div>
-                </>
-              )}
-            </>
+          {/* Request Password Reset Mode */}
+          {mode === 'request' && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                disabled={loading}
+                required
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                Enter your email to receive a password reset link
+              </p>
+            </div>
           )}
 
           {/* Change Password Mode */}
@@ -284,8 +220,6 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
               e.preventDefault();
               if (mode === 'change') {
                 handleChangePassword(e as any);
-              } else if (step === 'token') {
-                handleResetPassword(e as any);
               } else {
                 handleRequestReset(e as any);
               }
@@ -293,27 +227,9 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
             className="flex-1 px-4 py-2 bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 text-white font-semibold rounded-2xl transition disabled:opacity-50"
             disabled={loading}
           >
-            {loading ? 'Processing...' : step === 'request' ? 'Send Reset Code' : 'Reset Password'}
+            {loading ? 'Processing...' : mode === 'change' ? 'Change Password' : 'Send Reset Link'}
           </button>
         </div>
-
-        {/* Back button for token step */}
-        {mode !== 'change' && step === 'token' && (
-          <div className="px-6 pb-4">
-            <button
-              onClick={() => {
-                setStep('request');
-                setResetToken('');
-                setNewPassword('');
-                setConfirmPassword('');
-              }}
-              className="w-full text-sm text-gray-500 hover:text-gray-700 transition"
-              disabled={loading}
-            >
-              ← Back
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

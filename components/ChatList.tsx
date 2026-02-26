@@ -156,26 +156,47 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     try {
       silent ? setRefreshing(true) : setLoading(true);
 
-      const [chatsData, usersData] = await Promise.all([
-        apiClient.getChats(),
-        apiClient.getAllUsers(),
-      ]);
+      // Step 1: fetch chats only
+      const chatsData = await apiClient.getChats();
+      const sorted = deduplicateAndSort(chatsData);
 
-      const sorted    = deduplicateAndSort(chatsData);
-      const saneUsers = (usersData ?? [])
-      .filter((u: any) => u?.id)
-      .map((u: any) => ({
-      ...u,
-      lastSeen: u.lastActiveAt ? new Date(u.lastActiveAt).getTime() : undefined,
-      isOnline: u.isOnline ?? false,
-  })) as UserProfile[];
-      
+      // Step 2: fetch only the participants we need (not ALL users)
+      const participantIds = [
+        ...new Set(
+          sorted
+            .flatMap((c) => c.participants)
+            .filter((id) => id !== currentUser?.id)
+        ),
+      ];
+
+      // Fetch all participants in parallel, skip ones we already have cached
+      const cachedUsers = readCache<UserProfile>(CACHE_KEY_USERS);
+      const cachedIds   = new Set(cachedUsers.map((u: any) => u?.id));
+      const missingIds  = participantIds.filter((id) => !cachedIds.has(id));
+
+      const fetchedUsers = await Promise.all(
+        missingIds.map((id) => apiClient.getUser(id).catch(() => null))
+      );
+
+      const newUsers = fetchedUsers
+        .filter(Boolean)
+        .map((u: any) => ({
+          ...u,
+          lastSeen: u.lastActiveAt ? new Date(u.lastActiveAt).getTime() : undefined,
+          isOnline: u.isOnline ?? false,
+        })) as UserProfile[];
+
+      // Merge newly fetched with already cached
+      const mergedUsers = [
+        ...cachedUsers.filter((u: any) => participantIds.includes(u?.id)),
+        ...newUsers,
+      ];
 
       setChats(sorted);
-      setAllUsers(saneUsers);
+      setAllUsers(mergedUsers);
 
       writeCache(CACHE_KEY_CHATS, sorted);
-      writeCache(CACHE_KEY_USERS, saneUsers);
+      writeCache(CACHE_KEY_USERS, mergedUsers);
       writeCache(CACHE_KEY_TIME,  Date.now());
     } catch (err) {
       console.error('[ChatList] Failed to load data:', err);
@@ -183,13 +204,19 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [currentUser]);
 
+  // Initial load — use cache if fresh, otherwise fetch
   useEffect(() => {
-    // Always show cached data instantly.
-    // Only hit the network if cache is stale or empty.
     const silent = initialChats.length > 0;
     if (!silent || isCacheStale()) loadData(silent);
+  }, [loadData]);
+
+  // Re-fetch silently when a new WebSocket message arrives
+  useEffect(() => {
+    const handleNewMessage = () => loadData(true);
+    window.addEventListener('ws:new_message', handleNewMessage);
+    return () => window.removeEventListener('ws:new_message', handleNewMessage);
   }, [loadData]);
 
   // ── User resolution ─────────────────────────────────────────────────────────
@@ -201,27 +228,27 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
 
     const found = allUsers.find(u => u?.id === otherId);
 
-    // Lazy-fetch unknown participants and merge into cache
+    // Lazy-fetch any participant still missing after initial load
     if (!found && !fetchingUsersRef.current[otherId]) {
       fetchingUsersRef.current[otherId] = true;
       apiClient.getUser(otherId)
-       .then(u => {
-       if (!u) return;
-       const mapped = {
-       ...u,
-       lastSeen: u.lastActiveAt ? new Date(u.lastActiveAt).getTime() : undefined,
-       isOnline: u.isOnline ?? false,
-      };
-     setAllUsers(prev => {
-      if (prev.find(p => p?.id === mapped.id)) return prev;
-      const updated = [...prev, mapped];
-      writeCache(CACHE_KEY_USERS, updated);
-      return updated;
-     });
-     })
-     .catch(() => {})
-     .finally(() => { fetchingUsersRef.current[otherId] = false; });
-     }
+        .then(u => {
+          if (!u) return;
+          const mapped = {
+            ...u,
+            lastSeen: u.lastActiveAt ? new Date(u.lastActiveAt).getTime() : undefined,
+            isOnline: u.isOnline ?? false,
+          };
+          setAllUsers(prev => {
+            if (prev.find(p => p?.id === mapped.id)) return prev;
+            const updated = [...prev, mapped];
+            writeCache(CACHE_KEY_USERS, updated);
+            return updated;
+          });
+        })
+        .catch(() => {})
+        .finally(() => { fetchingUsersRef.current[otherId] = false; });
+    }
 
     return found ?? null;
   }, [currentUser, allUsers]);

@@ -70,12 +70,12 @@ const MatchModal: React.FC<MatchModalProps> = ({ isOpen, matchedUser, interestMa
                   animationDelay: `${i * 0.2}s`,
                 }}
               >
-                {heart}
+                <i className="fa-solid fa-heart text-red-500" />
               </span>
             ))}
           </div>
           <div className="relative z-10">
-            <div className="text-6xl mb-4">❤️</div>
+            <div className="text-6xl mb-4"><i className="fa-solid fa-heart text-red-500" /></div>
             <h2 className="text-white text-3xl font-black mb-2 tracking-wider">IT'S A MATCH!</h2>
             <p className="text-white/90 text-sm font-medium">
               You and <span className="font-bold">{displayName(matchedUser)}</span> like each other!
@@ -134,7 +134,7 @@ const MatchModal: React.FC<MatchModalProps> = ({ isOpen, matchedUser, interestMa
               />
             </div>
             <p className="text-xs text-gray-600 mt-2 text-center font-medium">
-              {interestMatch >= 80 ? '🔥 Perfect match!' : interestMatch >= 60 ? '👍 Great connection!' : '💬 Good potential!'}
+              {interestMatch >= 80 ? <span className="flex items-center justify-center gap-1"><i className="fa-solid fa-fire text-red-500" /> Perfect match!</span> : interestMatch >= 60 ? <span className="flex items-center justify-center gap-1"><i className="fa-solid fa-thumbs-up text-green-500" /> Great connection!</span> : <span className="flex items-center justify-center gap-1"><i className="fa-solid fa-comments text-blue-500" /> Good potential!</span>}
             </p>
           </div>
 
@@ -186,7 +186,7 @@ const MatchModal: React.FC<MatchModalProps> = ({ isOpen, matchedUser, interestMa
           </div>
 
           <p className="text-center text-xs text-gray-500 mt-4 font-medium">
-            💬 Send your first message and start a conversation!
+            <i className="fa-solid fa-comments text-blue-500 mr-1" /> Send your first message and start a conversation!
           </p>
         </div>
       </div>

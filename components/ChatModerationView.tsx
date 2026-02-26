@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../services/apiClient';
-import useWebSocket from '../services/useWebSocket';
 
 interface User {
   id: string;

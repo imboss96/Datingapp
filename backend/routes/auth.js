@@ -1,13 +1,45 @@
+
 import express from 'express';
+import crypto from 'crypto';
+import { sendPasswordResetEmail } from '../utils/email.js';
+import { authMiddleware } from '../middleware/auth.js';
+import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import User from '../models/User.js';
 import { v4 as uuidv4 } from 'uuid';
-import { jwtDecode } from 'jwt-decode';
-import { authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
+
+// Email verification endpoint
+router.post('/verify-email', async (req, res) => {
+  try {
+    const { email, token } = req.body;
+    if (!email || !token) {
+      return res.status(400).json({ error: 'Missing email or token' });
+    }
+
+    const user = await User.findOne({ email, verificationToken: token });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid verification link or token' });
+    }
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Email already verified' });
+    }
+    if (user.verificationTokenExpiry && user.verificationTokenExpiry < Date.now()) {
+      return res.status(400).json({ error: 'Verification token expired' });
+    }
+
+    user.emailVerified = true;
+    user.verificationToken = undefined;
+    user.verificationTokenExpiry = undefined;
+    await user.save();
+
+    return res.json({ message: 'Email verified successfully' });
+  } catch (err) {
+    console.error('[ERROR] Email verification failed:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // Register
 router.post('/register', async (req, res) => {
@@ -23,11 +55,30 @@ router.post('/register', async (req, res) => {
 
     const existingUser = await User.findOne({ email: normEmail });
     if (existingUser) {
+      if (!existingUser.emailVerified) {
+        // Resend verification email
+        try {
+          // Generate new token and expiry
+          existingUser.verificationToken = crypto.randomBytes(32).toString('hex');
+          existingUser.verificationTokenExpiry = Date.now() + 15 * 60 * 1000;
+          await existingUser.save();
+          const { sendEmailVerificationEmail } = await import('../utils/email.js');
+          await sendEmailVerificationEmail(existingUser.email, existingUser.verificationToken);
+          console.log('[DEBUG Backend] Re-sent verification email to unverified user:', existingUser.email);
+        } catch (err) {
+          console.error('[ERROR] Failed to resend verification email:', err);
+        }
+        return res.status(423).json({ error: 'Email registered but not verified', resend: true });
+      }
       return res.status(409).json({ error: 'Email already registered' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = uuidv4();
+
+    // Generate email verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
 
     const user = new User({
       id: userId,
@@ -40,40 +91,26 @@ router.post('/register', async (req, res) => {
       coins: 10,
       isPremium: false,
       role: 'USER',
+      emailVerified: false,
+      verificationToken,
+      verificationTokenExpiry,
     });
 
     await user.save();
 
-    const token = jwt.sign({ id: userId }, process.env.JWT_SECRET || 'your-secret-key', {
-      expiresIn: '7d',
-    });
-
-    // Set httpOnly cookie
-    res.cookie('authToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
+    // Send verification email
+    try {
+      const { sendEmailVerificationEmail } = await import('../utils/email.js');
+      await sendEmailVerificationEmail(user.email, verificationToken);
+      console.log('[DEBUG Backend] Verification email sent:', user.email);
+    } catch (err) {
+      console.error('[ERROR] Failed to send verification email:', err);
+    }
 
     console.log('[DEBUG Backend] User registered:', userId, { email: normEmail, name, age });
 
     res.status(201).json({
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-        age: user.age,
-        location: user.location,
-        interests: user.interests || [],
-        profilePicture: user.profilePicture,
-        images: user.images || [],
-        coins: user.coins,
-        termsOfServiceAccepted: user.termsOfServiceAccepted || false,
-        privacyPolicyAccepted: user.privacyPolicyAccepted || false,
-        cookiePolicyAccepted: user.cookiePolicyAccepted || false,
-      },
+      message: 'Registration successful. Please check your email to verify your account.',
     });
   } catch (err) {
     // Handle duplicate key error as conflict
@@ -95,9 +132,15 @@ router.post('/login', async (req, res) => {
 
     const normEmail = String(email).toLowerCase();
 
+
     const user = await User.findOne({ email: normEmail });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Block login if email not verified
+    if (!user.emailVerified) {
+      return res.status(403).json({ error: 'Email not verified. Please check your inbox.' });
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);
@@ -262,14 +305,18 @@ router.post('/request-password-reset', async (req, res) => {
     user.resetTokenExpiry = resetTokenExpiry;
     await user.save();
 
-    // In production, you would send this via email
-    // For now, we'll return it to the client (in real app, don't do this)
-    console.log('[DEBUG] Password reset token generated for:', email, 'Token:', resetToken);
+    // Send password reset email
+    try {
+      await sendPasswordResetEmail(user.email, resetToken);
+      console.log('[DEBUG] Password reset email sent to:', user.email);
+    } catch (emailError) {
+      console.error('[ERROR] Failed to send password reset email:', emailError);
+      // Don't fail the request if email fails - just log it for admin review
+      // This prevents revealing email sending issues to potential attackers
+    }
 
     res.json({
-      message: 'Password reset requested. Check your email for instructions.',
-      resetToken, // ONLY FOR DEMO - remove in production
-      expiry: resetTokenExpiry
+      message: 'Password reset requested. Check your email for instructions.'
     });
   } catch (err) {
     console.error('[ERROR] Password reset request failed:', err);

@@ -27,6 +27,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
+
+console.log('[DEBUG] Environment variables loaded:');
+console.log('[DEBUG] BREVO_API_KEY exists:', !!process.env.BREVO_API_KEY);
+console.log('[DEBUG] BREVO_API_KEY starts with:', process.env.BREVO_API_KEY ? process.env.BREVO_API_KEY.substring(0, 10) + '...' : 'undefined');
+
 initCloudinary();
 
 const app = express();

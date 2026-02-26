@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './src/globals.css';
 import LandingPage from './components/LandingPage';
+import VerifyEmailInfoPage from './components/VerifyEmailInfoPage';
+import VerifyEmailPage from './components/VerifyEmailPage';
 import LoginPage from './components/LoginPage';
+import ResetPasswordPage from './components/ResetPasswordPage';
 import SwiperScreen from './components/SwiperScreen';
 import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
@@ -22,28 +25,45 @@ import EmailVerificationModal from './components/EmailVerificationModal';
 import { WebSocketProvider } from './services/WebSocketProvider';
 import { AlertProvider } from './services/AlertContext';
 import { UserProfile, UserRole, Chat, VerificationStatus } from './types';
-import { useWebSocket } from './services/useWebSocket';
 import apiClient from './services/apiClient';
 
-// Mock Initial Data - New accounts start with 10 free coins
 const INITIAL_ME: UserProfile = {
   id: 'me',
   name: 'Alex',
   age: 28,
   bio: 'Product Designer at Spark. I love code and design.',
   images: ['https://picsum.photos/400/600?random=100'],
-  isPremium: false, // Start as standard user
+  isPremium: false,
   role: UserRole.ADMIN,
   location: 'New York, NY',
   interests: ['Design', 'Chess', 'Running'],
-  coins: 10, // Free starter coins
+  coins: 10,
   verification: { status: VerificationStatus.UNVERIFIED },
   blockedUsers: [],
   reportedUsers: []
 };
 
-const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; isAdmin: boolean; isModerator: boolean; showLoginModal: boolean; setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>>; showProfileSetup: boolean; setShowProfileSetup: React.Dispatch<React.SetStateAction<boolean>>; newSignupUser: UserProfile | null; setNewSignupUser: React.Dispatch<React.SetStateAction<UserProfile | null>>; totalUnreadCount: number }> = ({ currentUser, setCurrentUser, isAdmin, isModerator, showLoginModal, setShowLoginModal, showProfileSetup, setShowProfileSetup, newSignupUser, setNewSignupUser, totalUnreadCount }) => {
-  // Dark mode state
+const AppContent: React.FC<{
+  currentUser: UserProfile | null;
+  setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>;
+  isAdmin: boolean;
+  isModerator: boolean;
+  showLoginModal: boolean;
+  setShowLoginModal: React.Dispatch<React.SetStateAction<boolean>>;
+  showProfileSetup: boolean;
+  setShowProfileSetup: React.Dispatch<React.SetStateAction<boolean>>;
+  newSignupUser: UserProfile | null;
+  setNewSignupUser: React.Dispatch<React.SetStateAction<UserProfile | null>>;
+  totalUnreadCount: number;
+  userCoords: [number, number] | null; // ✅ live GPS coords
+}> = ({
+  currentUser, setCurrentUser, isAdmin, isModerator,
+  showLoginModal, setShowLoginModal,
+  showProfileSetup, setShowProfileSetup,
+  newSignupUser, setNewSignupUser,
+  totalUnreadCount,
+  userCoords // ✅
+}) => {
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('theme') === 'dark' || window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -71,18 +91,15 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showCookies, setShowCookies] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
-  
-  // Check if user has accepted legal documents
+
   const hasAcceptedLegal = currentUser ? (
-    currentUser.termsOfServiceAccepted && 
+    currentUser.termsOfServiceAccepted &&
     currentUser.privacyPolicyAccepted
   ) : false;
 
-  // If no user is logged in
   if (!currentUser || !currentUser.id) {
     return (
       <>
-        {/* Dark mode toggle button */}
         <button
           onClick={toggleDarkMode}
           className="fixed top-4 right-4 z-50 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 rounded shadow hover:bg-gray-300 dark:hover:bg-gray-600 transition"
@@ -90,54 +107,44 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         >
           {darkMode ? '🌙 Dark' : '☀️ Light'}
         </button>
-        {!showTerms && !showPrivacy && !showCookies && !showProfileSetup && (
-          <Routes>
-            <Route path="/" element={<LandingPage onOpenLoginModal={() => setShowLoginModal(true)} />} />
-            <Route path="/terms" element={<TermsPage onAccept={() => setShowTerms(false)} isModal={true} />} />
-            <Route path="/privacy" element={<PrivacyPage onAccept={() => setShowPrivacy(false)} isModal={true} />} />
-            <Route path="/cookies" element={<CookiePolicyPage onAccept={() => setShowCookies(false)} isModal={true} />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        )}
+        <Routes>
+          <Route path="/" element={<LandingPage onOpenLoginModal={() => setShowLoginModal(true)} />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email-info" element={<VerifyEmailInfoPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/terms" element={<TermsPage onAccept={() => setShowTerms(false)} isModal={true} />} />
+          <Route path="/privacy" element={<PrivacyPage onAccept={() => setShowPrivacy(false)} isModal={true} />} />
+          <Route path="/cookies" element={<CookiePolicyPage onAccept={() => setShowCookies(false)} isModal={true} />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
         {showLoginModal && !showProfileSetup && (
-          <LoginPage 
+          <LoginPage
             isModal={true}
             onClose={() => setShowLoginModal(false)}
             onLoginSuccess={(user, isSignup) => {
-              console.log('[DEBUG App] Login success - user:', { id: user.id, name: user.name, isSignup, hasInterests: user.interests?.length > 0, location: user.location, age: user.age });
+              console.log('[DEBUG App] Login success - user:', { id: user.id, name: user.name, isSignup });
               if (isSignup) {
-                // For signup, show legal acceptance modals first
-                console.log('[DEBUG App] Showing legal acceptance modals');
                 setNewSignupUser(user);
-                setEmailToVerify(user.name + '@lunesa.com'); // Mock email - will be replaced with real email later
+                setEmailToVerify(user.name + '@lunesa.com');
                 setShowTerms(true);
               } else {
-                // For signin, if legal is accepted sign the user in.
-                // Do not force the profile-setup flow for returning users — make it optional.
                 if (user.termsOfServiceAccepted && user.privacyPolicyAccepted) {
-                  console.log('[DEBUG App] Signing in returning user — legal accepted, setting current user');
                   setCurrentUser(user);
                 } else {
-                  console.log('[DEBUG App] Need to accept legal documents');
                   setNewSignupUser(user);
                   setShowTerms(true);
                 }
               }
               setShowLoginModal(false);
-            }} 
+            }}
           />
         )}
 
-        {/* Legal Documents Modals */}
         {showTerms && (
           <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
             <div className="w-full h-screen max-w-4xl bg-white">
               <TermsPage
-                onAccept={() => {
-                  console.log('[DEBUG App] Terms accepted - moving to Privacy');
-                  setShowTerms(false);
-                  setShowPrivacy(true);
-                }}
+                onAccept={() => { setShowTerms(false); setShowPrivacy(true); }}
                 onClose={() => setShowTerms(false)}
                 isModal={true}
               />
@@ -147,17 +154,9 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         {showPrivacy && (
           <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
             <div className="w-full h-screen max-w-4xl bg-white">
-              <PrivacyPage 
-                onAccept={() => {
-                  console.log('[DEBUG App] Privacy accepted - moving to Cookies');
-                  setShowPrivacy(false);
-                  setShowCookies(true);
-                }}
-                onClose={() => {
-                  console.log('[DEBUG App] Privacy declined - back to Terms');
-                  setShowPrivacy(false);
-                  setShowTerms(true);
-                }}
+              <PrivacyPage
+                onAccept={() => { setShowPrivacy(false); setShowCookies(true); }}
+                onClose={() => { setShowPrivacy(false); setShowTerms(true); }}
                 isModal={true}
               />
             </div>
@@ -166,11 +165,9 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         {showCookies && (
           <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
             <div className="w-full h-screen max-w-4xl bg-white">
-              <CookiePolicyPage 
+              <CookiePolicyPage
                 onAccept={async () => {
-                  console.log('[DEBUG App] Cookies accepted');
                   setShowCookies(false);
-                  // Set legal acceptance and proceed. Persist flags to backend so they survive logout/login.
                   if (newSignupUser) {
                     try {
                       await apiClient.updateProfile(newSignupUser.id, {
@@ -179,12 +176,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
                         cookiePolicyAccepted: true,
                         legalAcceptanceDate: new Date().toISOString()
                       });
-                      console.log('[DEBUG App] Persisted legal acceptance to backend for user:', newSignupUser.id);
-
-                      // Fetch authoritative user from server (ensure flags persisted and we have full user object)
                       const refreshed = await apiClient.getCurrentUser();
-                      console.log('[DEBUG App] Refreshed user from server after legal accept:', refreshed);
-
                       const persistedUser = refreshed as UserProfile;
                       const needsProfileSetup = !persistedUser.interests || persistedUser.interests.length === 0 || !persistedUser.location || !persistedUser.age;
                       if (needsProfileSetup) {
@@ -195,15 +187,11 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
                         setNewSignupUser(null);
                       }
                     } catch (err) {
-                      console.warn('[DEBUG App] Failed to persist legal acceptance or refresh user:', err);
+                      console.warn('[DEBUG App] Failed to persist legal acceptance:', err);
                     }
                   }
                 }}
-                onClose={() => {
-                  console.log('[DEBUG App] Cookie policy declined');
-                  setShowCookies(false);
-                  setShowPrivacy(true);
-                }}
+                onClose={() => { setShowCookies(false); setShowPrivacy(true); }}
                 isModal={true}
               />
             </div>
@@ -218,7 +206,6 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
               email={newSignupUser.name + '@lunesa.com'}
               profilePicture={newSignupUser.images?.[0]}
               onComplete={(userData: any) => {
-                console.log('[DEBUG App] ProfileSetup completed with data:', userData);
                 let interests: string[] = [];
                 if (userData.interests) {
                   if (Array.isArray(userData.interests)) {
@@ -227,18 +214,16 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
                     interests = userData.interests.split(',').map((i: string) => i.trim()).filter((i: string) => i);
                   }
                 }
-                
                 const completeUser: UserProfile = {
                   ...newSignupUser,
                   age: parseInt(userData.age) || newSignupUser.age,
                   bio: userData.bio || newSignupUser.bio,
                   location: userData.location || newSignupUser.location,
-                  interests: interests,
+                  interests,
                   termsOfServiceAccepted: true,
                   privacyPolicyAccepted: true,
                   cookiePolicyAccepted: true
                 };
-                console.log('[DEBUG App] Setting current user after profile setup:', { id: completeUser.id, age: completeUser.age, location: completeUser.location, interests: completeUser.interests });
                 setCurrentUser(completeUser);
                 setShowProfileSetup(false);
                 setNewSignupUser(null);
@@ -255,46 +240,20 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
     );
   }
 
-  // If user is logged in but hasn't accepted legal documents - show legal gate
   if (!hasAcceptedLegal) {
     return (
       <div className="w-full h-screen flex items-center justify-center">
         <div className="text-center max-w-md">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">
-            Please Accept Our Policies
-          </h1>
-          <p className="text-gray-600 mb-6">
-            To continue using the app, you need to accept our Terms of Service, Privacy Policy, and Cookie Policy.
-          </p>
-          
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Please Accept Our Policies</h1>
+          <p className="text-gray-600 mb-6">To continue using the app, you need to accept our Terms of Service, Privacy Policy, and Cookie Policy.</p>
           <div className="space-y-3">
-            <button
-              onClick={() => setShowTerms(true)}
-              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition"
-            >
-              Review Terms of Service
-            </button>
-            <button
-              onClick={() => setShowPrivacy(true)}
-              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition"
-            >
-              Review Privacy Policy
-            </button>
-            <button
-              onClick={() => setShowCookies(true)}
-              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition"
-            >
-              Review Cookie Policy
-            </button>
+            <button onClick={() => setShowTerms(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Terms of Service</button>
+            <button onClick={() => setShowPrivacy(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Privacy Policy</button>
+            <button onClick={() => setShowCookies(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Cookie Policy</button>
           </div>
-
           <button
             onClick={async () => {
-              try {
-                await apiClient.logout();
-              } catch (err) {
-                console.warn('[DEBUG App] Logout API call failed:', err);
-              }
+              try { await apiClient.logout(); } catch (err) { console.warn('[DEBUG App] Logout failed:', err); }
               setCurrentUser(null);
             }}
             className="mt-6 text-gray-600 hover:text-gray-800 underline"
@@ -304,25 +263,17 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
         </div>
 
         {showTerms && (
-          <TermsPage 
+          <TermsPage
             onAccept={() => {
               const updated = { ...currentUser, termsOfServiceAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
               setCurrentUser(updated);
               setShowTerms(false);
               (async () => {
                 try {
-                  if (currentUser && currentUser.id) {
-                    await apiClient.updateProfile(currentUser.id, {
-                      termsOfServiceAccepted: true,
-                      legalAcceptanceDate: updated.legalAcceptanceDate
-                    });
-                    const refreshed = await apiClient.getCurrentUser();
-                    setCurrentUser(refreshed as UserProfile);
-                    console.log('[DEBUG App] Persisted terms acceptance to backend for user:', currentUser.id);
-                  }
-                } catch (err) {
-                  console.warn('[DEBUG App] Failed to persist terms acceptance:', err);
-                }
+                  await apiClient.updateProfile(currentUser.id, { termsOfServiceAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
+                  const refreshed = await apiClient.getCurrentUser();
+                  setCurrentUser(refreshed as UserProfile);
+                } catch (err) { console.warn('[DEBUG App] Failed to persist terms:', err); }
               })();
             }}
             onClose={() => setShowTerms(false)}
@@ -330,25 +281,17 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
           />
         )}
         {showPrivacy && (
-          <PrivacyPage 
+          <PrivacyPage
             onAccept={() => {
               const updated = { ...currentUser, privacyPolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
               setCurrentUser(updated);
               setShowPrivacy(false);
               (async () => {
                 try {
-                  if (currentUser && currentUser.id) {
-                    await apiClient.updateProfile(currentUser.id, {
-                      privacyPolicyAccepted: true,
-                      legalAcceptanceDate: updated.legalAcceptanceDate
-                    });
-                    const refreshed = await apiClient.getCurrentUser();
-                    setCurrentUser(refreshed as UserProfile);
-                    console.log('[DEBUG App] Persisted privacy acceptance to backend for user:', currentUser.id);
-                  }
-                } catch (err) {
-                  console.warn('[DEBUG App] Failed to persist privacy acceptance:', err);
-                }
+                  await apiClient.updateProfile(currentUser.id, { privacyPolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
+                  const refreshed = await apiClient.getCurrentUser();
+                  setCurrentUser(refreshed as UserProfile);
+                } catch (err) { console.warn('[DEBUG App] Failed to persist privacy:', err); }
               })();
             }}
             onClose={() => setShowPrivacy(false)}
@@ -356,25 +299,16 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
           />
         )}
         {showCookies && (
-          <CookiePolicyPage 
+          <CookiePolicyPage
             onAccept={async () => {
               const updated = { ...currentUser, cookiePolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
-                  setCurrentUser(updated);
-                  setShowCookies(false);
-                  if (currentUser && currentUser.id) {
-                    try {
-                      await apiClient.updateProfile(currentUser.id, {
-                        cookiePolicyAccepted: true,
-                        legalAcceptanceDate: updated.legalAcceptanceDate
-                      });
-                      // Refresh authoritative user
-                      const refreshed = await apiClient.getCurrentUser();
-                      console.log('[DEBUG App] Refreshed user from server after cookie accept:', refreshed);
-                      setCurrentUser(refreshed as UserProfile);
-                    } catch (err) {
-                      console.warn('[DEBUG App] Failed to persist cookie acceptance:', err);
-                    }
-                  }
+              setCurrentUser(updated);
+              setShowCookies(false);
+              try {
+                await apiClient.updateProfile(currentUser.id, { cookiePolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
+                const refreshed = await apiClient.getCurrentUser();
+                setCurrentUser(refreshed as UserProfile);
+              } catch (err) { console.warn('[DEBUG App] Failed to persist cookies:', err); }
             }}
             onClose={() => setShowCookies(false)}
             isModal={true}
@@ -383,7 +317,7 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
       </div>
     );
   }
-  
+
   const updateCoins = (amount: number) => {
     if (currentUser) {
       setCurrentUser(prev => prev ? { ...prev, coins: Math.max(0, prev.coins + amount) } : null);
@@ -392,15 +326,18 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
 
   return (
     <div className="flex h-screen w-full bg-[#f0f2f5] overflow-hidden">
-      {/* Desktop Sidebar */}
       <div className="hidden md:flex w-[375px] h-full bg-white border-r border-gray-200 flex-col shadow-lg z-20">
         <Sidebar currentUser={currentUser} isAdmin={isAdmin} isModerator={isModerator} onOpenProfileSettings={() => setShowProfileSettings(true)} />
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-screen bg-white md:bg-transparent pb-20 md:pb-0 safe-area-bottom">
         <Routes>
-          <Route path="/" element={<div className="flex-1 overflow-y-auto"><SwiperScreen currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} /></div>} />
+          {/* ✅ SwiperScreen now receives live coords */}
+          <Route path="/" element={
+            <div className="flex-1 overflow-y-auto">
+              <SwiperScreen currentUser={currentUser} coords={userCoords} onDeductCoin={() => updateCoins(-1)} />
+            </div>
+          } />
           <Route path="/chats" element={<div className="md:hidden flex-1 overflow-y-auto"><ChatList currentUser={currentUser} /></div>} />
           <Route path="/chat/:id" element={<div className="flex-1 flex flex-col h-full"><ChatRoom currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} /></div>} />
           <Route path="/matches" element={<div className="flex-1 overflow-y-auto"><MatchesPage currentUserId={currentUser?.id} /></div>} />
@@ -415,18 +352,16 @@ const AppContent: React.FC<{ currentUser: UserProfile | null; setCurrentUser: Re
           )}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
-        
-        {/* Mobile Navigation - Hidden on chat route */}
+
         {!isChatRoute && (
           <div className="md:hidden">
             <Navigation isAdmin={isAdmin} isModerator={isModerator} coins={currentUser.coins} unreadCount={totalUnreadCount} onOpenProfileSettings={() => setShowProfileSettings(true)} />
           </div>
         )}
 
-        {/* Profile Settings Modal */}
         {showProfileSettings && currentUser && (
-          <ProfileSettings 
-            user={currentUser} 
+          <ProfileSettings
+            user={currentUser}
             setUser={setCurrentUser}
             onClose={() => setShowProfileSettings(false)}
           />
@@ -443,6 +378,7 @@ const App: React.FC = () => {
   const [newSignupUser, setNewSignupUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
+  const [userCoords, setUserCoords] = useState<[number, number] | null>(null); // ✅ live GPS state
   const [toastNotifications, setToastNotifications] = useState<Array<{
     id: string;
     type: 'message' | 'success' | 'error';
@@ -452,16 +388,13 @@ const App: React.FC = () => {
     senderName?: string;
     timestamp: number;
   }>>([]);
-  const isAdmin = currentUser ? currentUser.role === UserRole.ADMIN : false;
+
+  const isAdmin     = currentUser ? currentUser.role === UserRole.ADMIN : false;
   const isModerator = currentUser ? (currentUser.role === UserRole.MODERATOR || currentUser.role === UserRole.ADMIN) : false;
 
-  // Initialize WebSocket connection
   const handleMessageNotification = (data: any) => {
     if (data.type === 'new_message') {
-      // Play notification sound
       playNotificationSound();
-      
-      // Add toast notification
       const notification = {
         id: `notif-${Date.now()}`,
         type: 'message' as const,
@@ -471,34 +404,24 @@ const App: React.FC = () => {
         senderName: data.senderName,
         timestamp: Date.now()
       };
-      
       setToastNotifications(prev => [...prev, notification]);
-      
-      // Auto-remove after 5 seconds
       setTimeout(() => {
         setToastNotifications(prev => prev.filter(n => n.id !== notification.id));
       }, 5000);
     }
   };
 
-  useWebSocket(currentUser?.id || null, handleMessageNotification);
-
   const playNotificationSound = () => {
-    // Create a simple beep sound notification
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
-      
       oscillator.connect(gainNode);
       gainNode.connect(audioContext.destination);
-      
       oscillator.frequency.value = 800;
       oscillator.type = 'sine';
-      
       gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-      
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.1);
     } catch (err) {
@@ -506,7 +429,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Load authoritative user from backend on mount
+  // Load user on mount
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -515,35 +438,27 @@ const App: React.FC = () => {
         if (!cancelled) {
           if (me && me.id) {
             setCurrentUser(me as UserProfile);
-            console.log('[DEBUG App] Loaded user from backend:', { id: (me as any).id, name: (me as any).name });
           } else {
             setCurrentUser(null);
           }
         }
       } catch (err) {
-        console.warn('[DEBUG App] Could not fetch current user from backend:', err);
+        console.warn('[DEBUG App] Could not fetch current user:', err);
         if (!cancelled) setCurrentUser(null);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     })();
-
     return () => { cancelled = true; };
   }, []);
 
-  // Fetch chats and calculate total unread count
+  // Unread count polling
   useEffect(() => {
-    if (!currentUser?.id) {
-      setTotalUnreadCount(0);
-      return;
-    }
-
+    if (!currentUser?.id) { setTotalUnreadCount(0); return; }
     const fetchUnreadCount = async () => {
       try {
         const response = await fetch('/api/chats', {
-          headers: {
-            'Authorization': `Bearer ${currentUser.id}`
-          }
+          headers: { 'Authorization': `Bearer ${currentUser.id}` }
         });
         if (response.ok) {
           const chats = await response.json();
@@ -554,12 +469,42 @@ const App: React.FC = () => {
         console.error('[DEBUG App] Failed to fetch unread count:', err);
       }
     };
-
     fetchUnreadCount();
-    
-    // Poll for unread count updates every 3 seconds
     const interval = setInterval(fetchUnreadCount, 3000);
     return () => clearInterval(interval);
+  }, [currentUser?.id]);
+
+  // ✅ Debounced live location tracking — updates every 5s after movement stops
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    let locationTimer: ReturnType<typeof setTimeout>;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const coords: [number, number] = [
+          position.coords.longitude,
+          position.coords.latitude
+        ];
+
+        clearTimeout(locationTimer);
+        locationTimer = setTimeout(() => {
+          setUserCoords(coords); // triggers SwiperScreen re-fetch via coords prop
+
+          apiClient.updateProfile(currentUser.id, { coordinates: coords })
+            .catch(err => console.error('[App] Failed to update location:', err));
+        }, 5000); // 5s debounce
+      },
+      (error) => {
+        console.error('[App] Geolocation watch error:', error);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      clearTimeout(locationTimer);
+    };
   }, [currentUser?.id]);
 
   if (isLoading) {
@@ -578,75 +523,63 @@ const App: React.FC = () => {
       <AlertProvider>
         <WebSocketProvider userId={currentUser?.id || null}>
           <HashRouter>
-          <AppContent 
-            currentUser={currentUser} 
-            setCurrentUser={setCurrentUser} 
-            isAdmin={isAdmin} 
-            isModerator={isModerator}
-            showLoginModal={showLoginModal} 
-            setShowLoginModal={setShowLoginModal}
-            showProfileSetup={showProfileSetup}
-            setShowProfileSetup={setShowProfileSetup}
-            newSignupUser={newSignupUser}
-            setNewSignupUser={setNewSignupUser}
-            totalUnreadCount={totalUnreadCount}
-          />
-          
-          {/* Match Notifications */}
-          {currentUser?.id && (
-            <MatchNotificationCenter userId={currentUser.id} />
-          )}
+            <AppContent
+              currentUser={currentUser}
+              setCurrentUser={setCurrentUser}
+              isAdmin={isAdmin}
+              isModerator={isModerator}
+              showLoginModal={showLoginModal}
+              setShowLoginModal={setShowLoginModal}
+              showProfileSetup={showProfileSetup}
+              setShowProfileSetup={setShowProfileSetup}
+              newSignupUser={newSignupUser}
+              setNewSignupUser={setNewSignupUser}
+              totalUnreadCount={totalUnreadCount}
+              userCoords={userCoords} // ✅ passed down to SwiperScreen
+            />
 
-        {/* Toast Notifications */}
-        <div className="fixed bottom-0 right-0 p-4 space-y-3 max-w-md z-50">
-          {toastNotifications.map((notif) => (
-            <div
-              key={notif.id}
-              className="rounded-xl shadow-2xl border border-red-200 bg-white animate-in slide-in-from-bottom-4 fade-in duration-300 cursor-pointer transform transition-all hover:scale-105 overflow-hidden"
-            >
-              <div className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1">
-                    <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                      <i className="fa-solid fa-comment-dots text-red-500"></i>
-                      New Message
-                    </h4>
+            {currentUser?.id && (
+              <MatchNotificationCenter userId={currentUser.id} />
+            )}
+
+            {/* Toast Notifications */}
+            <div className="fixed bottom-0 right-0 p-4 space-y-3 max-w-md z-50">
+              {toastNotifications.map((notif) => (
+                <div
+                  key={notif.id}
+                  className="rounded-xl shadow-2xl border border-red-200 bg-white animate-in slide-in-from-bottom-4 fade-in duration-300 cursor-pointer transform transition-all hover:scale-105 overflow-hidden"
+                >
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                          <i className="fa-solid fa-comment-dots text-red-500"></i>
+                          New Message
+                        </h4>
+                      </div>
+                      <button
+                        onClick={() => setToastNotifications(prev => prev.filter(n => n.id !== notif.id))}
+                        className="text-gray-400 hover:text-gray-600 text-lg transition-colors"
+                      >
+                        <i className="fa-solid fa-xmark"></i>
+                      </button>
+                    </div>
+                    {notif.senderName && (
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        From: {notif.senderName}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-700 line-clamp-2 font-medium">{notif.message}</p>
+                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider pt-1">
+                      {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      setToastNotifications(prev => prev.filter(n => n.id !== notif.id));
-                    }}
-                    className="text-gray-400 hover:text-gray-600 text-lg transition-colors"
-                  >
-                    <i className="fa-solid fa-xmark"></i>
-                  </button>
+                  <div className="h-1 bg-gradient-to-r from-red-500 to-transparent animate-pulse"></div>
                 </div>
-
-                {notif.senderName && (
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    From: {notif.senderName}
-                  </p>
-                )}
-
-                <p className="text-sm text-gray-700 line-clamp-2 font-medium">
-                  {notif.message}
-                </p>
-
-                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider pt-1">
-                  {new Date(notif.timestamp).toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                  })}
-                </div>
-              </div>
-
-              {/* Auto-dismiss progress bar */}
-              <div className="h-1 bg-gradient-to-r from-red-500 to-transparent animate-pulse"></div>
+              ))}
             </div>
-          ))}
-        </div>
-        </HashRouter>
-      </WebSocketProvider>
+          </HashRouter>
+        </WebSocketProvider>
       </AlertProvider>
     </ErrorBoundary>
   );
