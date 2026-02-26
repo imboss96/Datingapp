@@ -63,8 +63,9 @@ const AppContent: React.FC<{
   totalUnreadCount,
   userCoords // ✅
 }) => {
-  const [darkMode, setDarkMode] = useState(() => {
+  const [darkMode] = useState(() => {
     if (typeof window !== 'undefined') {
+      // initialize from preference or stored value; no manual toggle provided
       return localStorage.getItem('theme') === 'dark' || window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     return false;
@@ -80,8 +81,6 @@ const AppContent: React.FC<{
       localStorage.setItem('theme', 'light');
     }
   }, [darkMode]);
-
-  const toggleDarkMode = () => setDarkMode((d) => !d);
   const location = useLocation();
   const isChatRoute = location.pathname.startsWith('/chat/');
   const [showEmailVerification, setShowEmailVerification] = useState(false);
@@ -99,13 +98,6 @@ const AppContent: React.FC<{
   if (!currentUser || !currentUser.id) {
     return (
       <>
-        <button
-          onClick={toggleDarkMode}
-          className="fixed top-4 right-4 z-50 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 rounded shadow hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-          aria-label="Toggle dark mode"
-        >
-          {darkMode ? '🌙 Dark' : '☀️ Light'}
-        </button>
         <Routes>
           <Route path="/" element={<LandingPage onOpenLoginModal={() => setShowLoginModal(true)} />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />

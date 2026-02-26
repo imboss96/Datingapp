@@ -53,7 +53,17 @@ const styles = `
     cursor: pointer;
   }
 
-  .lp-nav-btns { display: flex; gap: 0.8rem; align-items: center; }
+  .lp-nav-btns { display: flex; gap: 0.8rem; align-items: center; flex-wrap: nowrap; overflow-x: auto; }
+.lp-nav-btns > * { flex-shrink: 0; }
+
+  .lp-hamburger {
+    display: none;
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 1.8rem;
+    cursor: pointer;
+  }
 
   .lp-btn-ghost {
     padding: 0.6rem 1.4rem;
@@ -66,6 +76,8 @@ const styles = `
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
     transition: all 0.3s;
+    white-space: nowrap;
+    min-width: 5.5rem;
   }
   .lp-btn-ghost:hover { border-color: var(--rose); color: var(--petal); }
 
@@ -81,6 +93,8 @@ const styles = `
     font-family: 'DM Sans', sans-serif;
     box-shadow: 0 4px 20px rgba(192,22,44,0.4);
     transition: all 0.3s;
+    white-space: nowrap;
+    min-width: 6rem;
   }
   .lp-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(192,22,44,0.6); }
 
@@ -170,6 +184,8 @@ const styles = `
     transition: all 0.3s;
     text-decoration: none;
     display: inline-block;
+    white-space: nowrap;
+    min-width: 6.5rem;
   }
   .lp-cta-main:hover { transform: translateY(-3px); box-shadow: 0 15px 40px rgba(192,22,44,0.65); }
 
@@ -186,6 +202,8 @@ const styles = `
     transition: all 0.3s;
     text-decoration: none;
     display: inline-block;
+    white-space: nowrap;
+    min-width: 6rem;
   }
   .lp-cta-ghost:hover { border-color: var(--rose); color: var(--petal); }
 
@@ -922,12 +940,34 @@ const styles = `
     .lp-locations-grid { grid-template-columns: repeat(2, 1fr); }
     .lp-footer-grid { grid-template-columns: 1fr; }
     .lp-footer-bottom { flex-direction: column; text-align: center; }
+
+    /* stack hero CTAs on tiny screens */
+    .lp-hero-cta { flex-direction: column; gap: 0.5rem; }
+    .lp-cta-main, .lp-cta-ghost { width: 100%; text-align: center; }
   }
 
-  @media (max-width: 480px) {
+  @media (max-width: 768px) {
     .lp-members-grid { grid-template-columns: 1fr 1fr; }
     .lp-stats-grid { grid-template-columns: 1fr 1fr; }
     .lp-locations-grid { grid-template-columns: 1fr 1fr; }
+
+    /* show hamburger and hide nav buttons until toggled */
+    .lp-hamburger { display: block; }
+    .lp-nav-btns { display: none; }
+    .lp-nav-btns.open { display: flex; position: absolute; top: 100%; right: 5%; flex-direction: column; background: rgba(17,2,5,0.95); padding: 1rem; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 1001; }
+
+    /* shrink nav buttons slightly and maintain spacing */
+    .lp-nav-btns { gap: 0.5rem; }
+    .lp-btn-ghost, .lp-btn-primary { padding: 0.45rem 1rem; font-size: 0.85rem; }
+    .lp-cta-main, .lp-cta-ghost { padding: 0.7rem 1.6rem; font-size: 0.9rem; }
+  }
+
+  @media (max-width: 360px) {
+    /* adjustments for extremely narrow phones */
+    .lp-nav { padding: 1.2rem 2%; }
+    .lp-nav-btns { gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
+    .lp-btn-ghost, .lp-btn-primary { padding: 0.4rem 0.85rem; font-size: 0.8rem; }
+    .lp-hero-cta { gap: 0.4rem; }
   }
 `;
 
@@ -989,7 +1029,16 @@ const WHY_CHOOSE_TABS = [
 function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => void }) {
   const [activeTab, setActiveTab] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth > 768) setMenuOpen(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // Slider auto-rotation - disabled by default for performance
   useEffect(() => {
@@ -1002,6 +1051,7 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
   const handleAuth = useCallback((e?: React.MouseEvent) => {
     e?.preventDefault();
+    setMenuOpen(false);
     if (onOpenLoginModal) { onOpenLoginModal(); } else { navigate('/login'); }
   }, [onOpenLoginModal, navigate]);
 
@@ -1021,7 +1071,14 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
         {/* NAV */}
         <nav className="lp-nav">
           <div className="lp-logo">LunesaLove</div>
-          <div className="lp-nav-btns">
+          <button
+            className="lp-hamburger"
+            aria-label="Menu"
+            onClick={() => setMenuOpen(o => !o)}
+          >
+            &#9776;
+          </button>
+          <div className={`lp-nav-btns${menuOpen ? ' open' : ''}`}>
             <button className="lp-btn-ghost" onClick={handleAuth}>
               Log In
             </button>
