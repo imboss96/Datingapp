@@ -4,11 +4,11 @@
  */
 
 const BREVO_API_URL = 'https://api.brevo.com/v3';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 
 // Helper to get env vars at call time (not module load time)
 const getConfig = () => ({
   apiKey: process.env.BREVO_API_KEY,
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001',
   passwordResetTemplateId: parseInt(process.env.BREVO_PASSWORD_RESET_TEMPLATE_ID) || 1,
   emailVerificationTemplateId: parseInt(process.env.BREVO_EMAIL_VERIFICATION_TEMPLATE_ID) || 2,
   welcomeEmailTemplateId: parseInt(process.env.BREVO_WELCOME_EMAIL_TEMPLATE_ID) || 3,
@@ -110,7 +110,7 @@ export const subscribeToNewsletter = async (email, firstName = '', lastName = ''
  */
 export const sendPasswordResetEmail = async (email, resetToken) => {
   try {
-    const { apiKey, passwordResetTemplateId } = getConfig();
+    const { apiKey, passwordResetTemplateId, frontendUrl } = getConfig();
 
     console.log('[Brevo DEBUG] Starting password reset email send for:', email);
     console.log('[Brevo DEBUG] BREVO_API_KEY exists:', !!apiKey);
@@ -118,7 +118,7 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
 
     const userName = email.split('@')[0];
     // ✅ FIX: Added /# so HashRouter can handle the route correctly
-    const resetUrl = `${FRONTEND_URL}/#/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+    const resetUrl = `${frontendUrl}/#/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
 
     const payload = {
       to: [{ email }],
@@ -172,9 +172,9 @@ export const sendPasswordResetEmail = async (email, resetToken) => {
  */
 export const sendWelcomeEmail = async (email, name) => {
   try {
-    const { apiKey, welcomeEmailTemplateId } = getConfig();
+    const { apiKey, welcomeEmailTemplateId, frontendUrl } = getConfig();
     // ✅ FIX: Added /# so HashRouter can handle the route correctly
-    const loginUrl = `${FRONTEND_URL}/#/login`;
+    const loginUrl = `${frontendUrl}/#/login`;
 
     const payload = {
       to: [{ email }],
@@ -216,11 +216,11 @@ export const sendWelcomeEmail = async (email, name) => {
  */
 export const sendEmailVerificationEmail = async (email, verificationToken) => {
   try {
-    const { apiKey, emailVerificationTemplateId } = getConfig();
+    const { apiKey, emailVerificationTemplateId, frontendUrl } = getConfig();
 
     const userName = email.split('@')[0];
     // ✅ FIX: Added /# so HashRouter can handle the /verify-email route correctly
-    const verificationUrl = `${FRONTEND_URL}/#/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+    const verificationUrl = `${frontendUrl}/#/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
 
     const payload = {
       to: [{ email }],
