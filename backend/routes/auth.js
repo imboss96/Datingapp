@@ -274,7 +274,15 @@ router.get('/me', authMiddleware, async (req, res) => {
   try {
     const user = await User.findOne({ id: req.userId }).select('-passwordHash');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(user);
+    
+    // Convert GeoJSON coordinates to simple format for frontend
+    const userData = user.toObject();
+    if (userData.coordinates && userData.coordinates.coordinates) {
+      const [lon, lat] = userData.coordinates.coordinates;
+      userData.coordinates = { longitude: lon, latitude: lat };
+    }
+    
+    res.json(userData);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

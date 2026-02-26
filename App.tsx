@@ -6,7 +6,7 @@ import VerifyEmailInfoPage from './components/VerifyEmailInfoPage';
 import VerifyEmailPage from './components/VerifyEmailPage';
 import LoginPage from './components/LoginPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
-import SwiperScreen from './components/SwiperScreen';
+import SwiperScreen from "./components/SwiperScreen";
 import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
 import ModeratorPanel from './components/ModeratorPanel';
@@ -21,7 +21,6 @@ import ErrorBoundary from './components/ErrorBoundary';
 import TermsPage from './components/TermsPage';
 import PrivacyPage from './components/PrivacyPage';
 import CookiePolicyPage from './components/CookiePolicyPage';
-import EmailVerificationModal from './components/EmailVerificationModal';
 import { WebSocketProvider } from './services/WebSocketProvider';
 import { AlertProvider } from './services/AlertContext';
 import { UserProfile, UserRole, Chat, VerificationStatus } from './types';
@@ -335,7 +334,7 @@ const AppContent: React.FC<{
           {/* ✅ SwiperScreen now receives live coords */}
           <Route path="/" element={
             <div className="flex-1 overflow-y-auto">
-              <SwiperScreen currentUser={currentUser} coords={userCoords} onDeductCoin={() => updateCoins(-1)} />
+              <SwiperScreen currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} />
             </div>
           } />
           <Route path="/chats" element={<div className="md:hidden flex-1 overflow-y-auto"><ChatList currentUser={currentUser} /></div>} />
@@ -489,8 +488,19 @@ const App: React.FC = () => {
 
         clearTimeout(locationTimer);
         locationTimer = setTimeout(() => {
+          console.log('[App] Location updated:', coords);
           setUserCoords(coords); // triggers SwiperScreen re-fetch via coords prop
 
+          // Update currentUser state with new coordinates in correct format
+          setCurrentUser(prev => prev ? {
+            ...prev,
+            coordinates: {
+              longitude: position.coords.longitude,
+              latitude: position.coords.latitude
+            }
+          } : null);
+
+          // Also persist to backend
           apiClient.updateProfile(currentUser.id, { coordinates: coords })
             .catch(err => console.error('[App] Failed to update location:', err));
         }, 5000); // 5s debounce

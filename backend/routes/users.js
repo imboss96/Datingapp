@@ -76,45 +76,82 @@ router.get('/', async (req, res) => {
       if (arr.length) q.interests = { $in: arr };
     }
 
-    // Optionally exclude already-seen (swiped/matched) users
+    // FIX 1: Only exclude swiped users (not matched), and cap at last 500
+    // so that accounts that have swiped everyone don't get a permanently empty feed.
+    // Also removed 'matches' from exclusion — matched users can still appear in discovery.
     if (excludeSeen === 'true' && req.userId) {
-      const current = await User.findOne({ id: req.userId }).select('swipes matches');
-      const excluded = new Set([req.userId]);
-      if (current) {
-        (current.swipes || []).forEach(id => excluded.add(id));
-        (current.matches || []).forEach(id => excluded.add(id));
+      const current = await User.findOne({ id: req.userId }).select('swipes');
+      if (current && current.swipes && current.swipes.length > 0) {
+        const recentSwipes = current.swipes.slice(-500); // only last 500 swipes
+        const excluded = new Set([req.userId, ...recentSwipes]);
+        q.id = { $nin: Array.from(excluded) };
+      } else {
+        q.id = { $ne: req.userId };
       }
-      q.id = { ...(q.id || {}), $nin: Array.from(excluded) };
     }
 
     const projection = '-passwordHash -email -googleId';
 
-    // If geo is provided, use aggregation with $geoNear for nearest-first
+    // FIX 2: If geo is provided, try $geoNear but fall back gracefully if it fails
+    // (e.g. no 2dsphere index) instead of returning an empty array silently.
     if (lat && lon) {
-      const near = {
-        $geoNear: {
-          near: { type: 'Point', coordinates: [Number(lon), Number(lat)] },
-          distanceField: 'distanceMeters',
-          spherical: true,
-          query: q
+      try {
+        const near = {
+          $geoNear: {
+            near: { type: 'Point', coordinates: [Number(lon), Number(lat)] },
+            distanceField: 'distanceMeters',
+            spherical: true,
+            query: q
+          }
+        };
+
+        const pipeline = [
+          near,
+          { $project: { passwordHash: 0, email: 0, googleId: 0 } },
+          { $skip: Number(skip) },
+          { $limit: Math.min(Number(limit), 200) }
+        ];
+
+        const users = await User.aggregate(pipeline);
+        console.log('[DEBUG Backend] Geo query returned', users.length, 'users');
+
+        // FIX 3: If geo returns empty results, fall through to regular query
+        // instead of returning [] to the client.
+        if (users.length > 0) {
+          // Convert GeoJSON coordinates to simple format for frontend
+          const transformedUsers = users.map(user => {
+            if (user.coordinates && user.coordinates.coordinates) {
+              const [lon, lat] = user.coordinates.coordinates;
+              user.coordinates = { longitude: lon, latitude: lat };
+            }
+            return user;
+          });
+          return res.json(transformedUsers);
         }
-      };
 
-      const pipeline = [
-        near,
-        { $project: { passwordHash: 0, email: 0, googleId: 0 } },
-        { $skip: Number(skip) },
-        { $limit: Math.min(Number(limit), 200) }
-      ];
-
-      const users = await User.aggregate(pipeline);
-      return res.json(users);
+        console.log('[DEBUG Backend] Geo returned 0, falling back to regular query');
+      } catch (geoErr) {
+        // $geoNear fails when there is no 2dsphere index on coordinates field.
+        // Fall through to regular paginated query below.
+        console.warn('[DEBUG Backend] $geoNear failed, falling back to regular query:', geoErr.message);
+      }
     }
 
     // Fallback: paginated find with projection
     const users = await User.find(q).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 200));
     console.log('[DEBUG Backend] Fallback query executed, returning', users.length, 'users');
-    res.json(users);
+    
+    // Convert GeoJSON coordinates to simple format for frontend
+    const transformedUsers = users.map(user => {
+      const userData = user.toObject();
+      if (userData.coordinates && userData.coordinates.coordinates) {
+        const [lon, lat] = userData.coordinates.coordinates;
+        userData.coordinates = { longitude: lon, latitude: lat };
+      }
+      return userData;
+    });
+    
+    res.json(transformedUsers);
   } catch (err) {
     console.error('[ERROR] Discovery /users failed:', err);
     res.status(500).json({ error: err.message });

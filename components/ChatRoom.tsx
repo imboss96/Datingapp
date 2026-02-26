@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { UserProfile, Message, UserRole, MediaFile } from '../types';
 import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
-import { useWebSocket } from '../services/WebSocketProvider';
+import { useWebSocketContext } from '../services/WebSocketProvider';
 import { formatLastSeen } from '../services/lastSeenUtils';
 import MediaRenderer from './MediaRenderer';
 import VideoCallRoom from './VideoCallRoom';
@@ -59,7 +59,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     }
   };
 
-  const { sendTypingStatus, ws } = useWebSocket(currentUser.id, null, handleTypingIndicator);
+  const { sendTypingStatus, sendMessage } = useWebSocketContext();
+
+  // Register typing indicator handler
+  useEffect(() => {
+    const handleTyping = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      handleTypingIndicator(customEvent.detail);
+    };
+    window.addEventListener('ws:typing', handleTyping);
+    return () => window.removeEventListener('ws:typing', handleTyping);
+  }, [chatId]);
 
   // Handle keyboard visibility on mobile - scroll to bottom when keyboard shows/hides
   useEffect(() => {
@@ -526,14 +536,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     setCallIsVideo(confirmCall.isVideo);
                     setInCall(true);
                     setConfirmCall(null);
-                    if (ws && chatUser) {
-                      ws.send(JSON.stringify({
+                    if (chatUser) {
+                      sendMessage({
                         type: 'call_incoming',
                         to: chatUser.id,
                         fromName: currentUser.name || currentUser.username,
                         isVideo: confirmCall.isVideo,
                         chatId: chatId
-                      }));
+                      });
                     }
                   }}
                   className="px-3 py-1 rounded-md bg-red-500 text-white text-sm font-semibold"
@@ -555,10 +565,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             isVideo={callIsVideo}
             onCallEnd={() => {
               setInCall(false);
-              ws?.send(JSON.stringify({
+              sendMessage({
                 type: 'call_end',
                 to: chatUser.id
-              }));
+              });
             }}
           />
         )}
@@ -898,7 +908,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
               />
             </div>
             <button
-              onClick={recordedAudio ? (() => handleSendAudioMessage()) : handleSend}
+              onClick={recordedAudio ? () => handleSendAudioMessage() : () => handleSend()}
               className="w-12 h-12 rounded-2xl spark-gradient text-white flex items-center justify-center shadow-lg hover:shadow-red-500/20 active:scale-95 transition-all disabled:grayscale disabled:opacity-30"
               disabled={!chatId || (!inputText.trim() && !selectedMedia && !recordedAudio) || uploadingMedia || isRecordingAudio}
               title={!chatId ? 'Loading chat...' : recordedAudio ? 'Send audio message' : 'Send message'}
