@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import jwtDecode from 'jwt-decode';
+import { jwtDecode } from 'jwt-decode';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
