@@ -1,5 +1,45 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import apiClient from '../services/apiClient';
+import LoginPage from './LoginPage';
+
+// simple reusable icons for landing page (replaces previous emoji usage)
+const ICON_SVG: Record<string,string> = {
+  heart: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v12H5.17L4 17.17V4zm0-2c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H4z"/></svg>',
+  user: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>',
+  globe: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm6.93 5h-3.03a13.98 13.98 0 00-1.2-3.74A8.017 8.017 0 0118.93 7zM12 4c.85 0 1.7.08 2.51.23A15.99 15.99 0 0013 9h-2A16.03 16.03 0 009.49 4.23 8.018 8.018 0 0112 4zm-4.5.26A13.98 13.98 0 007.06 7H4.03a8.017 8.017 0 013.47-2.74zM4 12c0-.35.02-.69.05-1h3.17a16.08 16.08 0 000 2H4.05c-.03-.31-.05-.65-.05-1zm.95 4h3.03a13.98 13.98 0 001.2 3.74A8.017 8.017 0 014.95 16zM12 20c-.85 0-1.7-.08-2.51-.23A15.99 15.99 0 0011 15h2a16.03 16.03 0 001.51 4.77c-.81.15-1.66.23-2.51.23zm4.5-.26A13.98 13.98 0 0016.94 17h3.03a8.017 8.017 0 01-3.47 2.74z"/></svg>',
+  book: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2zm0 18H6V4h12v16z"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l8 4v6c0 5-3.58 9.74-8 11-4.42-1.26-8-6-8-11V5l8-4z"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.471 6.471 0 001.48-5.34C15.35 5.59 12.36 3 8.75 3S2.15 5.59 2.15 8.39C2.15 11.19 4.64 13.68 7.5 13.93a6.5 6.5 0 005.34-1.48l.27.28v.79l4.25 4.25c.39.39 1.02.39 1.41 0l.01-.01c.39-.39.39-1.02 0-1.41L15.5 14zm-6.75 0C6.01 14 4 11.99 4 8.75S6.01 3.5 8.75 3.5 13.5 5.51 13.5 8.75 11.49 14 8.75 14z"/></svg>',
+  percent: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3l-1.41 1.41L5.41 16.59 4 18l5.17 5.17L16.59 6.41 19 3zm-9 0a2 2 0 110 4 2 2 0 010-4zm10 16a2 2 0 110 4 2 2 0 010-4z"/></svg>',
+  couple: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>',
+};
+
+const Icon: React.FC<{name:string; className?:string}> = ({name, className}) => {
+  switch (name) {
+    case 'heart':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>;
+    case 'chat':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v12H5.17L4 17.17V4zm0-2c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2H4z"/></svg>;
+    case 'user':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>;
+    case 'globe':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm6.93 5h-3.03a13.98 13.98 0 00-1.20-3.74A8.017 8.017 0 0118.93 7zM12 4c.85 0 1.70.08 2.51.23A15.99 15.99 0 0013 9h-2A16.03 16.03 0 009.49 4.23 8.018 8.018 0 0112 4zm-4.50.26A13.98 13.98 0 007.06 7H4.03a8.017 8.017 0 013.47-2.74zM4 12c0-.35.02-.69.05-1h3.17a16.08 16.08 0 000 2H4.05c-.03-.31-.05-.65-.05-1zm.95 4h3.03a13.98 13.98 0 001.20 3.74A8.017 8.017 0 014.95 16zM12 20c-.85 0-1.70-.08-2.51-.23A15.99 15.99 0 0011 15h2a16.03 16.03 0 001.51 4.77c-.81.15-1.66.23-2.51.23zm4.50-.26A13.98 13.98 0 0016.94 17h3.03a8.017 8.017 0 01-3.47 2.74z"/></svg>;
+    case 'book':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2zm0 18H6V4h12v16z"/></svg>;
+    case 'shield':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 1l8 4v6c0 5-3.58 9.74-8 11-4.42-1.26-8-6-8-11V5l8-4z"/></svg>;
+    case 'search':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27a6.471 6.471 0 001.48-5.34C15.35 5.59 12.36 3 8.75 3S2.15 5.59 2.15 8.39C2.15 11.19 4.64 13.68 7.5 13.93a6.5 6.5 0 005.34-1.48l.27.28v.79l4.25 4.25c.39.39 1.02.39 1.41 0l.01-.01c.39-.39.39-1.02 0-1.41L15.5 14zm-6.75 0C6.01 14 4 11.99 4 8.75S6.01 3.5 8.75 3.5 13.5 5.51 13.5 8.75 11.49 14 8.75 14z"/></svg>;
+    case 'percent':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19 3l-1.41 1.41L5.41 16.59 4 18l5.17 5.17L16.59 6.41 19 3zm-9 0a2 2 0 110 4 2 2 0 010-4zm10 16a2 2 0 110 4 2 2 0 010-4z"/></svg>;
+    case 'couple':
+      return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>;
+    default:
+      return <span className={className} />;
+  }
+};
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap');
@@ -262,9 +302,9 @@ const styles = `
   /* SLIDER */
   .lp-slider-wrap {
     position: relative;
-    width: 320px;
+    width: 420px; /* make square-ish as in guide */
     height: 420px;
-    border-radius: 180px 180px 40px 40px;
+    border-radius: 50px; /* soft rounded corners similar to reference */
     overflow: hidden;
     border: 3px solid rgba(232,51,90,0.25);
     box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(192,22,44,0.15);
@@ -287,6 +327,7 @@ const styles = `
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: inherit;
   }
 
   .lp-slide-emoji {
@@ -394,6 +435,7 @@ const styles = `
     display: flex; align-items: center; justify-content: center;
     font-size: 1.1rem;
   }
+  .lp-match-avatar svg { width: 1.1rem; height: 1.1rem; fill: currentColor; }
 
   .lp-match-name { font-size: 0.75rem; color: var(--petal); font-weight: 500; }
   .lp-match-sub { font-size: 0.7rem; color: var(--text-muted); }
@@ -703,6 +745,7 @@ const styles = `
   .lp-trust-card:hover { border-color: rgba(232,51,90,0.35); transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
 
   .lp-trust-icon { font-size: 2rem; margin-bottom: 1rem; }
+  .lp-trust-icon svg { width: 2rem; height: 2rem; fill: currentColor; }
   .lp-trust-title { font-family: 'Playfair Display', serif; font-size: 1.2rem; font-weight: 700; margin-bottom: 0.7rem; }
   .lp-trust-desc { font-size: 0.9rem; color: var(--text-muted); line-height: 1.7; font-weight: 300; }
 
@@ -801,6 +844,33 @@ const styles = `
   }
 
   .lp-footer-copy { font-size: 0.8rem; color: var(--text-muted); }
+
+  /* modal styles */
+  .lp-modal-backdrop {
+  }
+  .lp.modal-open {
+    filter: blur(4px);
+  }
+  .lp-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+  }
+  .lp-modal {
+    background: var(--card);
+    padding: 2rem;
+    border-radius: 12px;
+    max-width: 90%;
+    width: 400px;
+    color: #fff;
+  }
+  .lp-modal h3 { margin-top: 0; }
+  .lp-modal-body { margin: 1rem 0; }
   .lp-footer-copy a { color: var(--rose); text-decoration: none; }
 
   .lp-social-links { display: flex; gap: 0.8rem; }
@@ -826,7 +896,8 @@ const styles = `
   /* SLIDER */
   .lp-slider {
     position: relative;
-    width: 340px;
+    /* slightly wider rectangle per design request */
+    width: 380px;
     height: 440px;
     margin: 0 auto;
   }
@@ -834,7 +905,8 @@ const styles = `
   .lp-slide {
     position: absolute;
     inset: 0;
-    border-radius: 180px 180px 40px 40px;
+    /* smooth, uniform rounded corners for a clean rectangle */
+    border-radius: 50px;
     overflow: hidden;
     border: 3px solid rgba(232,51,90,0.25);
     box-shadow: 0 30px 80px rgba(0,0,0,0.7), 0 0 60px rgba(192,22,44,0.15);
@@ -854,6 +926,7 @@ const styles = `
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: inherit;
   }
 
   .lp-slide-placeholder {
@@ -918,6 +991,11 @@ const styles = `
   /* FLOATING HEARTS BG */
   .lp-hearts-bg { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
   .lp-heart { position: absolute; opacity: 0.025; font-size: 2rem; animation: lpHeartFloat linear infinite; }
+  .lp-heart svg { width: 2rem; height: 2rem; fill: currentColor; }
+  .lp-hero-badge-icon { width: 1.2em; height: 1.2em; vertical-align: text-bottom; margin-right: 0.4em; fill: currentColor; }
+  .lp-footer-heart { width: 1.2em; height: 1.2em; vertical-align: middle; fill: currentColor; }
+  .lp-tab-icon svg { width: 2.4rem; height: 2.4rem; fill: currentColor; }
+  .lp-stat-card span svg { width: 1.8rem; height: 1.8rem; fill: currentColor; }
   @keyframes lpHeartFloat {
     0% { transform: translateY(110vh) rotate(0deg); }
     100% { transform: translateY(-100px) rotate(360deg); }
@@ -971,46 +1049,51 @@ const styles = `
   }
 `;
 
-const tabContent: Record<number, { icon: string; title: string; desc: string }> = {
-  0: { icon: '🔍', title: 'Smart Partner Search', desc: 'Use advanced filters to find exactly who you are looking for — by location, interests, age, and more. Our intelligent search surfaces the most compatible people first.' },
-  1: { icon: '💯', title: '94% Compatibility Match', desc: 'Our matching algorithm analyzes your preferences, behavior, and profile to surface people you will genuinely connect with. Real compatibility, not just looks.' },
-  2: { icon: '💑', title: 'Find Your Partner', desc: 'Browse verified profiles, send likes, and start conversations with people who match your energy. Your next great love story starts with a single message.' },
-  3: { icon: '📖', title: 'Live Success Stories', desc: 'Every day, real couples share how they found each other on LunesaLove. Read their journeys and let their stories inspire yours.' },
+const tabContent: Record<number, { icon: JSX.Element; title: string; desc: string }> = {
+  0: { icon: <Icon name="search" />, title: 'Smart Partner Search', desc: 'Use advanced filters to find exactly who you are looking for — by location, interests, age, and more. Our intelligent search surfaces the most compatible people first.' },
+  1: { icon: <Icon name="percent" />, title: '94% Compatibility Match', desc: 'Our matching algorithm analyzes your preferences, behavior, and profile to surface people you will genuinely connect with. Real compatibility, not just looks.' },
+  2: { icon: <Icon name="couple" />, title: 'Find Your Partner', desc: 'Browse verified profiles, send likes, and start conversations with people who match your energy. Your next great love story starts with a single message.' },
+  3: { icon: <Icon name="book" />, title: 'Live Success Stories', desc: 'Every day, real couples share how they found each other on LunesaLove. Read their journeys and let their stories inspire yours.' },
 };
 
-// Memoized data - created once outside component
-const SLIDER_IMAGES = [
-  { src: '/images/banner/shape/home3/03.png', emoji: '💑' },
-  { src: '/images/banner/home3/01.jpg', emoji: '👫' },
-  { src: '/images/banner/home3/02.jpg', emoji: '💕' },
-  { src: '/images/banner/home3/03.jpg', emoji: '❤️' },
-  { src: '/images/about/home3/01.jpg', emoji: '💍' },
+// Initially static fallback slider images (will be replaced by backend data)
+// fallback slider entries use icon names instead of emojis
+interface Slide { src: string; icon: string; }
+const FALLBACK_SLIDER: Slide[] = [
+  { src: '/images/banner/shape/home3/03.png', icon: 'couple' },
+  { src: '/images/banner/home3/01.jpg', icon: 'couple' },
+  { src: '/images/banner/home3/02.jpg', icon: 'couple' },
+  { src: '/images/banner/home3/03.jpg', icon: 'heart' },
+  { src: '/images/about/home3/01.jpg', icon: 'heart' },
 ];
 
+// slider images state will live inside the component now
+
+// member list with icon key for fallback
 const MEMBERS = [
-  { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/01.jpg', emoji: '👩' },
-  { name: 'Arika Q Smith', status: 'Active 15 days ago', image: '/images/member/home3/02.jpg', emoji: '👩‍🦱' },
-  { name: 'William R Show', status: 'Active 10 days ago', image: '/images/member/home3/03.jpg', emoji: '👨' },
-  { name: 'Hanna Marcovick', status: 'Active 10 days ago', image: '/images/member/home3/04.jpg', emoji: '👩‍🦰' },
-  { name: 'James Okafor', status: 'Active 2 days ago', image: '/images/member/home3/05.jpg', emoji: '👨🏾' },
-  { name: 'Sara Mitchell', status: 'Active today', image: '/images/member/home3/06.jpg', emoji: '👩🏻' },
-  { name: 'Carlos Vega', status: 'Active 5 days ago', image: '/images/member/home3/07.jpg', emoji: '👨🏽' },
-  { name: 'Amara Diallo', status: 'Active 3 days ago', image: '/images/member/home3/08.jpg', emoji: '👩🏾' },
+  { name: 'Smith Johnson', status: 'Active 10 days ago', image: '/images/member/home3/01.jpg', icon: 'user' },
+  { name: 'Arika Q Smith', status: 'Active 15 days ago', image: '/images/member/home3/02.jpg', icon: 'user' },
+  { name: 'William R Show', status: 'Active 10 days ago', image: '/images/member/home3/03.jpg', icon: 'user' },
+  { name: 'Hanna Marcovick', status: 'Active 10 days ago', image: '/images/member/home3/04.jpg', icon: 'user' },
+  { name: 'James Okafor', status: 'Active 2 days ago', image: '/images/member/home3/05.jpg', icon: 'user' },
+  { name: 'Sara Mitchell', status: 'Active today', image: '/images/member/home3/06.jpg', icon: 'user' },
+  { name: 'Carlos Vega', status: 'Active 5 days ago', image: '/images/member/home3/07.jpg', icon: 'user' },
+  { name: 'Amara Diallo', status: 'Active 3 days ago', image: '/images/member/home3/08.jpg', icon: 'user' },
 ];
 
 const STATS = [
-  { number: '2,000,000+', label: 'Members Worldwide', icon: '👥' },
-  { number: '628,590', label: 'Members Online', icon: '🟢' },
-  { number: '314,587', label: 'Men Online', icon: '👨' },
-  { number: '102,369', label: 'Women Online', icon: '👩' },
+  { number: '2,000,000+', label: 'Members Worldwide', icon: <Icon name="user" /> },
+  { number: '628,590', label: 'Members Online', icon: <Icon name="user" /> },
+  { number: '314,587', label: 'Men Online', icon: <Icon name="user" /> },
+  { number: '102,369', label: 'Women Online', icon: <Icon name="user" /> },
 ];
 
 const LOCATIONS = [
-  { name: 'London, UK', image: '/images/meet/icon/02.jpg', emoji: '🇬🇧' },
-  { name: 'Barcelona, Spain', image: '/images/meet/icon/03.jpg', emoji: '🇪🇸' },
-  { name: 'Taj Mahal, India', image: '/images/meet/icon/04.jpg', emoji: '🇮🇳' },
-  { name: 'Dubai, UAE', image: '/images/meet/icon/05.jpg', emoji: '🇦🇪' },
-  { name: 'Paris, France', image: '/images/meet/icon/06.jpg', emoji: '🇫🇷' },
+  { name: 'London, UK', image: '/images/meet/icon/02.jpg', icon: 'globe' },
+  { name: 'Barcelona, Spain', image: '/images/meet/icon/03.jpg', icon: 'globe' },
+  { name: 'Taj Mahal, India', image: '/images/meet/icon/04.jpg', icon: 'globe' },
+  { name: 'Dubai, UAE', image: '/images/meet/icon/05.jpg', icon: 'globe' },
+  { name: 'Paris, France', image: '/images/meet/icon/06.jpg', icon: 'globe' },
 ];
 
 const STORIES = [
@@ -1030,6 +1113,13 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
   const [activeTab, setActiveTab] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sliderImages, setSliderImages] = useState(FALLBACK_SLIDER);
+  // modal state for footer links
+  // modal payload may be simple text or a full component
+  type ModalPayload =
+    | { title: string; body: string }
+    | { component: JSX.Element };
+  const [modalInfo, setModalInfo] = useState<ModalPayload | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -1040,13 +1130,58 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // must define closeModal before it's referenced in FOOTER_MODAL_DATA
+  const closeModal = () => setModalInfo(null);
+
+  // map footer link texts to modal content
+  const FOOTER_MODAL_DATA: Record<string, {title:string; body:string} | {component: JSX.Element}> = {
+    'Top Members': { title: 'Top Members', body: 'Browse profiles of our most active and popular members on LunesaLove.' },
+    'New Members': { title: 'New Members', body: 'Meet the newest singles who have just joined the platform.' },
+    'Online Now': { title: 'Online Now', body: 'See who is currently online and available to chat in real time.' },
+    'Contact Us': { title: 'Contact Us', body: 'Reach out to our support team at support@l unesalove.com or use the live chat widget.' },
+    'FAQ': { title: 'FAQ', body: 'Find answers to frequently asked questions about accounts, matching, and safety.' },
+    'Privacy Policy': { title: 'Privacy Policy', body: 'Learn how we protect your data and respect your privacy on LunesaLove.' },
+    'Terms of Service': { title: 'Terms of Service', body: 'Read the rules and guidelines that govern use of our platform.' },
+    '10 new members online': { title: 'New Members Online', body: '10 new members are currently browsing profiles on the site.' },
+    '5 new success stories': { title: 'Success Stories', body: 'Five couples have recently shared how they met through LunesaLove.' },
+    '2 verified profiles': { title: 'Verified Profiles', body: 'Two profiles were just verified by our moderation team for authenticity.' },
+    'Log In': { component: <LoginPage isModal onClose={closeModal} /> },
+    'Sign Up': { component: <LoginPage isModal initialMode="signup" onClose={closeModal} /> },
+  };
+
+  const openFooterModal = (key: string) => {
+    const data = FOOTER_MODAL_DATA[key];
+    if (data) setModalInfo(data as ModalPayload);
+  };
+
   // Slider auto-rotation - disabled by default for performance
   useEffect(() => {
     // Uncomment if auto-rotation is desired
     // const timer = setInterval(() => {
-    //   setActiveSlide(prev => (prev + 1) % SLIDER_IMAGES.length);
+    //   setActiveSlide(prev => (prev + 1) % sliderImages.length);
     // }, 3500);
     // return () => clearInterval(timer);
+  }, [sliderImages.length]);
+
+  // fetch random profiles for slider
+  useEffect(() => {
+    apiClient.getProfilesForSwiping(10, 0, true)
+      .then((profiles: any[]) => {
+        // only keep profiles with at least one image
+        let withImages = profiles.filter(p => p.images && p.images.length && p.images[0]);
+        // shuffle
+        withImages = withImages.sort(() => Math.random() - 0.5);
+        const picked = withImages.slice(0, 5);
+        // convert to slide entries
+        const slides = picked.map(p => ({ src: p.images[0], icon: 'heart' }));
+        // if less than 5, pad from FALLBACK_SLIDER
+        if (slides.length < 5) {
+          const needed = 5 - slides.length;
+          slides.push(...FALLBACK_SLIDER.slice(0, needed));
+        }
+        if (slides.length) setSliderImages(slides);
+      })
+      .catch(err => console.warn('[Landing] slider fetch error', err));
   }, []);
 
   const handleAuth = useCallback((e?: React.MouseEvent) => {
@@ -1062,11 +1197,27 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
       {/* Floating hearts - optimized */}
       <div className="lp-hearts-bg">
         {[10, 25, 45, 65, 80].map((left, i) => (
-          <span key={i} className="lp-heart" style={{ left: `${left}%`, animationDuration: `${12 + i * 3}s`, animationDelay: `${i * 2}s`, willChange: 'transform' }}>♥</span>
+          <span key={i} className="lp-heart" style={{ left: `${left}%`, animationDuration: `${12 + i * 3}s`, animationDelay: `${i * 2}s`, willChange: 'transform' }}><Icon name="heart" className="lp-heart-icon" /></span>
         ))}
       </div>
 
-      <div className="lp">
+      <div className={`lp${modalInfo ? ' modal-open' : ''}`}>
+
+        {modalInfo && (
+          <div className="lp-modal-backdrop" onClick={closeModal}>
+            <div className="lp-modal" onClick={e => e.stopPropagation()}>
+              {'component' in modalInfo ? (
+                modalInfo.component
+              ) : (
+                <>
+                  <h3>{modalInfo.title}</h3>
+                  <div className="lp-modal-body">{modalInfo.body}</div>
+                  <button className="lp-btn-primary" onClick={closeModal}>Close</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* NAV */}
         <nav className="lp-nav">
@@ -1091,7 +1242,7 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
         {/* HERO */}
         <section className="lp-hero">
           <div style={{ position: 'relative', zIndex: 2 }}>
-            <div className="lp-hero-badge">♥ 2,000,000+ Members Worldwide</div>
+            <div className="lp-hero-badge"><Icon name="heart" className="lp-hero-badge-icon" /> 2,000,000+ Members Worldwide</div>
             <h1>
               Find Your<br />
               <em>Forever</em><br />
@@ -1116,10 +1267,10 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
             <div className="lp-hero-img-wrap">
               {/* SLIDER */}
               <div className="lp-slider">
-                <button className="lp-slider-nav lp-slider-prev" onClick={() => setActiveSlide(prev => (prev - 1 + SLIDER_IMAGES.length) % SLIDER_IMAGES.length)}>◀</button>
-                <button className="lp-slider-nav lp-slider-next" onClick={() => setActiveSlide(prev => (prev + 1) % SLIDER_IMAGES.length)}>▶</button>
+                <button className="lp-slider-nav lp-slider-prev" onClick={() => setActiveSlide(prev => (prev - 1 + sliderImages.length) % sliderImages.length)}>◀</button>
+                <button className="lp-slider-nav lp-slider-next" onClick={() => setActiveSlide(prev => (prev + 1) % sliderImages.length)}>▶</button>
 
-                {SLIDER_IMAGES.map((slide, idx) => (
+                {sliderImages.map((slide, idx) => (
                   <div key={idx} className={`lp-slide${activeSlide === idx ? ' active' : ''}`}>
                     <img
                       src={slide.src}
@@ -1128,14 +1279,15 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
                       onError={(e) => {
                         const el = e.target as HTMLImageElement;
                         el.style.display = 'none';
-                        el.parentElement!.innerHTML = `<div class="lp-slide-placeholder">${slide.emoji}</div>`;
+                        const svg = ICON_SVG[slide.icon] || ICON_SVG.heart;
+                        el.parentElement!.innerHTML = `<div class="lp-slide-placeholder">${svg}</div>`;
                       }}
                     />
                   </div>
                 ))}
 
                 <div className="lp-slider-dots">
-                  {SLIDER_IMAGES.map((_, idx) => (
+                  {sliderImages.map((_, idx) => (
                     <button
                       key={idx}
                       className={`lp-slider-dot${activeSlide === idx ? ' active' : ''}`}
@@ -1147,7 +1299,7 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
               <div className="lp-float-card lp-card-match">
                 <div className="lp-card-match-inner">
-                  <div className="lp-match-avatar">💬</div>
+                  <div className="lp-match-avatar"><Icon name="chat" /></div>
                   <div>
                     <div className="lp-match-name">New Match!</div>
                     <div className="lp-match-sub">Sofia liked your profile</div>
@@ -1189,7 +1341,8 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
                     onError={(e) => {
                       const el = e.target as HTMLImageElement;
                       el.style.display = 'none';
-                      el.parentElement!.innerHTML = `<span style="font-size:3rem">${member.emoji}</span>`;
+                      const svg = ICON_SVG[member.icon] || ICON_SVG.user;
+                      el.parentElement!.innerHTML = `<span style="font-size:3rem">${svg}</span>`;
                     }}
                   />
                 </div>
@@ -1241,7 +1394,8 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
                   onError={(e) => {
                     const el = e.target as HTMLImageElement;
                     el.style.display = 'none';
-                    el.parentElement!.innerHTML = `<div class="lp-location-placeholder">${loc.emoji}</div><div class="lp-location-overlay"><div class="lp-location-name">${loc.name}</div></div>`;
+                    const svg = ICON_SVG[loc.icon] || ICON_SVG.globe;
+                    el.parentElement!.innerHTML = `<div class="lp-location-placeholder">${svg}</div><div class="lp-location-overlay"><div class="lp-location-name">${loc.name}</div></div>`;
                   }}
                 />
                 <div className="lp-location-overlay">
@@ -1302,7 +1456,8 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
                     onError={(e) => {
                       const el = e.target as HTMLImageElement;
                       el.style.display = 'none';
-                      el.parentElement!.innerHTML = `<div class="lp-story-placeholder">${story.emoji}</div>`;
+                      const svg = ICON_SVG[story.icon] || ICON_SVG.book;
+                      el.parentElement!.innerHTML = `<div class="lp-story-placeholder">${svg}</div>`;
                     }}
                   />
                 </div>
@@ -1326,7 +1481,7 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
           <div className="lp-trust-grid">
             <div className="lp-trust-card">
-              <div className="lp-trust-icon">🛡️</div>
+              <div className="lp-trust-icon"><Icon name="shield" /></div>
               <div className="lp-trust-title">Trust & Safety</div>
               <div className="lp-trust-desc">We prioritize your safety with advanced verification, secure messaging, and 24/7 moderation to ensure every member is authentic and real.</div>
             </div>
@@ -1373,32 +1528,34 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
             <div className="lp-footer-col">
               <h4>Featured Members</h4>
               <ul>
-                <li><a href="#">Top Members</a></li>
-                <li><a href="#">New Members</a></li>
-                <li><a href="#">Online Now</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Top Members'); }}>Top Members</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('New Members'); }}>New Members</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Online Now'); }}>Online Now</a></li>
               </ul>
             </div>
             <div className="lp-footer-col">
               <h4>Support</h4>
               <ul>
-                <li><a href="#">Contact Us</a></li>
-                <li><a href="#">FAQ</a></li>
-                <li><a href="#">Privacy Policy</a></li>
-                <li><a href="#">Terms of Service</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Contact Us'); }}>Contact Us</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('FAQ'); }}>FAQ</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Privacy Policy'); }}>Privacy Policy</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Terms of Service'); }}>Terms of Service</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Log In'); }}>Log In</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Sign Up'); }}>Sign Up</a></li>
               </ul>
             </div>
             <div className="lp-footer-col">
               <h4>Recent Activity</h4>
               <ul>
-                <li><a href="#">10 new members online</a></li>
-                <li><a href="#">5 new success stories</a></li>
-                <li><a href="#">2 verified profiles</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('10 new members online'); }}>10 new members online</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('5 new success stories'); }}>5 new success stories</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('2 verified profiles'); }}>2 verified profiles</a></li>
               </ul>
             </div>
           </div>
 
           <div className="lp-footer-bottom">
-            <p className="lp-footer-copy">All Rights Reserved © <a href="#">LunesaLove</a> 2026 · Made with ♥</p>
+            <p className="lp-footer-copy">All Rights Reserved © <a href="#">LunesaLove</a> 2026 · Made with <Icon name="heart" className="lp-footer-heart" /></p>
             <div className="lp-social-links">
               <a href="#" className="lp-social-link"><i className="fa-brands fa-twitter" /></a>
               <a href="#" className="lp-social-link"><i className="fa-brands fa-instagram" /></a>

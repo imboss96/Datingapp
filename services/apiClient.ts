@@ -22,8 +22,16 @@ class APIClient {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `API Error: ${response.statusText}`);
+      let errorMessage = `API Error: ${response.statusText}`;
+      try {
+        const error = await response.json();
+        errorMessage = error.error || error.message || errorMessage;
+      } catch (parseErr) {
+        // couldn't parse error JSON, use the statusText
+      }
+      const err = new Error(errorMessage);
+      (err as any).status = response.status;
+      throw err;
     }
 
     return response.json();
@@ -357,11 +365,19 @@ class APIClient {
     return this.post('/push/notify-user', { userId, title, body, data });
   }
 
-  async processPurchase(userId: string, amount: number, price: string, method: string = 'CARD', isPremiumUpgrade: boolean = false) {
-    console.log('[DEBUG apiClient] processPurchase called with:', { userId, amount, price, method, isPremiumUpgrade });
+  async processPurchase(userId: string, amount: number, price: string, method: string = 'CARD', isPremiumUpgrade: boolean = false, details: any = {}) {
+    console.log('[DEBUG apiClient] processPurchase called with:', { userId, amount, price, method, isPremiumUpgrade, details });
+    const body = {
+      userId,
+      amount,
+      price,
+      method,
+      isPremiumUpgrade,
+      ...details,
+    };
     const result = await this.request('/transactions/purchase', {
       method: 'POST',
-      body: JSON.stringify({ userId, amount, price, method, isPremiumUpgrade }),
+      body: JSON.stringify(body),
     });
     console.log('[DEBUG apiClient] processPurchase response:', result);
     return result;
@@ -372,6 +388,30 @@ class APIClient {
     const result = await this.request(`/transactions/history/${userId}`, { method: 'GET' });
     console.log('[DEBUG apiClient] getTransactionHistory response:', result);
     return result;
+  }
+
+  // Lipana mobile‑money integration
+  // initiate a charge; backend should send Lipana prompt to supplied number and
+  // return a transaction id that can be polled for status.
+  // amount is derived on server side from packageId so frontend only needs to supply
+  // the chosen package key and phone number.  The backend will look up the package
+  // and create a transaction record using the solarized PACKAGES map shown in
+  // backend/routes/lipana.js.
+  async lipanaInitiate(userId: string, phone: string, packageId: string) {
+    console.log('[DEBUG apiClient] lipanaInitiate called with:', { userId, phone, packageId });
+    const result = await this.request('/lipana/initiate', {
+      method: 'POST',
+      body: JSON.stringify({ userId, phone, packageId }),
+    });
+    console.log('[DEBUG apiClient] lipanaInitiate response:', result);
+    return result; // expect { transactionId: string, checkoutRequestID: string }
+  }
+
+  async lipanaStatus(txId: string) {
+    console.log('[DEBUG apiClient] lipanaStatus called for txId:', txId);
+    const result = await this.request(`/lipana/status/${txId}`, { method: 'GET' });
+    console.log('[DEBUG apiClient] lipanaStatus response:', result);
+    return result; // expect { status: 'pending'|'success'|'failed'|'cancelled', coins?, isPremium?, packageId? }
   }
 
   async acceptChatRequest(chatId: string) {

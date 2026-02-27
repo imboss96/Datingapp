@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+
+// Load environment variables FIRST before any other imports
+dotenv.config();
+
 import mongoose from 'mongoose';
 import { createServer } from 'http';
 import path from 'path';
@@ -26,11 +30,11 @@ import lipanaRoutes from './routes/lipana.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config();
-
 console.log('[DEBUG] Environment variables loaded:');
 console.log('[DEBUG] BREVO_API_KEY exists:', !!process.env.BREVO_API_KEY);
 console.log('[DEBUG] BREVO_API_KEY starts with:', process.env.BREVO_API_KEY ? process.env.BREVO_API_KEY.substring(0, 10) + '...' : 'undefined');
+console.log('[DEBUG] LIPANA_SECRET_KEY exists:', !!process.env.LIPANA_SECRET_KEY);
+console.log('[DEBUG] LIPANA_ENVIRONMENT:', process.env.LIPANA_ENVIRONMENT || 'sandbox');
 
 initCloudinary();
 

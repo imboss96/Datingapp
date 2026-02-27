@@ -6,8 +6,14 @@ import apiClient from '../services/apiClient';
 import PasswordResetModal from './PasswordResetModal';
 // ...existing code...
 
-const LoginPage: React.FC<{ onLoginSuccess?: (user: UserProfile, isSignup: boolean) => void; onClose?: () => void; isModal?: boolean }> = ({ onLoginSuccess, onClose, isModal = false }) => {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+interface LoginPageProps {
+  onLoginSuccess?: (user: UserProfile, isSignup: boolean) => void;
+  onClose?: () => void;
+  isModal?: boolean;
+  initialMode?: 'signin' | 'signup';
+}
+const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal = false, initialMode }) => {
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode || 'signin');
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

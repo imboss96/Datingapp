@@ -5,6 +5,21 @@ import apiClient from '../services/apiClient';
 import PasswordResetModal from './PasswordResetModal';
 import PhotoVerificationModal from './PhotoVerificationModal';
 
+const spinnerStyles = `
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .profile-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+`;
+
 interface Props {
   user: UserProfile;
   setUser: React.Dispatch<React.SetStateAction<UserProfile>>;
@@ -12,17 +27,19 @@ interface Props {
 }
 
 interface CoinPack {
+  id: string;              // must match backend PACKAGES key (coins_50, premium_1m, etc.)
   amount: number;
   price: string;
   icon: string;
   popular?: boolean;
 }
 
+// these ids are defined on the backend in /routes/lipana.js PACKAGES
 const COIN_PACKS: CoinPack[] = [
-  { amount: 50, price: '$4.99', icon: 'fa-box' },
-  { amount: 200, price: '$14.99', icon: 'fa-boxes-stacked', popular: true },
-  { amount: 500, price: '$29.99', icon: 'fa-vault' },
-  { amount: 1200, price: '$59.99', icon: 'fa-gem' }
+  { id: 'coins_50', amount: 50, price: '$4.99', icon: 'fa-box' },
+  { id: 'coins_100', amount: 90, price: '$14.99', icon: 'fa-boxes-stacked', popular: true },
+  { id: 'coins_250', amount: 200, price: '$29.99', icon: 'fa-vault' },
+  { id: 'coins_500', amount: 350, price: '$59.99', icon: 'fa-gem' }
 ];
 
 const PAYMENT_METHODS = [
@@ -38,6 +55,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStep, setPaymentStep] = useState<'SELECT_METHOD' | 'PROCESSING' | 'SUCCESS'>('SELECT_METHOD');
   const [selectedMethod, setSelectedMethod] = useState<string>('card');
+  const [momoNumber, setMomoNumber] = useState<string>('');  // mobile money phone number
+  const [lipanaMessage, setLipanaMessage] = useState<string | null>(null);  // feedback from initiate
   const [openModal, setOpenModal] = useState<string | null>(null);
   const [editData, setEditData] = useState({
     bio: user.bio || '',
@@ -148,12 +167,15 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const handleOpenCheckout = (pack: CoinPack) => {
     setSelectedPack(pack);
     setPaymentStep('SELECT_METHOD');
+    setMomoNumber(''); // reset mobile money number when opening
   };
 
   const handleConfirmPayment = async () => {
+    console.log('[DEBUG ProfileSettings] confirm payment clicked', { selectedMethod, momoNumber, selectedPack });
+    setError(null);
     setIsProcessing(true);
     setPaymentStep('PROCESSING');
-    
+
     try {
       if (!selectedPack) {
         setPaymentStep('SELECT_METHOD');
@@ -162,35 +184,91 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
       }
 
       const isPremium = selectedPack.amount > 1000;
-      
-      // Call backend to process purchase and save to database
-      const result = await apiClient.processPurchase(
-        user.id,
-        selectedPack.amount,
-        selectedPack.price,
-        selectedMethod,
-        isPremium
-      );
 
-      console.log('[DEBUG ProfileSettings] Payment processed:', result);
+      if (selectedMethod === 'momo') {
+        // start Lipana mobile‑money flow; backend requires packageId rather than raw amount
+        console.log('[DEBUG ProfileSettings] Starting momo flow with:', { phone: momoNumber, packageId: selectedPack.id });
+        const init = await apiClient.lipanaInitiate(user.id, momoNumber, selectedPack.id);
+        if (!init || !init.transactionId) {
+          throw new Error('Failed to initiate mobile money prompt');
+        }
+        const txId = init.transactionId;
+        setLipanaMessage(init.message || null);
+        console.log('[DEBUG ProfileSettings] Lipana prompt sent, txId=', txId, 'message=', init.message);
 
-      // Update local user state with the response from backend
-      const updatedUser = {
-        ...user,
-        coins: result.user.coins,
-        isPremium: result.user.isPremium,
-      };
+        // poll the status until webhook updates the backend
+        const poll = setInterval(async () => {
+          try {
+            const status = await apiClient.lipanaStatus(txId);
+            const s = status.status?.toLowerCase();
+            
+            if (s === 'success') {
+              clearInterval(poll);
+              console.log('[DEBUG ProfileSettings] Payment SUCCESS');
+              const updatedUser = {
+                ...user,
+                coins: status.coins ?? user.coins,
+                isPremium: status.isPremium ?? user.isPremium,
+              };
+              setUser(updatedUser);
+              setPaymentStep('SUCCESS');
+              setIsProcessing(false);
+            } else if (s === 'failed') {
+              clearInterval(poll);
+              console.log('[DEBUG ProfileSettings] Payment FAILED');
+              setError(status.message || 'Mobile money payment failed');
+              setPaymentStep('SELECT_METHOD');
+              setIsProcessing(false);
+            } else if (s === 'cancelled') {
+              clearInterval(poll);
+              console.log('[DEBUG ProfileSettings] Payment CANCELLED');
+              setError('Payment cancelled. Please try again.');
+              setPaymentStep('SELECT_METHOD');
+              setIsProcessing(false);
+            } else {
+              console.log('[DEBUG ProfileSettings] Poll status:', s);
+            }
+          } catch (pollErr) {
+            console.error('[ERROR ProfileSettings] polling lipana status failed:', pollErr);
+            clearInterval(poll);
+            setError('Error checking payment status. Please refresh.');
+            setPaymentStep('SELECT_METHOD');
+            setIsProcessing(false);
+          }
+        }, 2000);  // Poll every 2 seconds instead of 5 for faster response
 
-      setUser(updatedUser);
-      // backend is authoritative; no localStorage write
-      
-      setPaymentStep('SUCCESS');
+        // keep function returning; poll handles completion
+        return;
+      } else {
+        // non-mobile money route uses the dummy purchase endpoint
+        console.log('[DEBUG ProfileSettings] processing non-momo purchase', { method: selectedMethod, packageId: selectedPack.id });
+        const resp: any = await apiClient.post('/transactions/purchase', {
+          userId: user.id,
+          packageId: selectedPack.id,
+          method: selectedMethod,
+        });
+        const updatedUser = {
+          ...user,
+          coins: resp.coins ?? user.coins,
+          isPremium: resp.isPremium ?? user.isPremium,
+        };
+        setUser(updatedUser);
+        setPaymentStep('SUCCESS');
+        setIsProcessing(false);
+        return;
+      }
     } catch (err: any) {
       console.error('[ERROR ProfileSettings] Payment processing failed:', err);
-      setError(err.message || 'Payment failed. Please try again.');
+      const errorMsg = err?.response?.data?.error 
+        || err?.response?.error 
+        || err?.message 
+        || String(err) 
+        || 'Payment failed. Please try again.';
+      setError(errorMsg);
       setPaymentStep('SELECT_METHOD');
-    } finally {
       setIsProcessing(false);
+    } finally {
+      // setIsProcessing already handled in catch, but keep finally for non-error paths
     }
   };
 
@@ -198,6 +276,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     if (!isProcessing) {
       setSelectedPack(null);
       setPaymentStep('SELECT_METHOD');
+      setMomoNumber('');
+      setLipanaMessage(null);
+      setError(null);
     }
   };
 
@@ -424,7 +505,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   };
 
   return (
-    <div
+    <>
+      <style>{spinnerStyles}</style>
+      <div
       style={{
         position: 'fixed',
         top: 0,
@@ -475,6 +558,11 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 <div className="p-6 md:p-8">
                   {paymentStep === 'SELECT_METHOD' && (
                     <>
+                      {error && (
+                        <div className="p-3 mb-4 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-xs text-red-700 font-medium">{error}</p>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xl font-black text-gray-900">Secure Checkout</h3>
                         <button onClick={closeCheckout} className="text-gray-400 hover:text-gray-600">
@@ -501,7 +589,11 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                           <button
                             key={method.id}
                             onClick={() => setSelectedMethod(method.id)}
-                            className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${selectedMethod === method.id ? 'border-red-500 bg-red-50/30' : 'border-gray-100 hover:border-gray-200 bg-white'}`}
+                            className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                              selectedMethod === method.id
+                                ? 'border-red-500 bg-red-50/30'
+                                : 'border-gray-100 hover:border-gray-200 bg-white'
+                            }`}
                           >
                             <div className="flex items-center gap-4">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${selectedMethod === method.id ? 'text-red-500' : 'text-gray-400'}`}>
@@ -523,9 +615,27 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         ))}
                       </div>
 
+                      {selectedMethod === 'momo' && (
+                        <div className="mb-4">
+                          <label className="block text-xs font-bold text-gray-700 mb-2">Mobile Money Number</label>
+                          <input
+                            type="tel"
+                            value={momoNumber}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/[^0-9]/g, '');
+                              setMomoNumber(v);
+                              if (v && selectedMethod !== 'momo') setSelectedMethod('momo');
+                            }}
+                            placeholder="e.g., 233501234567"
+                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+                          />
+                        </div>
+                      )}
+
                       <button 
                         onClick={handleConfirmPayment}
-                        className="w-full py-4 spark-gradient text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-red-500/20 active:scale-95 transition-transform flex items-center justify-center gap-3"
+                        disabled={isProcessing || (selectedMethod === 'momo' && !/^[0-9]{7,15}$/.test(momoNumber))}
+                        className="w-full py-4 spark-gradient text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-red-500/20 active:scale-95 transition-transform flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <i className="fa-solid fa-lock text-xs opacity-70"></i>
                         Pay {selectedPack.price}
@@ -538,6 +648,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
 
                   {paymentStep === 'PROCESSING' && (
                     <div className="py-20 flex flex-col items-center text-center">
+                      {lipanaMessage && (
+                        <p className="text-sm text-gray-700 max-w-[240px] mb-4">{lipanaMessage}</p>
+                      )}
                       <div className="relative w-20 h-20 mb-6">
                         <div className="absolute inset-0 border-4 border-red-100 rounded-full"></div>
                         <div className="absolute inset-0 border-4 border-red-500 rounded-full border-t-transparent animate-spin"></div>
@@ -546,7 +659,13 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         </div>
                       </div>
                       <h3 className="text-xl font-black text-gray-900 mb-2">Processing Transaction</h3>
-                      <p className="text-sm text-gray-500 max-w-[240px]">Connecting to secure gateway. Please do not close or refresh this window.</p>
+                      {selectedMethod === 'momo' ? (
+                        <p className="text-sm text-gray-500 max-w-[240px]">
+                          A prompt has been sent to <strong>{momoNumber}</strong>. Enter your PIN on your phone to complete the payment.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-500 max-w-[240px]">Connecting to secure gateway. Please do not close or refresh this window.</p>
+                      )}
                     </div>
                   )}
 
@@ -802,6 +921,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 <i className="fa-solid fa-chevron-right text-[10px] text-red-400"></i>
               </button>
             </div>
+            </div>
 
             {/* Logout Confirmation Modal */}
             {showLogoutConfirm && (
@@ -1044,8 +1164,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       <button
                         onClick={handleSaveProfile}
                         disabled={saving || uploading}
-                        className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 active:bg-rose-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 active:bg-rose-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                       >
+                        {saving && <div className="profile-spinner" />}
                         {saving ? 'Saving...' : uploading ? 'Uploading...' : 'Save Profile'}
                       </button>
                     </div>
@@ -1300,7 +1421,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
               isOpen={showPhotoVerification}
               onClose={() => setShowPhotoVerification(false)}
               userId={user.id}
-                onSubmit={async (photoData) => {
+              onSubmit={async (photoData) => {
                 try {
                   const response = await apiClient.post('/verification/upload-photo', {
                     photoData,
@@ -1325,7 +1446,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

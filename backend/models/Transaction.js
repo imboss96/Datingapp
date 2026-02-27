@@ -12,6 +12,7 @@ const transactionSchema = new mongoose.Schema({
   isPremiumUpgrade: { type: Boolean, default: false },
   phoneNumber: { type: String }, // M-Pesa phone number
   paymentLink: { type: String }, // Lipana payment link
+  lipanaTransactionId: { type: String, index: true }, // Lipana transaction ID for webhook lookup
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
