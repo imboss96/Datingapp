@@ -190,16 +190,26 @@ router.post('/google', async (req, res) => {
     const { googleToken, email, name, profilePicture } = req.body;
 
     if (!googleToken || !email || !name) {
+      console.error('[DEBUG] Missing fields:', { googleToken: !!googleToken, email, name });
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     // Verify Google token (optional - frontend already verified it)
     let googleId;
     try {
+      console.log('[DEBUG] Attempting to decode Google token');
       const decoded = jwtDecode(googleToken);
+      console.log('[DEBUG] Decoded token:', { sub: decoded.sub, email: decoded.email, exp: decoded.exp });
       googleId = decoded.sub; // Google's unique ID
+      
+      // Check if token is expired
+      if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+        console.error('[DEBUG] Google token expired at:', new Date(decoded.exp * 1000));
+        return res.status(401).json({ error: 'Google token expired' });
+      }
     } catch (err) {
-      return res.status(401).json({ error: 'Invalid Google token' });
+      console.error('[DEBUG] Token decode error:', err.message);
+      return res.status(401).json({ error: 'Invalid Google token: ' + err.message });
     }
 
     // Normalize email for consistency and check if user exists by email or Google ID
