@@ -1,3 +1,12 @@
+#!/bin/bash
+# Apply the middleware fix directly to the VPS server.js
+
+VPS_HOST="root@103.241.67.116"
+VPS_PATH="/var/www/Datingapp/backend/server.js"
+TMP_FILE="/tmp/server-fixed.js"
+
+# Create the fixed version with lipana before JSON parser
+ssh $VPS_HOST "cat > $VPS_PATH << 'JSCODE'
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -118,6 +127,16 @@ const server = createServer(app);
 initWebSocket(server);
 
 server.listen(PORT, () => {
-  console.log(`✓ Server running on http://localhost:${PORT}`);
-  console.log(`✓ WebSocket available at ws://localhost:${PORT}`);
+  console.log(\`✓ Server running on http://localhost:\${PORT}\`);
+  console.log(\`✓ WebSocket available at ws://localhost:\${PORT}\`);
 });
+JSCODE
+" && echo "File updated on VPS successfully"
+
+# Verify the change
+ssh $VPS_HOST "grep -n 'CRITICAL: Register Lipana' $VPS_PATH && echo 'Fix verified!' || echo 'Fix not found'"
+
+# Restart the backend
+ssh $VPS_HOST "pm2 restart datingapp && sleep 3 && pm2 status | grep datingapp"
+
+echo "Done! Backend restarted with the fix."

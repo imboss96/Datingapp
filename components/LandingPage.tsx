@@ -91,6 +91,67 @@ const styles = `
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.5px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .lp-traffic-lights {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+  }
+
+  .lp-heart-light {
+    width: 1.6rem;
+    height: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .lp-heart-light.active {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  /* Red/Rose Heart */
+  .lp-heart-light.red.active {
+    opacity: 1;
+    visibility: visible;
+    filter: drop-shadow(0 0 8px var(--rose)) drop-shadow(0 0 12px var(--rose));
+  }
+  .lp-heart-light.red svg {
+    color: var(--rose);
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Amber/Gold Heart */
+  .lp-heart-light.amber.active {
+    opacity: 1;
+    visibility: visible;
+    filter: drop-shadow(0 0 8px var(--gold)) drop-shadow(0 0 12px var(--gold));
+  }
+  .lp-heart-light.amber svg {
+    color: var(--gold);
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Green/Blush Heart */
+  .lp-heart-light.green.active {
+    opacity: 1;
+    visibility: visible;
+    filter: drop-shadow(0 0 8px var(--blush)) drop-shadow(0 0 12px var(--blush));
+  }
+  .lp-heart-light.green svg {
+    color: var(--blush);
+    width: 100%;
+    height: 100%;
   }
 
   .lp-nav-btns { display: flex; gap: 0.8rem; align-items: center; flex-wrap: nowrap; overflow-x: auto; }
@@ -140,14 +201,28 @@ const styles = `
 
   /* HERO */
   .lp-hero {
-    min-height: 92vh;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    padding: 5rem 5% 4rem;
+    justify-content: center;
+    padding: 1.5rem 5% 3rem;
     position: relative;
     overflow: hidden;
-    gap: 3rem;
+    background: linear-gradient(135deg, rgba(30,5,9,0.85), rgba(17,2,5,0.9));
+    gap: 2rem;
+  }
+
+  @media (min-width: 1024px) {
+    .lp-hero {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4rem 5%;
+      min-height: 95vh;
+    }
   }
 
   .lp-hero::before {
@@ -162,44 +237,56 @@ const styles = `
   }
 
   .lp-hero-badge {
-    display: inline-flex;
+    display: none;
     align-items: center;
-    gap: 0.5rem;
-    background: rgba(192,22,44,0.12);
-    border: 1px solid rgba(232,51,90,0.25);
-    padding: 0.4rem 1rem;
+    gap: 0.6rem;
+    background: linear-gradient(135deg, rgba(255, 71, 87, 0.18), rgba(255, 107, 122, 0.12));
+    border: 1.5px solid rgba(255, 107, 122, 0.35);
+    padding: 0.55rem 1.3rem;
     border-radius: 50px;
-    font-size: 0.75rem;
-    color: var(--petal);
-    letter-spacing: 1.5px;
+    font-size: 0.8rem;
+    color: #FFB3C1;
+    letter-spacing: 1.2px;
     text-transform: uppercase;
-    margin-bottom: 1.8rem;
+    margin-bottom: 2rem;
     width: fit-content;
+    font-weight: 600;
+    box-shadow: 0 4px 15px rgba(255, 71, 87, 0.15);
+  }
+
+  @media (min-width: 1024px) {
+    .lp-hero-badge {
+      display: inline-flex;
+    }
   }
 
   .lp-hero h1 {
     font-family: 'Playfair Display', serif;
-    font-size: clamp(2.8rem, 5vw, 5rem);
     font-weight: 900;
-    line-height: 1.05;
-    letter-spacing: -2px;
-    margin-bottom: 1.4rem;
+    line-height: 1.08;
+    letter-spacing: -1.5px;
+    margin-bottom: 1.5rem;
+    color: #fff;
   }
 
   .lp-hero h1 em {
     font-style: italic;
-    background: linear-gradient(135deg, var(--rose), var(--gold));
+    background: linear-gradient(135deg, #FF6B7A 0%, #FFB3C1 50%, #FFD4DB 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    background-clip: text;
+    display: inline-block;
+    text-shadow: 0 4px 20px rgba(255, 71, 87, 0.2);
+    filter: drop-shadow(0 4px 20px rgba(255, 71, 87, 0.15));
   }
 
   .lp-hero p {
-    font-size: 1.05rem;
-    color: var(--text-muted);
-    line-height: 1.7;
-    max-width: 460px;
-    margin-bottom: 2.2rem;
+    font-size: 1.1rem;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.8;
+    margin-bottom: 2rem;
     font-weight: 300;
+    letter-spacing: 0.3px;
   }
 
   .lp-hero-cta {
@@ -211,73 +298,311 @@ const styles = `
   }
 
   .lp-cta-main {
-    padding: 0.9rem 2.2rem;
-    background: linear-gradient(135deg, var(--crimson), var(--rose));
+    padding: 0.95rem 2.4rem;
+    background: linear-gradient(135deg, #FF4757, #FF6B7A);
     color: #fff;
     border: none;
     border-radius: 50px;
-    font-size: 1rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    box-shadow: 0 10px 35px rgba(255, 71, 87, 0.5);
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    text-decoration: none;
+    display: inline-block;
+    white-space: nowrap;
+    min-width: 7rem;
+    letter-spacing: 0.3px;
+  }
+  .lp-cta-main:hover { 
+    transform: translateY(-4px); 
+    box-shadow: 0 18px 45px rgba(255, 71, 87, 0.7);
+    background: linear-gradient(135deg, #FF5A66, #FF7D8A);
+  }
+  .lp-cta-main:active { transform: translateY(-1px); }
+
+  .lp-cta-ghost {
+    padding: 0.95rem 2.2rem;
+    background: rgba(255, 71, 87, 0.08);
+    color: #fff;
+    border: 1.5px solid rgba(255, 107, 122, 0.4);
+    border-radius: 50px;
+    font-size: 1.05rem;
     font-weight: 500;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
-    box-shadow: 0 8px 30px rgba(192,22,44,0.45);
-    transition: all 0.3s;
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
     text-decoration: none;
     display: inline-block;
     white-space: nowrap;
     min-width: 6.5rem;
   }
-  .lp-cta-main:hover { transform: translateY(-3px); box-shadow: 0 15px 40px rgba(192,22,44,0.65); }
-
-  .lp-cta-ghost {
-    padding: 0.9rem 2rem;
-    background: transparent;
-    color: rgba(255,255,255,0.6);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 50px;
-    font-size: 1rem;
-    font-weight: 400;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.3s;
-    text-decoration: none;
-    display: inline-block;
-    white-space: nowrap;
-    min-width: 6rem;
+  .lp-cta-ghost:hover { 
+    background: rgba(255, 107, 122, 0.15);
+    border-color: rgba(255, 107, 122, 0.6);
+    color: #FFB3C1;
+    transform: translateY(-2px);
   }
-  .lp-cta-ghost:hover { border-color: var(--rose); color: var(--petal); }
+  .lp-cta-ghost:active { transform: translateY(0px); }
 
   .lp-hero-stats {
     display: flex;
     gap: 2.5rem;
-    padding-top: 2rem;
-    border-top: 1px solid rgba(255,255,255,0.07);
+    padding-top: 2.5rem;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  @media (min-width: 1024px) {
+    .lp-hero-stats {
+      justify-content: flex-start;
+    }
   }
 
   .lp-stat-num {
     display: block;
     font-family: 'Playfair Display', serif;
-    font-size: 1.6rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--petal), var(--gold));
+    font-size: 1.8rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, #FFB3C1 0%, #FF6B7A 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.5px;
   }
 
   .lp-stat-label {
     display: block;
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    letter-spacing: 0.5px;
-    margin-top: 0.15rem;
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.8px;
+    margin-top: 0.25rem;
+    text-transform: uppercase;
+    font-weight: 500;
   }
 
-  /* HERO VISUAL */
-  .lp-hero-visual {
+  /* HERO CONTENT LEFT SIDE */
+  .lp-hero-content {
     position: relative;
+    z-index: 2;
+    text-align: center;
+    max-width: 600px;
+    width: 100%;
     display: flex;
+    flex-direction: column;
     justify-content: center;
+    order: 2;
+  }
+
+  @media (min-width: 1024px) {
+    .lp-hero-content {
+      text-align: left;
+      justify-content: flex-start;
+      order: 1;
+    }
+  }
+
+  /* HERO PROFILES CAROUSEL RIGHT SIDE */
+  .lp-hero-profiles {
+    display: flex;
+    position: relative;
+    height: 450px;
+    width: 100%;
+    max-width: 320px;
     align-items: center;
+    justify-content: center;
+    order: 1;
+    margin-bottom: 1rem;
+    touch-action: pan-y;
+    cursor: grab;
+  }
+  
+  .lp-hero-profiles:active {
+    cursor: grabbing;
+  }
+
+  @media (min-width: 1024px) {
+    .lp-hero-profiles {
+      height: 680px;
+      max-width: 520px;
+      order: 2;
+      margin-bottom: 0;
+    }
+  }
+
+  .lp-profile-card {
+    position: absolute;
+    width: 260px;
+    height: 360px;
+    border-radius: 24px;
+    overflow: hidden;
+    background: #1E0509;
+    border: 2px solid rgba(255, 107, 122, 0.2);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    cursor: pointer;
+    touch-action: pan-y;
+    user-select: none;
+  }
+
+  @media (min-width: 1024px) {
+    .lp-profile-card {
+      width: 400px;
+      height: 540px;
+    }
+  }
+
+  .lp-profile-card.inactive {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .lp-profile-card.active {
+    opacity: 1;
+    z-index: 10;
+    transform: translateX(0) scale(1);
+  }
+
+  .lp-profile-card.prev {
+    opacity: 0.5;
+    z-index: 5;
+    transform: translateX(-140px) scale(0.78);
+  }
+
+  .lp-profile-card.next {
+    opacity: 0.5;
+    z-index: 5;
+    transform: translateX(140px) scale(0.78);
+  }
+
+  /* Desktop dissolve-to-granules effect */
+  @media (min-width: 1024px) {
+    .lp-profile-card.prev {
+      animation: lpGranuleDissolveLeft 0.8s cubic-bezier(0.445, 0.05, 0.55, 0.95) forwards;
+    }
+
+    .lp-profile-card.next {
+      animation: lpGranuleDissolveRight 0.8s cubic-bezier(0.445, 0.05, 0.55, 0.95) forwards;
+    }
+
+    .lp-profile-card.prev::before,
+    .lp-profile-card.next::before {
+      animation: lpGranuleParticles 0.8s ease-out forwards;
+    }
+  }
+
+  @keyframes lpGranuleParticles {
+    0% {
+      opacity: 0;
+    }
+    50% {
+      opacity: 0.5;
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.2);
+    }
+  }
+
+  .lp-profile-card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  .lp-profile-placeholder {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #230609, #1E0509);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4rem;
+  }
+
+  .lp-profile-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+    padding: 2rem 1.2rem 1rem;
+    color: #fff;
+    z-index: 3;
+  }
+
+  .lp-profile-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 0;
+    color: #fff;
+  }
+
+  @media (min-width: 1024px) {
+    .lp-profile-name {
+      font-size: 1.5rem;
+    }
+  }
+
+  .lp-profile-status {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.75);
+    margin-top: 0.3rem;
+  }
+
+  .lp-online-badge {
+    position: absolute;
+    bottom: 1.2rem;
+    right: 1.2rem;
+    width: 16px;
+    height: 16px;
+    background: #4CAF50;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    z-index: 4;
+  }
+
+  .lp-profile-carousel-nav {
+    position: absolute;
+    bottom: -45px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.8rem;
+    z-index: 20;
+  }
+
+  @media (min-width: 1024px) {
+    .lp-profile-carousel-nav {
+      bottom: -50px;
+    }
+  }
+
+  .lp-profile-carousel-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 71, 87, 0.2);
+    border: 1.5px solid rgba(255, 107, 122, 0.5);
+    color: #FFB3C1;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lp-profile-carousel-btn:hover {
+    background: rgba(255, 71, 87, 0.4);
+    border-color: rgba(255, 107, 122, 0.8);
   }
 
   .lp-hero-img-wrap {
@@ -466,6 +791,67 @@ const styles = `
     50% { transform: translateY(-10px); }
   }
 
+  /* Desktop Granule Dissolve Animation */
+  @keyframes lpGranuleDissolveRight {
+    0% {
+      opacity: 1;
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    }
+    40% {
+      opacity: 0.7;
+    }
+    70% {
+      opacity: 0.3;
+      clip-path: polygon(5% 8%, 95% 12%, 92% 88%, 8% 92%);
+    }
+    100% {
+      opacity: 0;
+      clip-path: polygon(10% 20%, 90% 15%, 85% 85%, 15% 90%);
+      transform: translateX(120px) scale(0.7);
+    }
+  }
+
+  @keyframes lpGranuleDissolveLeft {
+    0% {
+      opacity: 1;
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    }
+    40% {
+      opacity: 0.7;
+    }
+    70% {
+      opacity: 0.3;
+      clip-path: polygon(8% 12%, 92% 8%, 88% 92%, 5% 88%);
+    }
+    100% {
+      opacity: 0;
+      clip-path: polygon(15% 15%, 85% 20%, 90% 85%, 10% 90%);
+      transform: translateX(-120px) scale(0.7);
+    }
+  }
+
+  /* Granule particle effect overlay */
+  .lp-profile-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: 
+      radial-gradient(circle 2px at 15% 20%, rgba(192,22,44,0.4) 1px, transparent 2px),
+      radial-gradient(circle 2px at 45% 30%, rgba(232,51,90,0.4) 1px, transparent 2px),
+      radial-gradient(circle 2px at 75% 15%, rgba(242,112,138,0.4) 1px, transparent 2px),
+      radial-gradient(circle 2px at 25% 60%, rgba(192,22,44,0.4) 1px, transparent 2px),
+      radial-gradient(circle 2px at 65% 50%, rgba(232,51,90,0.4) 1px, transparent 2px),
+      radial-gradient(circle 2px at 85% 70%, rgba(242,112,138,0.4) 1px, transparent 2px),
+      radial-gradient(circle 2px at 35% 80%, rgba(192,22,44,0.4) 1px, transparent 2px),
+      radial-gradient(circle 2px at 70% 85%, rgba(232,51,90,0.4) 1px, transparent 2px);
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
+    border-radius: 24px;
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   /* DIVIDER */
   .lp-divider {
     height: 1px;
@@ -506,11 +892,30 @@ const styles = `
   }
 
   /* MEMBERS */
+  .lp-members-section-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 2.5rem;
+  }
+
+  .lp-members-header {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+  }
+
   .lp-members-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 1.2rem;
-    margin-top: 3.5rem;
+    margin-top: 1.5rem;
+  }
+
+  @media (max-width: 1024px) {
+    .lp-members-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
 
   .lp-member-card {
@@ -531,16 +936,19 @@ const styles = `
 
   .lp-member-img {
     width: 100%;
-    height: 180px;
-    object-fit: cover;
+    height: 240px;
+    position: relative;
     background: linear-gradient(160deg, var(--deep), rgba(192,22,44,0.2));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 3rem;
+    overflow: hidden;
   }
 
-  .lp-member-img img { width: 100%; height: 180px; object-fit: cover; }
+  .lp-member-img img { 
+    width: 100%; 
+    height: 100%; 
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
 
   .lp-member-info { padding: 1rem; }
 
@@ -1010,18 +1418,21 @@ const styles = `
   }
 
   @media (max-width: 768px) {
-    .lp-hero { grid-template-columns: 1fr; padding-top: 3rem; }
-    .lp-hero-visual { display: none; }
-    .lp-hero h1 { font-size: 2.5rem; }
+    .lp-hero { padding: 2.5rem 4% 3rem; }
+    .lp-hero-content { text-align: center; }
+    .lp-hero h1 { font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.1; margin-bottom: 1rem; }
+    .lp-hero p { font-size: 0.95rem; margin-bottom: 1.5rem; }
+    .lp-hero-badge { font-size: 0.7rem; margin-bottom: 1rem; }
+    .lp-hero-cta { flex-direction: column; gap: 0.6rem; width: 100%; }
+    .lp-cta-main, .lp-cta-ghost { width: 100%; text-align: center; padding: 0.8rem 1.5rem; }
+    .lp-hero-stats { gap: 1.5rem; padding-top: 1.5rem; justify-content: center; }
+    .lp-stat-num { font-size: 1.4rem; }
+    .lp-stat-label { font-size: 0.7rem; }
     .lp-stories-grid { grid-template-columns: 1fr; }
     .lp-trust-grid { grid-template-columns: 1fr; }
     .lp-locations-grid { grid-template-columns: repeat(2, 1fr); }
     .lp-footer-grid { grid-template-columns: 1fr; }
     .lp-footer-bottom { flex-direction: column; text-align: center; }
-
-    /* stack hero CTAs on tiny screens */
-    .lp-hero-cta { flex-direction: column; gap: 0.5rem; }
-    .lp-cta-main, .lp-cta-ghost { width: 100%; text-align: center; }
   }
 
   @media (max-width: 768px) {
@@ -1042,10 +1453,17 @@ const styles = `
 
   @media (max-width: 360px) {
     /* adjustments for extremely narrow phones */
-    .lp-nav { padding: 1.2rem 2%; }
-    .lp-nav-btns { gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
-    .lp-btn-ghost, .lp-btn-primary { padding: 0.4rem 0.85rem; font-size: 0.8rem; }
-    .lp-hero-cta { gap: 0.4rem; }
+    .lp-nav { padding: 1rem 3%; }
+    .lp-logo { font-size: 1.4rem; }
+    .lp-nav-btns { gap: 0.3rem; flex-wrap: wrap; justify-content: center; }
+    .lp-btn-ghost, .lp-btn-primary { padding: 0.55rem 1rem; font-size: 0.8rem; }
+    .lp-hero { padding: 1.5rem 3% 2rem; }
+    .lp-hero h1 { font-size: 1.8rem; }
+    .lp-hero p { font-size: 0.9rem; }
+    .lp-hero-cta { gap: 0.5rem; }
+    .lp-cta-main, .lp-cta-ghost { padding: 0.7rem 1.2rem; font-size: 0.85rem; }
+    .lp-hero-stats { gap: 1.2rem; justify-content: space-around; }
+    .lp-stat-num { font-size: 1.2rem; }
   }
 `;
 
@@ -1055,6 +1473,16 @@ const tabContent: Record<number, { icon: JSX.Element; title: string; desc: strin
   2: { icon: <Icon name="couple" />, title: 'Find Your Partner', desc: 'Browse verified profiles, send likes, and start conversations with people who match your energy. Your next great love story starts with a single message.' },
   3: { icon: <Icon name="book" />, title: 'Live Success Stories', desc: 'Every day, real couples share how they found each other on LunesaLove. Read their journeys and let their stories inspire yours.' },
 };
+
+// Fallback profiles for when backend data is unavailable
+const FALLBACK_PROFILES = [
+  { id: '1', src: '/images/member/home3/01.jpg', name: 'Karim', age: 53, isOnline: true },
+  { id: '2', src: '/images/member/home3/02.jpg', name: 'Sofia', age: 48, isOnline: true },
+  { id: '3', src: '/images/member/home3/03.jpg', name: 'James', age: 45, isOnline: true },
+  { id: '4', src: '/images/member/home3/04.jpg', name: 'Maria', age: 42, isOnline: true },
+  { id: '5', src: '/images/member/home3/05.jpg', name: 'Ahmed', age: 50, isOnline: false },
+  { id: '6', src: '/images/member/home3/06.jpg', name: 'Lisa', age: 46, isOnline: true },
+];
 
 // Initially static fallback slider images (will be replaced by backend data)
 // fallback slider entries use icon names instead of emojis
@@ -1113,7 +1541,12 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
   const [activeTab, setActiveTab] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [sliderImages, setSliderImages] = useState(FALLBACK_SLIDER);
+  const [sliderImages, setSliderImages] = useState<Array<{ id: string; src: string; name: string; age: number; isOnline: boolean }>>(FALLBACK_PROFILES);
+  const [loading, setLoading] = useState(true);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  const [autoSlideEnabled, setAutoSlideEnabled] = useState(true);
+  const [trafficLightState, setTrafficLightState] = useState<'red' | 'amber' | 'green'>('red');
   // modal state for footer links
   // modal payload may be simple text or a full component
   type ModalPayload =
@@ -1121,6 +1554,58 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
     | { component: JSX.Element };
   const [modalInfo, setModalInfo] = useState<ModalPayload | null>(null);
   const navigate = useNavigate();
+
+  // Traffic light animation - 15 second cycle (4s Red, 4s Amber, 4s Green, 3s Amber)
+  useEffect(() => {
+    const trafficLightSequence = [
+      { state: 'red' as const, duration: 4000 },
+      { state: 'amber' as const, duration: 4000 },
+      { state: 'green' as const, duration: 4000 },
+      { state: 'amber' as const, duration: 3000 },
+    ];
+    let currentIndex = 0;
+
+    const switchLight = () => {
+      setTrafficLightState(trafficLightSequence[currentIndex].state);
+      const nextIndex = (currentIndex + 1) % trafficLightSequence.length;
+      const currentDuration = trafficLightSequence[currentIndex].duration;
+      
+      setTimeout(() => {
+        currentIndex = nextIndex;
+        switchLight();
+      }, currentDuration);
+    };
+
+    switchLight();
+  }, []);
+
+  // Fetch random profiles from backend for hero carousel
+  useEffect(() => {
+    const fetchProfiles = async () => {
+      try {
+        const response = await apiClient.get('/users/random?limit=6');
+        if (response.data && Array.isArray(response.data)) {
+          const profiles = response.data.map((user: any) => ({
+            id: user._id || Math.random().toString(),
+            src: user.profilePicture || '/images/member/home3/01.jpg',
+            name: user.username || user.firstName || 'Fellow',
+            age: user.age || 30,
+            isOnline: user.isOnline !== false,
+          }));
+          if (profiles.length > 0) {
+            setSliderImages(profiles);
+          }
+        }
+      } catch (err) {
+        // Use fallback on error
+        console.log('Using fallback profiles');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProfiles();
+  }, []);
 
   useEffect(() => {
     const onResize = () => {
@@ -1154,35 +1639,55 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
     if (data) setModalInfo(data as ModalPayload);
   };
 
-  // Slider auto-rotation - disabled by default for performance
+  // Slider auto-rotation with pause on user interaction
   useEffect(() => {
-    // Uncomment if auto-rotation is desired
-    // const timer = setInterval(() => {
-    //   setActiveSlide(prev => (prev + 1) % sliderImages.length);
-    // }, 3500);
-    // return () => clearInterval(timer);
-  }, [sliderImages.length]);
+    if (!autoSlideEnabled || sliderImages.length < 2) return;
 
-  // fetch random profiles for slider
+    const timer = setInterval(() => {
+      setActiveSlide(prev => (prev + 1) % sliderImages.length);
+    }, 4500);
+
+    return () => clearInterval(timer);
+  }, [sliderImages.length, autoSlideEnabled]);
+
+  // Handle swipe gestures
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientX);
+    setAutoSlideEnabled(false);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    setTouchEnd(e.changedTouches[0].clientX);
+    setTimeout(() => setAutoSlideEnabled(true), 5000); // Resume auto-slide after 5s
+  };
+
+  const handleSlide = () => {
+    const swipeThreshold = 50;
+    const difference = touchStart - touchEnd;
+
+    if (Math.abs(difference) > swipeThreshold) {
+      if (difference > 0) {
+        // Swiped left - go to next
+        setActiveSlide(prev => (prev + 1) % sliderImages.length);
+      } else {
+        // Swiped right - go to previous
+        setActiveSlide(prev => (prev - 1 + sliderImages.length) % sliderImages.length);
+      }
+    }
+  };
+
   useEffect(() => {
-    apiClient.getProfilesForSwiping(10, 0, true)
-      .then((profiles: any[]) => {
-        // only keep profiles with at least one image
-        let withImages = profiles.filter(p => p.images && p.images.length && p.images[0]);
-        // shuffle
-        withImages = withImages.sort(() => Math.random() - 0.5);
-        const picked = withImages.slice(0, 5);
-        // convert to slide entries
-        const slides = picked.map(p => ({ src: p.images[0], icon: 'heart' }));
-        // if less than 5, pad from FALLBACK_SLIDER
-        if (slides.length < 5) {
-          const needed = 5 - slides.length;
-          slides.push(...FALLBACK_SLIDER.slice(0, needed));
-        }
-        if (slides.length) setSliderImages(slides);
-      })
-      .catch(err => console.warn('[Landing] slider fetch error', err));
-  }, []);
+    if (touchStart && touchEnd) {
+      handleSlide();
+    }
+  }, [touchEnd]);
+
+  // Pause auto-slide on manual navigation
+  const handleManualNavigation = (callback: () => void) => {
+    callback();
+    setAutoSlideEnabled(false);
+    setTimeout(() => setAutoSlideEnabled(true), 5000);
+  };
 
   const handleAuth = useCallback((e?: React.MouseEvent) => {
     e?.preventDefault();
@@ -1221,7 +1726,20 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
         {/* NAV */}
         <nav className="lp-nav">
-          <div className="lp-logo">LunesaLove</div>
+          <div className="lp-logo">
+            <span>LunesaLove</span>
+            <div className="lp-traffic-lights">
+              <div className={`lp-heart-light red ${trafficLightState === 'red' ? 'active' : ''}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              </div>
+              <div className={`lp-heart-light amber ${trafficLightState === 'amber' ? 'active' : ''}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              </div>
+              <div className={`lp-heart-light green ${trafficLightState === 'green' ? 'active' : ''}`}>
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+              </div>
+            </div>
+          </div>
           <button
             className="lp-hamburger"
             aria-label="Menu"
@@ -1241,14 +1759,15 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
         {/* HERO */}
         <section className="lp-hero">
-          <div style={{ position: 'relative', zIndex: 2 }}>
+          {/* LEFT SIDE - CONTENT */}
+          <div className="lp-hero-content">
             <div className="lp-hero-badge"><Icon name="heart" className="lp-hero-badge-icon" /> 2,000,000+ Members Worldwide</div>
-            <h1>
+            <h1 style={{ fontSize: 'clamp(2rem, 5vw, 4.5rem)', margin: '0 0 1.2rem 0' }}>
               Find Your<br />
               <em>Forever</em><br />
               Starts Here
             </h1>
-            <p>
+            <p style={{ marginBottom: '1.8rem' }}>
               Still looking for your significant other? LunesaLove is the place for you.
               Join now to meet single men and women worldwide who are serious about love.
             </p>
@@ -1263,58 +1782,57 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
             </div>
           </div>
 
-          <div className="lp-hero-visual">
-            <div className="lp-hero-img-wrap">
-              {/* SLIDER */}
-              <div className="lp-slider">
-                <button className="lp-slider-nav lp-slider-prev" onClick={() => setActiveSlide(prev => (prev - 1 + sliderImages.length) % sliderImages.length)}>◀</button>
-                <button className="lp-slider-nav lp-slider-next" onClick={() => setActiveSlide(prev => (prev + 1) % sliderImages.length)}>▶</button>
+          {/* RIGHT SIDE - PROFILE CAROUSEL */}
+          <div 
+            className="lp-hero-profiles"
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {sliderImages.length > 0 && (
+              <>
+                {sliderImages.map((profile, idx) => {
+                  const getCardClass = () => {
+                    if (idx === activeSlide) return 'active';
+                    if (idx === (activeSlide - 1 + sliderImages.length) % sliderImages.length) return 'prev';
+                    if (idx === (activeSlide + 1) % sliderImages.length) return 'next';
+                    return 'inactive';
+                  };
 
-                {sliderImages.map((slide, idx) => (
-                  <div key={idx} className={`lp-slide${activeSlide === idx ? ' active' : ''}`}>
-                    <img
-                      src={slide.src}
-                      alt={`couple ${idx + 1}`}
-                      loading="lazy"
-                      onError={(e) => {
-                        const el = e.target as HTMLImageElement;
-                        el.style.display = 'none';
-                        const svg = ICON_SVG[slide.icon] || ICON_SVG.heart;
-                        el.parentElement!.innerHTML = `<div class="lp-slide-placeholder">${svg}</div>`;
-                      }}
-                    />
-                  </div>
-                ))}
+                  return (
+                    <div key={profile.id} className={`lp-profile-card ${getCardClass()}`}>
+                      <img 
+                        src={profile.src} 
+                        alt={profile.name}
+                        className="lp-profile-card-img"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.parentElement!.innerHTML += '<div class="lp-profile-placeholder">👤</div>';
+                        }}
+                      />
+                      {profile.isOnline && <div className="lp-online-badge" />}
+                      <div className="lp-profile-info">
+                        <div className="lp-profile-name">{profile.name}, {profile.age}</div>
+                      </div>
+                    </div>
+                  );
+                })}
 
-                <div className="lp-slider-dots">
-                  {sliderImages.map((_, idx) => (
-                    <button
-                      key={idx}
-                      className={`lp-slider-dot${activeSlide === idx ? ' active' : ''}`}
-                      onClick={() => setActiveSlide(idx)}
-                    />
-                  ))}
+                <div className="lp-profile-carousel-nav">
+                  <button 
+                    className="lp-profile-carousel-btn"
+                    onClick={() => handleManualNavigation(() => setActiveSlide(prev => (prev - 1 + sliderImages.length) % sliderImages.length))}
+                  >
+                    ‹
+                  </button>
+                  <button 
+                    className="lp-profile-carousel-btn"
+                    onClick={() => handleManualNavigation(() => setActiveSlide(prev => (prev + 1) % sliderImages.length))}
+                  >
+                    ›
+                  </button>
                 </div>
-              </div>
-
-              <div className="lp-float-card lp-card-match">
-                <div className="lp-card-match-inner">
-                  <div className="lp-match-avatar"><Icon name="chat" /></div>
-                  <div>
-                    <div className="lp-match-name">New Match!</div>
-                    <div className="lp-match-sub">Sofia liked your profile</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="lp-float-card lp-card-online">
-                <div className="lp-online-row">
-                  <span className="lp-online-dot"></span>
-                  <span className="lp-online-label">Online Now</span>
-                </div>
-                <div className="lp-online-count">1,240</div>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -1322,15 +1840,16 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
         {/* MEMBERS */}
         <section className="lp-section lp-section-dark">
-          <div className="lp-section-header centered">
-            <span className="lp-section-tag">Our Community</span>
-            <h2 className="lp-section-title">Only <em>True People</em></h2>
-            <p className="lp-section-sub">
-              Learn from them and try to make it to this board. This will for sure boost your visibility and increase your chances to find your loved one.
-            </p>
-          </div>
+          <div className="lp-members-section-wrapper">
+            <div className="lp-members-header lp-section-header centered">
+              <span className="lp-section-tag">Our Community</span>
+              <h2 className="lp-section-title">Only <em>True People</em></h2>
+              <p className="lp-section-sub">
+                Learn from them and try to make it to this board. This will for sure boost your visibility and increase your chances to find your loved one.
+              </p>
+            </div>
 
-          <div className="lp-members-grid">
+            <div className="lp-members-grid">
             {MEMBERS.map((member, idx) => (
               <div key={idx} className="lp-member-card">
                 <div className="lp-member-img">
@@ -1353,29 +1872,10 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
               </div>
             ))}
           </div>
-        </section>
-
-        <div className="lp-divider" />
-
-        {/* STATS */}
-        <section className="lp-section">
-          <div className="lp-section-header centered">
-            <span className="lp-section-tag">By The Numbers</span>
-            <h2 className="lp-section-title">It All Starts With <em>A Date</em></h2>
-          </div>
-
-          <div className="lp-stats-grid">
-            {STATS.map((stat, idx) => (
-              <div key={idx} className="lp-stat-card">
-                <span style={{ fontSize: '1.8rem', marginBottom: '0.8rem', display: 'block' }}>{stat.icon}</span>
-                <span className="lp-stat-card-num">{stat.number}</span>
-                <span className="lp-stat-card-label">{stat.label}</span>
-              </div>
-            ))}
           </div>
         </section>
 
-        <div className="lp-divider" />
+
 
         {/* LOCATIONS */}
         <section className="lp-section lp-section-dark">

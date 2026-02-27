@@ -1,0 +1,50 @@
+﻿â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+VPS SYNC COMPARISON REPORT
+Generated: 2026-02-27 12:12:51
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+LOCAL PATH: C:\Users\SEAL TEAM\Documents\DATING\Datingapp-1
+VPS PATH:   /var/www/Datingapp (via root@103.241.67.116)
+â”Œâ”€ Directory: backend
+â”‚  Local Files: 3649
+â”‚  Local Total Size: 19.09 MB
+â”‚â”Œâ”€ Directory: components
+â”‚  Local Files: 45
+â”‚  Local Total Size: 0.63 MB
+â”‚â”Œâ”€ Directory: src
+â”‚  Local Files: 12
+â”‚  Local Total Size: 0.26 MB
+â”‚â”Œâ”€ Directory: services
+â”‚  Local Files: 11
+â”‚  Local Total Size: 0.06 MB
+â”‚â”Œâ”€ Directory: hooks
+â”‚  Local Files: 1
+â”‚  Local Total Size: 0 MB
+â”‚â”Œâ”€ Directory: public
+â”‚  Local Files: 11
+â”‚  Local Total Size: 0.26 MB
+â”‚
+â”Œâ”€ VPS Statistics:
+â”‚  Total Code Files (excluding node_modules/.git/dist): 3743
+â”‚  Total VPS Size: 15M	.
+â”‚
+â•â•â• KEY FILE COMPARISON â•â•â•
+File: backend\server.js
+  Local:   SHA256=C3C5D208F71A5E1E... | Size: 4665 bytes
+  VPS:     [File not found or error accessing]
+  File: backend\tunnel.js
+  Local:   SHA256=23051E1FAD7FC3D6... | Size: 2676 bytes
+  VPS:     [File not found or error accessing]
+  File: backend\package.json
+  Local:   SHA256=58E4E18311B44865... | Size: 921 bytes
+  VPS:     [File not found or error accessing]
+  File: App.tsx
+  Local:   SHA256=F63F42E2084D11E6... | Modified: 02/26/2026 19:15:35 | Size: 26040 bytes
+  VPS:     SHA256=58c53281a1043e7b... | Modified: 2026-02-27 01:33:09.556647064 +0000 | Status: [DIFFERENT]
+  File: types.ts
+  Local:   SHA256=3BF7690215BAC12C... | Modified: 02/25/2026 13:14:15 | Size: 3652 bytes
+  VPS:     SHA256=f79a3899e193f72b... | Modified: 2026-02-26 10:02:17.462557108 +0000 | Status: [DIFFERENT]
+  File: package.json
+  Local:   SHA256=22002970F9F222C5... | Modified: 02/25/2026 01:36:41 | Size: 980 bytes
+  VPS:     SHA256=c5112687683d3e69... | Modified: 2026-02-26 10:02:11.822528380 +0000 | Status: [DIFFERENT]
+  
