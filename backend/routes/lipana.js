@@ -443,30 +443,32 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     console.log(`[LIPANA /webhook] ✓ Signature verified`);
     
     const event = JSON.parse(payload.toString());
-    const { event: eventType, data } = event;
+    // Lipana sends top-level fields, not nested in 'data'
+    const eventType = event.event;
+    const transactionId = event.transaction_id;
+    const phone = event.phone;
+    const reference = event.reference;
     
     console.log(`[LIPANA /webhook] Event parsed:`, {
       eventType,
-      transactionId: data?.transactionId,
-      transaction_id: data?.transaction_id,
-      data_keys: Object.keys(data || {}),
+      transactionId,
+      phone,
+      reference,
+      amount: event.amount,
+      timestamp: event.timestamp,
       full_event: JSON.stringify(event, null, 2),
-      timestamp: new Date().toISOString(),
+      received_at: new Date().toISOString(),
     });
     
-    // Find transaction by Lipana transaction ID - try multiple possible field names
+    // Find transaction by Lipana transaction ID
     let tx = null;
     const possibleIds = [
-      data?.transactionId, 
-      data?.transaction_id, 
-      data?.id,
-      data?.CheckoutRequestID,
-      data?.checkoutRequestID,
+      transactionId,
+      reference,
     ].filter(Boolean);
     
     console.log(`[LIPANA /webhook] Trying to find transaction with IDs:`, {
       possible_ids: possibleIds,
-      data_keys: Object.keys(data || {}),
     });
     
     // Try each possible ID
@@ -479,18 +481,17 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     }
     
     // Fallback: try by phone number and status
-    if (!tx && data?.phone) {
-      console.log(`[LIPANA /webhook] Fallback: searching by phone ${data.phone}`);
+    if (!tx && phone) {
+      console.log(`[LIPANA /webhook] Fallback: searching by phone ${phone}`);
       tx = await Transaction.findOne({ 
-        phoneNumber: data.phone, 
+        phoneNumber: phone, 
         status: 'PENDING' 
       });
       if (tx) {
         console.log(`[LIPANA /webhook] ✓ Found transaction by phone fallback`);
         // Update the lipanaTransactionId for future lookups
-        const firstId = possibleIds[0];
-        if (firstId && !tx.lipanaTransactionId) {
-          tx.lipanaTransactionId = firstId;
+        if (transactionId && !tx.lipanaTransactionId) {
+          tx.lipanaTransactionId = transactionId;
         }
       }
     }
@@ -498,8 +499,8 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     if (!tx) {
       console.error(`[LIPANA /webhook] ❌ Transaction NOT FOUND for:`, {
         tried_IDs: possibleIds,
-        tried_phone: data?.phone,
-        data: JSON.stringify(data, null, 2),
+        tried_phone: phone,
+        event: JSON.stringify(event, null, 2),
       });
       // Still return 200 to prevent Lipana from retrying
       return res.json({ ok: true });
