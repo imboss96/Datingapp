@@ -143,6 +143,10 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   const [allUsers,   setAllUsers]   = useState<UserProfile[]>(initialUsers);
   const [loading,    setLoading]    = useState(initialChats.length === 0);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Array<{ user: UserProfile; isCurrentChat: boolean }>>([]);
+  const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Options modal
   const [optionsModalOpen,     setOptionsModalOpen]     = useState(false);
@@ -265,6 +269,32 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     openChat(chatId, otherUser);
   };
 
+  // ── Search users ────────────────────────────────────────────────────────────
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    const queryLower = query.toLowerCase();
+    const results = allUsers
+      .filter(user => {
+        if (!user) return false;
+        const username = (user.username || user.name).toLowerCase();
+        return username.includes(queryLower);
+      })
+      .map(user => ({
+        user,
+        isCurrentChat: chats.some(chat => chat.participants.includes(user.id))
+      }))
+      .slice(0, 10); // Limit to 10 results
+
+    setSearchResults(results);
+  };
+
   // ── Long-press ──────────────────────────────────────────────────────────────
 
   const handleTouchStart = (chatId: string, username: string) => {
@@ -348,7 +378,30 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         <ChatSkeleton />
       ) : (
         <div className="flex-1 overflow-y-auto">
-          <div className="px-4 pt-6">
+          {/* Search Bar */}
+          <div className="px-3 pt-4 pb-2 sticky top-0 bg-white z-10">
+            <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2">
+              <i className="fa-solid fa-magnifying-glass text-gray-500 text-sm"></i>
+              <input
+                type="text"
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 bg-transparent text-sm focus:outline-none placeholder-gray-500 text-gray-900"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-gray-500 hover:text-gray-700 text-xs"
+                  title="Clear search"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="px-4 pt-4">
             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
               Conversations ({chats.length})
             </h3>
@@ -361,7 +414,13 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {chats.map(chat => {
+              {chats.filter(chat => {
+                if (!searchQuery.trim()) return true;
+                const otherUser = getOtherUser(chat);
+                if (!otherUser) return false;
+                const username = (otherUser.username || otherUser.name).toLowerCase();
+                return username.includes(searchQuery.toLowerCase());
+              }).map(chat => {
                 const otherUser = getOtherUser(chat);
                 if (!otherUser) return null;
 

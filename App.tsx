@@ -329,7 +329,12 @@ const AppContent: React.FC<{
               <SwiperScreen currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} />
             </div>
           } />
-          <Route path="/chats" element={<div className="md:hidden flex-1 overflow-y-auto"><ChatList currentUser={currentUser} /></div>} />
+          <Route path="/chats" element={
+            <div className="flex w-full h-full">
+              <div className="md:hidden flex-1 overflow-y-auto"><ChatList currentUser={currentUser} /></div>
+              <div className="hidden md:flex flex-1 flex-col h-full"><ChatRoom currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} /></div>
+            </div>
+          } />
           <Route path="/chat/:id" element={<div className="flex-1 flex flex-col h-full"><ChatRoom currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} /></div>} />
           <Route path="/matches" element={<div className="flex-1 overflow-y-auto"><MatchesPage currentUserId={currentUser?.id} /></div>} />
           <Route path="/terms" element={<div className="flex-1 overflow-y-auto"><TermsPage onAccept={() => setShowTerms(false)} isModal={false} /></div>} />

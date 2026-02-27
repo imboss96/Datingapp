@@ -1,0 +1,37 @@
+/* WhatsApp-style Chat Background */
+
+.whatsapp-chat-background {
+  background-color: #ece5dd;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cdefs%3E%3Cpattern id='whatsapp-pattern' width='120' height='120' patternUnits='userSpaceOnUse'%3E%3C!-- Light beige base --%3E%3Crect width='120' height='120' fill='%23ece5dd'/%3E%3C!-- Message bubbles icon --%3E%3Cpath d='M20 30H50c1.5 0 3 1.5 3 3v20c0 1.5-1.5 3-3 3h-3l-5 8v-8h-22c-1.5 0-3-1.5-3-3V33c0-1.5 1.5-3 3-3Z' fill='none' stroke='%23d4cdc5' stroke-width='0.8' opacity='0.65'/%3E%3C!-- Photo/image icon --%3E%3Ccircle cx='80' cy='25' r='4' fill='none' stroke='%23d4cdc5' stroke-width='0.7' opacity='0.60'/%3E%3Crect x='65' y='35' width='30' height='20' fill='none' stroke='%23d4cdc5' stroke-width='0.8' opacity='0.58' rx='2'/%3E%3Cpath d='M65 50l8-5 7 5 15-10' fill='none' stroke='%23d4cdc5' stroke-width='0.7' opacity='0.58'/%3E%3C!-- Phone icon --%3E%3Crect x='30' y='60' width='12' height='20' rx='2' fill='none' stroke='%23d4cdc5' stroke-width='0.8' opacity='0.56'/%3E%3Ccircle cx='36' cy='73' r='1.5' fill='%23d4cdc5' opacity='0.56'/%3E%3C!-- Camera icon --%3E%3Crect x='80' y='65' width='18' height='14' rx='1' fill='none' stroke='%23d4cdc5' stroke-width='0.8' opacity='0.54'/%3E%3Ccircle cx='89' cy='72' r='4' fill='none' stroke='%23d4cdc5' stroke-width='0.7' opacity='0.54'/%3E%3Crect x='97' y='66' width='1' height='2' fill='%23d4cdc5' opacity='0.54'/%3E%3C!-- Attachment/paperclip --%3E%3Cpath d='M15 95c0-3 2-5 5-5s5 2 5 5v8c0 2-1.5 3.5-3.5 3.5s-3.5-1.5-3.5-3.5' fill='none' stroke='%23d4cdc5' stroke-width='0.75' opacity='0.58'/%3E%3C!-- Search icon --%3E%3Ccircle cx='70' cy='95' r='4' fill='none' stroke='%23d4cdc5' stroke-width='0.75' opacity='0.52'/%3E%3Cpath d='M73 98l3 3' stroke='%23d4cdc5' stroke-width='0.7' opacity='0.52'/%3E%3C!-- Decorative dots --%3E%3Ccircle cx='55' cy='20' r='0.5' fill='%23d4cdc5' opacity='0.45'/%3E%3Ccircle cx='40' cy='85' r='0.5' fill='%23d4cdc5' opacity='0.45'/%3E%3Ccircle cx='25' cy='50' r='0.4' fill='%23d4cdc5' opacity='0.42'/%3E%3Ccircle cx='95' cy='45' r='0.4' fill='%23d4cdc5' opacity='0.42'/%3E%3Ccircle cx='45' cy='110' r='0.5' fill='%23d4cdc5' opacity='0.44'/%3E%3Ccircle cx='110' cy='30' r='0.5' fill='%23d4cdc5' opacity='0.44'/%3E%3C!-- Fine lines texture --%3E%3Cline x1='10' y1='10' x2='110' y2='110' stroke='%23d4cdc5' stroke-width='0.1' opacity='0.25'/%3E%3Cline x1='110' y1='10' x2='10' y2='110' stroke='%23d4cdc5' stroke-width='0.1' opacity='0.25'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23whatsapp-pattern)'/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+  background-repeat: repeat;
+  background-attachment: fixed;
+}
+
+/* Alternative - Minimal WhatsApp style with just subtle icons */
+.whatsapp-chat-background-minimal {
+  background-color: #ece5dd;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cdefs%3E%3Cpattern id='minimal-pattern' width='100' height='100' patternUnits='userSpaceOnUse'%3E%3Crect width='100' height='100' fill='%23ece5dd'/%3E%3C!-- Chat bubble --%3E%3Cpath d='M15 20h40c2 0 3 1 3 3v25c0 2-1 3-3 3h-5l-8 10v-10h-27c-2 0-3-1-3-3V23c0-2 1-3 3-3Z' fill='none' stroke='%23d9cfc2' stroke-width='0.9' opacity='0.65'/%3E%3C!-- Phone icon --%3E%3Crect x='70' y='15' width='12' height='20' rx='2' fill='none' stroke='%23d9cfc2' stroke-width='0.85' opacity='0.60'/%3E%3Ccircle cx='76' cy='27' r='1.2' fill='%23d9cfc2' opacity='0.60'/%3E%3C!-- Camera --%3E%3Crect x='20' y='60' width='16' height='12' rx='1' fill='none' stroke='%23d9cfc2' stroke-width='0.85' opacity='0.56'/%3E%3Ccircle cx='28' cy='66' r='3.5' fill='none' stroke='%23d9cfc2' stroke-width='0.75' opacity='0.56'/%3E%3C!-- Image/photo --%3E%3Crect x='65' y='55' width='25' height='18' rx='1.5' fill='none' stroke='%23d9cfc2' stroke-width='0.85' opacity='0.54'/%3E%3Ccircle cx='72' cy='61' r='3' fill='none' stroke='%23d9cfc2' stroke-width='0.7' opacity='0.54'/%3E%3Cpath d='M65 73l7-6 8 6 10-8' fill='none' stroke='%23d9cfc2' stroke-width='0.7' opacity='0.54'/%3E%3C!-- Attachment pin --%3E%3Cpath d='M35 80c0-2.5 2-4.5 4.5-4.5s4.5 2 4.5 4.5v6c0 2-1.5 3.5-3 3.5s-3-1.5-3-3.5' fill='none' stroke='%23d9cfc2' stroke-width='0.8' opacity='0.52'/%3E%3C!-- Decorative elements --%3E%3Ccircle cx='50' cy='15' r='0.6' fill='%23d9cfc2' opacity='0.44'/%3E%3Ccircle cx='42' cy='85' r='0.5' fill='%23d9cfc2' opacity='0.42'/%3E%3Ccircle cx='88' cy='78' r='0.5' fill='%23d9cfc2' opacity='0.42'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23minimal-pattern)'/%3E%3C/svg%3E");
+  background-size: 100px 100px;
+  background-repeat: repeat;
+  background-attachment: fixed;
+}
+
+/* Premium WhatsApp-style with very subtle grain texture */
+.whatsapp-chat-background-premium {
+  background-color: #ece5dd;
+  background-image: 
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cdefs%3E%3Cpattern id='grain' width='100' height='100' patternUnits='userSpaceOnUse'%3E%3Crect width='100' height='100' fill='%23ece5dd'/%3E%3C!-- Very subtle grain noise --%3E%3Ccircle cx='8' cy='12' r='0.3' fill='%23d9cfc2' opacity='0.05'/%3E%3Ccircle cx='24' cy='35' r='0.25' fill='%23d9cfc2' opacity='0.04'/%3E%3Ccircle cx='45' cy='18' r='0.2' fill='%23d9cfc2' opacity='0.03'/%3E%3Ccircle cx='62' cy='42' r='0.25' fill='%23d9cfc2' opacity='0.04'/%3E%3Ccircle cx='78' cy='55' r='0.3' fill='%23d9cfc2' opacity='0.05'/%3E%3Ccircle cx='15' cy='68' r='0.25' fill='%23d9cfc2' opacity='0.04'/%3E%3Ccircle cx='88' cy='22' r='0.2' fill='%23d9cfc2' opacity='0.03'/%3E%3Ccircle cx='38' cy='88' r='0.25' fill='%23d9cfc2' opacity='0.04'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23grain)'/%3E%3C/svg%3E");
+  background-size: 100px 100px;
+  background-repeat: repeat;
+  background-attachment: fixed;
+}
+
+/* Dark theme variant */
+.whatsapp-chat-background-dark {
+  background-color: #0a1419;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cdefs%3E%3Cpattern id='dark-pattern' width='120' height='120' patternUnits='userSpaceOnUse'%3E%3Crect width='120' height='120' fill='%230a1419'/%3E%3C!-- Chat bubble --%3E%3Cpath d='M20 30H50c1.5 0 3 1.5 3 3v20c0 1.5-1.5 3-3 3h-3l-5 8v-8h-22c-1.5 0-3-1.5-3-3V33c0-1.5 1.5-3 3-3Z' fill='none' stroke='%23263238' stroke-width='0.8' opacity='0.75'/%3E%3C!-- Phone icon --%3E%3Crect x='70' y='20' width='12' height='20' rx='2' fill='none' stroke='%23263238' stroke-width='0.8' opacity='0.70'/%3E%3Ccircle cx='76' cy='32' r='1.2' fill='%23263238' opacity='0.70'/%3E%3C!-- Camera icon --%3E%3Crect x='20' y='70' width='16' height='12' rx='1' fill='none' stroke='%23263238' stroke-width='0.8' opacity='0.68'/%3E%3Ccircle cx='28' cy='76' r='3.5' fill='none' stroke='%23263238' stroke-width='0.75' opacity='0.68'/%3E%3C!-- Decorative dots --%3E%3Ccircle cx='50' cy='15' r='0.5' fill='%23263238' opacity='0.60'/%3E%3Ccircle cx='85' cy='75' r='0.5' fill='%23263238' opacity='0.60'/%3E%3C/pattern%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dark-pattern)'/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+  background-repeat: repeat;
+  background-attachment: fixed;
+}

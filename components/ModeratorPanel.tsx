@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import PhotoModerationPanel from './PhotoModerationPanel';
 import ChatModerationView from './ChatModerationView';
 import PhotoVerificationReviewPanel from './PhotoVerificationReviewPanel';
+import AdminPhotoVerificationDashboard from './AdminPhotoVerificationDashboard';
 import apiClient from '../services/apiClient';
 
 interface FlaggedItem {
@@ -557,7 +558,7 @@ const ModeratorPanel: React.FC = () => {
         )}
 
         {activeTab === 'VERIFICATIONS' && (
-          <PhotoVerificationReviewPanel />
+          <AdminPhotoVerificationDashboard />
         )}
 
         {activeTab === 'RESOLVED' && (

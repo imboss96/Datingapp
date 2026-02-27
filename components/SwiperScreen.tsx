@@ -73,6 +73,63 @@ const extractCoordinates = (coords: any): { lat: number; lon: number } | null =>
   return null;
 };
 
+// Helper to validate and optimize Cloudinary image URLs
+const validateImageUrl = (url: string | undefined): string | null => {
+  if (!url || typeof url !== 'string') return null;
+  if (!url.trim()) return null;
+  
+  try {
+    const trimmed = url.trim();
+    
+    // Validate URL
+    new URL(trimmed);
+    
+    // If it's a Cloudinary URL, optimize it
+    if (trimmed.includes('res.cloudinary.com')) {
+      // Add quality and format optimization if not already present
+      if (!trimmed.includes('/q_')) {
+        // Use cloud name from environment variable
+        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhxitpddx';
+        // Dynamically extract cloud name and inject optimization parameters
+        const cloudinaryOptimized = trimmed.replace(
+          /res\.cloudinary\.com\/([^/]+)\/image\/upload\//,
+          `res.cloudinary.com/${cloudName}/image/upload/q_auto,w_600,f_auto/`
+        );
+        return cloudinaryOptimized;
+      }
+    }
+    
+    return trimmed;
+  } catch (err) {
+    console.warn('[SwiperScreen] Invalid image URL:', url);
+    return null;
+  }
+};
+
+// Helper to preload image with proper error handling and timeout
+const preloadImage = (url: string, timeoutMs: number = 8000): Promise<void> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const timeoutId = setTimeout(() => {
+      img.src = '';
+      resolve(); // resolve on timeout instead of rejecting
+    }, timeoutMs);
+
+    img.onload = () => {
+      clearTimeout(timeoutId);
+      resolve();
+    };
+
+    img.onerror = () => {
+      clearTimeout(timeoutId);
+      console.warn('[SwiperScreen] Failed to preload image:', url);
+      resolve(); // resolve on error instead of rejecting
+    };
+
+    img.src = url;
+  });
+};
+
 // ═══ Sub-components ════════════════════════════════════════════════════════════
 
 const ProfileImageSkeleton: React.FC = () => (
@@ -202,6 +259,12 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, false, lat, lon);
       }
 
+      // 3) If still nothing, try fetching without any filters (unsorted fallback)
+      if (batchUsers.length === 0 && batchNumber === 0) {
+        console.warn('[SwiperScreen] Still no profiles, fetching unsorted fallback');
+        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, false);
+      }
+
       console.log('[SwiperScreen] API returned', batchUsers.length, 'profiles');
 
       const others = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
@@ -306,8 +369,12 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   useEffect(() => {
     const next = filteredProfiles[currentIndex + 1];
     if (next?.images?.[0]) {
-      const img = new Image();
-      img.src = next.images[0];
+      const imageUrl = validateImageUrl(next.images[0]);
+      if (imageUrl) {
+        preloadImage(imageUrl, 8000).catch(() => {
+          // already handled in preloadImage
+        });
+      }
     }
   }, [currentIndex, filteredProfiles]);
 
@@ -674,13 +741,31 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               {!imgLoaded && <ProfileImageSkeleton />}
 
               {profile.images?.[0] ? (
-                <img
-                  key={profile.id}
-                  src={profile.images[0]}
-                  alt={profile.name}
-                  onLoad={() => setImgLoaded(true)}
-                  className={`w-full h-full object-cover select-none transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
-                />
+                (() => {
+                  const imageUrl = validateImageUrl(profile.images[0]);
+                  if (!imageUrl) {
+                    return (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-300">
+                        <span className="text-gray-600 text-xl font-bold uppercase">
+                          {profile.username || profile.name || "No Image"}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <img
+                      key={profile.id}
+                      src={imageUrl}
+                      alt={profile.name}
+                      onLoad={() => setImgLoaded(true)}
+                      onError={() => {
+                        console.warn('[SwiperScreen] Failed to load image for profile:', profile.id, 'URL:', imageUrl);
+                        setImgLoaded(true); // show skeleton fallback
+                      }}
+                      className={`w-full h-full object-cover select-none transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                    />
+                  );
+                })()
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-300">
                   <span className="text-gray-600 text-xl font-bold uppercase">

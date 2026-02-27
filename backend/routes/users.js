@@ -1,11 +1,38 @@
 import express from 'express';
 import User from '../models/User.js';
 import Match from '../models/Match.js';
+import PhotoVerification from '../models/PhotoVerification.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { v4 as uuidv4 } from 'uuid';
 import { sendNotification } from '../utils/websocket.js';
 
 const router = express.Router();
+
+// Helper to attach verification info to users
+async function attachVerificationInfo(users) {
+  const userIds = users.map(u => u.id || u._id);
+  const verifications = await PhotoVerification.find({ userId: { $in: userIds } });
+  const verificationMap = {};
+
+  verifications.forEach(v => {
+    verificationMap[v.userId] = {
+      status: v.status === 'approved' ? 'VERIFIED' : 
+              v.status === 'pending' ? 'PENDING' :
+              v.status === 'rejected' ? 'REJECTED' : 'UNVERIFIED',
+      verifiedAt: v.reviewedAt ? v.reviewedAt.getTime() : undefined,
+      idType: v.idType
+    };
+  });
+
+  return users.map(user => {
+    const userData = typeof user.toObject === 'function' ? user.toObject() : user;
+    userData.verification = verificationMap[userData.id] || {
+      status: 'UNVERIFIED',
+      verifiedAt: undefined
+    };
+    return userData;
+  });
+}
 
 // Check if username is available (NO AUTH REQUIRED - must be before authMiddleware)
 router.post('/check-username/:username', async (req, res) => {
@@ -35,7 +62,9 @@ router.get('/:userId', async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(user);
+    // Attach verification info
+    const [userWithVerification] = await attachVerificationInfo([user]);
+    res.json(userWithVerification);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -126,7 +155,9 @@ router.get('/', async (req, res) => {
             }
             return user;
           });
-          return res.json(transformedUsers);
+          // Attach verification info
+          const usersWithVerification = await attachVerificationInfo(transformedUsers);
+          return res.json(usersWithVerification);
         }
 
         console.log('[DEBUG Backend] Geo returned 0, falling back to regular query');
@@ -151,7 +182,9 @@ router.get('/', async (req, res) => {
       return userData;
     });
     
-    res.json(transformedUsers);
+    // Attach verification info
+    const usersWithVerification = await attachVerificationInfo(transformedUsers);
+    res.json(usersWithVerification);
   } catch (err) {
     console.error('[ERROR] Discovery /users failed:', err);
     res.status(500).json({ error: err.message });
