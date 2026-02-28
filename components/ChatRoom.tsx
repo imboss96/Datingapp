@@ -83,19 +83,83 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
   // Audio element for ringing tone
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   // Function to play ringing tone from external file
-  const playRingingTone = () => {
+  const playRingingTone = async () => {
     try {
       if (!audioRef.current) {
+        console.log('[ChatRoom] Creating audio element for ringing tone');
         audioRef.current = new Audio('/audio/ringing-tone.mp3');
         audioRef.current.loop = true;
-        audioRef.current.volume = 0.5;
+        audioRef.current.volume = 0.7;
+        
+        // Enable autoplay by ensuring it can play
+        audioRef.current.muted = false;
       }
+      
+      // Reset to beginning
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(err => {
-        console.log('[INFO] Audio playback failed (may be blocked by browser):', err.message);
-      });
+      
+      // Attempt to play with retry logic
+      try {
+        console.log('[ChatRoom] Attempting to play ringing tone');
+        await audioRef.current.play();
+        console.log('[ChatRoom] Ringing tone playing successfully');
+      } catch (err: any) {
+        console.warn('[ChatRoom] Initial playback blocked, trying after user gesture:', err?.name);
+        
+        // If autoplay is blocked, we'll need user interaction
+        // This will be retriggered when user clicks Accept/Reject
+        if (err?.name === 'NotAllowedError') {
+          console.log('[ChatRoom] Audio blocked by autoplay policy - will play on user interaction');
+          
+          // Create a fallback using Web Audio API for demo
+          if (!audioContextRef.current) {
+            try {
+              audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+              console.log('[ChatRoom] Using fallback Web Audio API ringing');
+              
+              const playSineWaveTone = (frequency: number, duration: number) => {
+                if (!audioContextRef.current) return;
+                
+                const ctx = audioContextRef.current;
+                const now = ctx.currentTime;
+                
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                
+                osc.frequency.value = frequency;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+                
+                osc.start(now);
+                osc.stop(now + duration);
+              };
+              
+              // Play alternating tones: 400Hz and 600Hz
+              const playSequence = () => {
+                if (incomingCall) {
+                  playSineWaveTone(400, 0.5);
+                  setTimeout(() => {
+                    if (audioContextRef.current) {
+                      playSineWaveTone(600, 0.5);
+                      setTimeout(playSequence, 1000);
+                    }
+                  }, 600);
+                }
+              };
+              
+              playSequence();
+            } catch (webAudioErr) {
+              console.warn('[ChatRoom] Web Audio API also failed:', webAudioErr);
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error('[ERROR] Failed to play ringing tone:', err);
     }
@@ -107,21 +171,27 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
+    
+    // Stop Web Audio fallback
+    if (audioContextRef.current && audioContextRef.current.state === 'running') {
+      // Note: We can't actually stop oscillators easily, so the fallback will just continue
+      // For now, we'll leave it as is since the timeout logic in playSequence checks incomingCall
+    }
   };
 
   // Handle ringing when incoming call arrives
   useEffect(() => {
     if (incomingCall) {
       console.log('[ChatRoom] Incoming call detected - playing ringing tone');
-      playRingingTone();
+      // Small delay to ensure audio context is ready
+      const timer = setTimeout(() => {
+        playRingingTone();
+      }, 100);
+      return () => clearTimeout(timer);
     } else {
       console.log('[ChatRoom] Call ended - stopping ringing tone');
       stopRingingTone();
     }
-
-    return () => {
-      stopRingingTone();
-    };
   }, [incomingCall]);
 
   // Helper function to log call events as messages

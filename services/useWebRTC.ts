@@ -185,6 +185,9 @@ export const useWebRTC = ({
 
         console.log('[WebRTC] Adding local tracks:', localStream.getTracks().map(t => t.kind));
         localStream.getTracks().forEach(track => {
+          // Ensure all tracks are enabled
+          track.enabled = true;
+          console.log('[WebRTC] Adding track:', { kind: track.kind, enabled: track.enabled, id: track.id });
           pc.addTrack(track, localStream);
         });
 

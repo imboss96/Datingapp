@@ -34,6 +34,7 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   const [streamError, setStreamError] = useState<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const webRtcRef = useRef<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -61,10 +62,30 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       streamId: stream.id,
       tracks: stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled }))
     });
+    
+    // Set video stream to video element
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = stream;
+      console.log('[VideoCallRoom] Remote stream set to video element');
     } else {
       console.warn('[VideoCallRoom] remoteVideoRef not available');
+    }
+    
+    // Also set audio stream to audio element for better audio playback
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length > 0 && remoteAudioRef.current) {
+      console.log('[VideoCallRoom] Setting remote audio tracks to audio element, count:', audioTracks.length);
+      // Enable all audio tracks
+      audioTracks.forEach(track => {
+        track.enabled = true;
+        console.log('[VideoCallRoom] Audio track enabled:', { id: track.id, enabled: track.enabled });
+      });
+      // Create a new stream with only audio tracks
+      const audioStream = new MediaStream(audioTracks);
+      remoteAudioRef.current.srcObject = audioStream;
+      console.log('[VideoCallRoom] Remote audio stream assigned');
+    } else {
+      console.log('[VideoCallRoom] No audio tracks found or remoteAudioRef not available');
     }
   }, []);
 
@@ -208,13 +229,16 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         </div>
       )}
 
+      {/* Hidden audio element for remote audio playback */}
+      <audio ref={remoteAudioRef} autoPlay muted={false} />
+      
       {/* Main Video Grid */}
       <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-0">
         {/* Remote Video */}
         <div className="relative bg-gray-900 flex items-center justify-center">
           {isVideo ? (
             <>
-              <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
+              <video ref={remoteVideoRef} autoPlay muted={false} playsInline className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50"></div>
               <div className="absolute bottom-8 left-8 z-10">
                 <div className="flex items-center gap-3">
@@ -230,6 +254,7 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
             </>
           ) : (
             <>
+              <audio ref={remoteAudioRef} autoPlay muted={false} />
               <img
                 src={otherUser?.images[0] || 'https://via.placeholder.com/1920x1080?text=Voice+Call'}
                 alt="Remote user"
