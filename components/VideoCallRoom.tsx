@@ -32,6 +32,8 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   const [callQuality, setCallQuality] = useState<'good' | 'moderate' | 'poor'>('good');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [otherUserJoined, setOtherUserJoined] = useState(false);
+  const [userJoinedAlertShown, setUserJoinedAlertShown] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
@@ -43,11 +45,22 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   // Define endCall before callbacks that use it
   const endCall = useCallback(() => {
-    console.log('[VideoCallRoom] Ending call');
+    console.log('[VideoCallRoom] Ending call - duration:', callDuration, 'seconds');
+    
+    // Send call end signal with duration
+    if (callDuration > 0) {
+      sendMessage({
+        type: 'call_end',
+        to: otherUserId,
+        duration: callDuration,
+        durationFormatted: `${Math.floor(callDuration / 60)}:${String(callDuration % 60).padStart(2, '0')}`
+      });
+    }
+    
     webRtcRef.current?.hangUp();
     onCallEnd?.();
     navigate('/chats');
-  }, [onCallEnd, navigate]);
+  }, [onCallEnd, navigate, callDuration, otherUserId, sendMessage]);
 
   const handleConnectionStateChange = useCallback((state: RTCPeerConnectionState) => {
     console.log('[VideoCallRoom] Connection state:', state);
@@ -100,8 +113,12 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     } else if (data.type === 'call_end') {
       console.log('[VideoCallRoom] Remote user ended the call');
       endCall();
+    } else if (data.type === 'call_rejected') {
+      console.log('[VideoCallRoom] Call was rejected by remote user');
+      showAlert('Call Rejected', 'The user declined your call.');
+      endCall();
     }
-  }, [endCall]);
+  }, [endCall, showAlert]);
 
   const handleRTCError = useCallback((error: Error) => {
     console.error('[VideoCallRoom] WebRTC error:', error);
@@ -142,6 +159,31 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     const unsubscribe = addMessageHandler(handleWebSocketMessage);
     return unsubscribe;
   }, [addMessageHandler, handleWebSocketMessage]);
+
+  // Send user joined notification and listen for other user joining
+  useEffect(() => {
+    // Send notification that this user joined the call
+    console.log('[VideoCallRoom] Sending user_joined_call notification');
+    sendMessage({
+      type: 'user_joined_call',
+      to: otherUserId,
+      fromName: currentUser.name || currentUser.username,
+      timestamp: new Date().toISOString()
+    });
+
+    // Listen for other user joining
+    const handleUserJoinedCall = (data: any) => {
+      if (data.type === 'user_joined_call' && data.from === otherUserId && !userJoinedAlertShown) {
+        console.log('[VideoCallRoom] Other user joined call:', data.fromName);
+        setOtherUserJoined(true);
+        setUserJoinedAlertShown(true);
+        showAlert('Connected', `${data.fromName} joined the call`);
+      }
+    };
+
+    const unsubscribe = addMessageHandler(handleUserJoinedCall);
+    return unsubscribe;
+  }, [otherUserId, currentUser, sendMessage, addMessageHandler, userJoinedAlertShown, showAlert]);
 
   // Update local video stream
   useEffect(() => {
@@ -320,6 +362,12 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
                  connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
               </span>
             </div>
+            {otherUserJoined && (
+              <div className="flex items-center gap-2 bg-emerald-500/30 border border-emerald-500 backdrop-blur px-3 py-2 rounded-full">
+                <i className="fa-solid fa-check-circle text-emerald-400"></i>
+                <span className="text-xs font-bold text-emerald-300">{displayName(otherUser)} is here</span>
+              </div>
+            )}
             <div className="bg-black/60 backdrop-blur px-4 py-2 rounded-full font-bold text-lg">
               {formatTime(callDuration)}
             </div>

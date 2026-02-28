@@ -83,10 +83,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
   // Audio element for ringing tone
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const ringingTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
-  const ringingOscillatorsRef = useRef<OscillatorNode[]>([]);
-  const ringingGainsRef = useRef<GainNode[]>([]);
 
   // Function to play ringing tone from external file
   const playRingingTone = async () => {
@@ -102,74 +98,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       // Reset to beginning
       audioRef.current.currentTime = 0;
       
-      // Attempt to play with retry logic
+      // Play the audio file
       try {
-        console.log('[ChatRoom] Attempting to play ringing tone');
+        console.log('[ChatRoom] Playing ringing tone');
         await audioRef.current.play();
         console.log('[ChatRoom] Ringing tone playing successfully');
       } catch (err: any) {
-        console.warn('[ChatRoom] Initial playback blocked, trying Web Audio API fallback:', err?.name);
-        
-        // If autoplay is blocked, use Web Audio API fallback
-        if (err?.name === 'NotAllowedError') {
-          console.log('[ChatRoom] Using Web Audio API ringing fallback');
-          
-          try {
-            if (!audioContextRef.current) {
-              audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-            }
-            
-            const ctx = audioContextRef.current;
-            
-            const playSineWaveTone = (frequency: number, duration: number) => {
-              if (!ctx) return;
-              
-              const now = ctx.currentTime;
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              
-              osc.frequency.value = frequency;
-              osc.connect(gain);
-              gain.connect(ctx.destination);
-              
-              gain.gain.setValueAtTime(0.1, now);
-              gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
-              
-              osc.start(now);
-              osc.stop(now + duration);
-              
-              // Track for cleanup
-              ringingOscillatorsRef.current.push(osc);
-              ringingGainsRef.current.push(gain);
-            };
-            
-            // Play alternating tones: 400Hz and 600Hz
-            const playSequence = () => {
-              // Check current incomingCall state (not closure)
-              if (!incomingCall) {
-                console.log('[ChatRoom] Incoming call ended, stopping Web Audio ringing');
-                return;
-              }
-              
-              playSineWaveTone(400, 0.5);
-              const timeout1 = setTimeout(() => {
-                if (incomingCall) {
-                  playSineWaveTone(600, 0.5);
-                  const timeout2 = setTimeout(playSequence, 1000);
-                  ringingTimeoutsRef.current.push(timeout2);
-                } else {
-                  console.log('[ChatRoom] Stopping Web Audio sequence - call ended');
-                }
-              }, 600);
-              
-              ringingTimeoutsRef.current.push(timeout1);
-            };
-            
-            playSequence();
-          } catch (webAudioErr) {
-            console.warn('[ChatRoom] Web Audio API failed:', webAudioErr);
-          }
-        }
+        console.warn('[ChatRoom] Ringing tone playback failed:', err?.message);
       }
     } catch (err) {
       console.error('[ERROR] Failed to play ringing tone:', err);
@@ -179,39 +114,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   // Function to stop ringing tone
   const stopRingingTone = () => {
     console.log('[ChatRoom] Stopping ringing tone');
-    
-    // Stop audio element
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
     }
-    
-    // Clear all pending timeouts
-    ringingTimeoutsRef.current.forEach(timeout => clearTimeout(timeout));
-    ringingTimeoutsRef.current = [];
-    
-    // Disconnect all gain nodes (this silences the oscillators even if they're still running)
-    ringingGainsRef.current.forEach(gain => {
-      try {
-        gain.gain.setValueAtTime(0, audioContextRef.current?.currentTime || 0);
-        gain.disconnect();
-      } catch (e) {
-        console.log('[ChatRoom] Error disconnecting gain:', e);
-      }
-    });
-    ringingGainsRef.current = [];
-    
-    // Stop all oscillators
-    ringingOscillatorsRef.current.forEach(osc => {
-      try {
-        osc.stop();
-      } catch (e) {
-        console.log('[ChatRoom] Error stopping oscillator:', e);
-      }
-    });
-    ringingOscillatorsRef.current = [];
-    
-    console.log('[ChatRoom] Ringing tone stopped and disconnected');
+    console.log('[ChatRoom] Ringing tone stopped');
   };
 
   // Handle ringing when incoming call arrives
@@ -229,10 +136,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     } else {
       console.log('[ChatRoom] No incoming call - stopping ringing tone');
       stopRingingTone();
-      
-      return () => {
-        stopRingingTone();
-      };
     }
   }, [incomingCall]);
 
@@ -251,8 +154,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       return;
     }
     try {
-      const timestamp = new Date().toLocaleTimeString();
-      const callLogMessage = `[CALL LOG] ${eventDescription} at ${timestamp}`;
+      const timestamp = new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true 
+      });
+      const callLogMessage = `[CALL] ${eventDescription} • ${timestamp}`;
       console.log('[DEBUG ChatRoom] Logging call event:', callLogMessage);
       await apiClient.sendMessage(chatId, callLogMessage);
       // Refresh messages to show the log
@@ -318,7 +226,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       console.log('[ChatRoom handleIncomingCall] Incoming call state updated');
       
       // Log the incoming call event
-      logCallEvent(`Incoming ${data.isVideo ? 'video' : 'voice'} call from ${data.fromName || 'Unknown'}`);
+      logCallEvent(`📱 Incoming ${data.isVideo ? 'video' : 'voice'} call from ${data.fromName || 'Unknown'}`);
     };
     
     console.log('[ChatRoom useEffect] Adding event listener for ws:call_incoming');
@@ -331,6 +239,34 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     };
   }, [inCall]);
 
+  // Handle call notifications (busy, unavailable)
+  useEffect(() => {
+    const handleCallNotification = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const data = customEvent.detail;
+      console.log('[ChatRoom handleCallNotification] Received notification:', data.type);
+
+      if (data.type === 'call_busy') {
+        console.log('[ChatRoom] User is busy on another call:', data.recipientName);
+        showAlert('User Busy', `${data.recipientName} is currently on another call. Try again later.`);
+        setInCall(false);
+        setConfirmCall(null);
+        logCallEvent(`⏸️  Call to ${data.recipientName} failed - User is busy`);
+      } else if (data.type === 'call_unavailable') {
+        console.log('[ChatRoom] User is unavailable:', data.recipientName);
+        showAlert('User Unavailable', `${data.recipientName} is not available right now. Try again later.`);
+        setInCall(false);
+        setConfirmCall(null);
+        logCallEvent(`❌ Call to ${data.recipientName} failed - User unavailable`);
+      }
+    };
+
+    window.addEventListener('ws:call_notification', handleCallNotification);
+    return () => {
+      window.removeEventListener('ws:call_notification', handleCallNotification);
+    };
+  }, []);
+
   // Handle incoming call acceptance
   const handleAcceptIncomingCall = async () => {
     if (!incomingCall) return;
@@ -339,7 +275,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       console.log('[DEBUG ChatRoom] Accepting incoming call from:', incomingCall.caller.id);
       
       // Log call acceptance
-      await logCallEvent(`Accepted ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
+      await logCallEvent(`✅ Accepted ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
       
       // Create or get chat with caller
       const chatData = await apiClient.createOrGetChat(incomingCall.caller.id);
@@ -368,7 +304,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     
     if (incomingCall) {
       // Log call rejection
-      logCallEvent(`Rejected ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
+      logCallEvent(`❌ Rejected ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
       
       sendMessage({
         type: 'call_rejected',
@@ -1051,10 +987,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     if (chatUser) {
                       console.log('[DEBUG ChatRoom] Initiating call to:', chatUser.id, 'isVideo:', confirmCall.isVideo);
                       // Log outgoing call
-                      logCallEvent(`Outgoing ${confirmCall.isVideo ? 'video' : 'voice'} call to ${chatUser.name}`);
+                      logCallEvent(`📞 Outgoing ${confirmCall.isVideo ? 'video' : 'voice'} call to ${chatUser.name}`);
                       sendMessage({
                         type: 'call_incoming',
                         to: chatUser.id,
+                        toName: chatUser.name || chatUser.username,
                         fromName: currentUser.name || currentUser.username,
                         isVideo: confirmCall.isVideo,
                         chatId: chatId
@@ -1091,11 +1028,16 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             isInitiator={true}
             isVideo={callIsVideo}
             onCallEnd={() => {
+              console.log('[ChatRoom] Call ended, logging event');
               setInCall(false);
               sendMessage({
                 type: 'call_end',
                 to: chatUser.id
               });
+              // Log call end after a brief delay to ensure it's captured
+              setTimeout(() => {
+                logCallEvent(`📞 ${callIsVideo ? 'Video' : 'Voice'} call ended with ${chatUser.name}`);
+              }, 100);
             }}
           />
         )}

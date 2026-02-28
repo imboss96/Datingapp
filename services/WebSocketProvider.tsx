@@ -83,6 +83,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
             window.dispatchEvent(event);
             console.log('[WS onmessage] ws:call_incoming event dispatched');
           }
+          if (data.type === 'call_busy' || data.type === 'call_unavailable') {
+            console.log(`[WS onmessage] Call notification (${data.type}):`, data);
+            window.dispatchEvent(new CustomEvent('ws:call_notification', { detail: data }));
+          }
           if (data.type === 'call_offer' || data.type === 'call_answer' || data.type === 'ice_candidate' || data.type === 'call_end') {
             window.dispatchEvent(new CustomEvent('ws:webrtc', { detail: data }));
           }
