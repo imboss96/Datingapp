@@ -92,7 +92,6 @@ const ModeratorPanel: React.FC = () => {
     // Set up auto-refresh every 10 seconds when on CHATS tab
     const refreshInterval = setInterval(() => {
       if (activeTab === 'CHATS') {
-        console.log('[DEBUG ModeratorPanel] Auto-refreshing chats...');
         fetchChats();
       } else if (activeTab === 'STALLED') {
         fetchStalledChats();
@@ -122,7 +121,6 @@ const ModeratorPanel: React.FC = () => {
       
       setChats(transformedChats);
       setLastRefresh(Date.now());
-      console.log('[DEBUG ModeratorPanel] Loaded', transformedChats.length, 'chats');
     } catch (error) {
       console.error('[ERROR ModeratorPanel] Failed to fetch chats:', error);
       setChatError('Failed to load chats. Using demo data.');

@@ -164,13 +164,10 @@ class APIClient {
   }
 
   async updateProfile(userId: string, updates: any) {
-    console.log('[DEBUG apiClient] updateProfile called with:', { userId, updates });
-    const result = await this.request(`/users/${userId}`, {
+    return await this.request(`/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     });
-    console.log('[DEBUG apiClient] updateProfile response:', result);
-    return result;
   }
 
   async checkUsernameAvailable(username: string, userId?: string) {

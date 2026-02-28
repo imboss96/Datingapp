@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../services/apiClient';
+import { useWebSocketContext } from '../services/WebSocketProvider';
+import '../styles/whatsapp-background.css';
 
 interface User {
   id: string;
@@ -59,12 +61,24 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
   const [actionType, setActionType] = useState<'warn' | 'ban' | 'block' | 'report' | 'flag' | 'timeout' | 'mute'>('warn');
   const [isSendingAction, setIsSendingAction] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [moderatorCoins, setModeratorCoins] = useState<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // WebSocket for real-time updates (moderator registers as separate client)
-  const { addMessageHandler } = useWebSocket(currentUserId);
+  const { addMessageHandler } = useWebSocketContext();
 
   // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Register WebSocket handler
   useEffect(() => {
     // Register WebSocket message handler for real-time new_message events
     const unregister = addMessageHandler((data: any) => {
@@ -81,7 +95,6 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
         console.error('[WS Handler] Error handling message:', err);
       }
     });
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     return () => {
       try { unregister(); } catch (e) { /* ignore */ }
     };
@@ -197,280 +210,488 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     return users.get(userId) || { id: userId, username: userId, name: 'Unknown User' };
   };
 
+  const handleSendReply = async () => {
+    if (!replyText.trim() && !selectedMedia) return;
+
+    try {
+      setIsSendingReply(true);
+      
+      // Send message as the operator (recipient) to the client (initiator)
+      const payload: any = {
+        recipientId: operatorId, // Send as the operator/recipient
+        text: replyText.trim(),
+      };
+
+      // Include media if attached
+      if (selectedMedia) {
+        payload.media = selectedMedia;
+      }
+
+      const response = await apiClient.post(`/moderation/send-response/${chat.id}`, payload);
+
+      if (response.success) {
+        const newMessage: Message = {
+          id: response.message.id,
+          senderId: operatorId,
+          text: replyText.trim(),
+          timestamp: response.message.timestamp,
+          isFlagged: false,
+          media: selectedMedia || undefined,
+        };
+
+        // Add to local messages
+        setMessages(prev => [...prev, newMessage].sort((a, b) => a.timestamp - b.timestamp));
+        
+        // Clear input and media
+        setReplyText('');
+        setSelectedMedia(null);
+        
+        // Increment moderator coins (0.1 per reply)
+        setModeratorCoins(prev => prev + 0.1);
+        
+        // Show success
+        setSuccessMessage('Reply sent on behalf of ' + operatorProfile?.name);
+        setTimeout(() => setSuccessMessage(null), 3000);
+
+        // Scroll to bottom
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    } catch (error: any) {
+      let errorMsg = 'Failed to send reply';
+      
+      // Error from fetch-based apiClient
+      if (error instanceof Error) {
+        if (error.message.includes('Moderator access required')) {
+          errorMsg = 'Access denied: Moderator authorization required';
+        } else if (error.message.includes('Chat not found')) {
+          errorMsg = 'Chat not found';
+        } else if (error.message.includes('Recipient is not a participant')) {
+          errorMsg = 'Recipient is not a participant in this chat';
+        } else {
+          errorMsg = 'Error: ' + error.message;
+        }
+      } else if (error?.response?.data?.error) {
+        // Error from axios (if apiClient changes)
+        errorMsg += ': ' + error.response.data.error;
+      }
+      
+      setSuccessMessage('✗ ' + errorMsg);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } finally {
+      setIsSendingReply(false);
+    }
+  };
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    
+    // Check file size (100MB limit)
+    if (file.size > 100 * 1024 * 1024) {
+      setSuccessMessage('File size exceeds 100MB limit');
+      setTimeout(() => setSuccessMessage(null), 3000);
+      return;
+    }
+
+    try {
+      setUploadingMedia(true);
+
+      // Upload media using apiClient same as ChatRoom
+      const result = await apiClient.uploadChatMedia(chat.id, file);
+
+      if (result.success && result.media) {
+        setSelectedMedia(result.media);
+        setSuccessMessage(`Media attached: ${file.name}`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setSuccessMessage('Failed to upload media');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+    } catch (error) {
+      console.error('Error uploading media:', error);
+      setSuccessMessage('Failed to upload media - ' + (error instanceof Error ? error.message : 'Unknown error'));
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } finally {
+      setUploadingMedia(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveMedia = () => {
+    setSelectedMedia(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Get client and operator profiles
+  const clientId = chat.participants[0]; // Person who initiated chat (John)
+  const operatorId = chat.participants[1]; // Person intended to receive (Profile X)
+  const clientProfile = users.get(clientId) || { id: clientId, username: clientId, name: 'User' };
+  const operatorProfile = users.get(operatorId) || { id: operatorId, username: operatorId, name: 'User' };
+
+  const renderProfilePhotos = (userImages: any) => {
+    if (Array.isArray(userImages) && userImages.length > 0) {
+      return userImages.slice(0, 4).map((img, i) => (
+        <img key={i} src={img} alt={`Profile ${i + 1}`} className="w-full h-28 rounded-lg object-cover" />
+      ));
+    }
+    return Array.from({ length: 4 }).map((_, i) => (
+      <div key={i} className="w-full h-28 bg-gradient-to-br from-gray-300 to-gray-400 rounded-lg flex items-center justify-center text-gray-600 text-xs font-semibold">
+        No photo
+      </div>
+    ));
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/20 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center p-2 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl w-screen h-screen max-w-full max-h-full flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 flex items-center justify-between rounded-t-2xl">
+        <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-4 flex items-center justify-between rounded-t-2xl">
           <div>
-            <h2 className="text-2xl font-black flex items-center gap-2">
-              <i className="fa-solid fa-magnifying-glass"></i>
-              Chat Moderation
+            <h2 className="text-xl font-black flex items-center gap-2">
+              <i className="fa-solid fa-shield-halved"></i>
+              Moderator Portal - Unreplied Chat
             </h2>
-            <p className="text-blue-100 text-sm mt-1">Chat ID: {chat.id}</p>
+            <p className="text-indigo-100 text-xs mt-1">Chat ID: {chat.id} • {messages.length} messages • Moderating: <strong>{clientProfile.name}</strong> → <strong>{operatorProfile.name}</strong></p>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors"
-            >
-              <i className={`fa-solid fa-rotate-right ${loading ? 'animate-spin' : ''}`}></i>
-              Refresh
-            </button>
-            <button
-              onClick={onClose}
-              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold text-sm transition-colors"
-            >
-              <i className="fa-solid fa-times"></i> Close
-            </button>
+          <div className="flex gap-3 items-center">
+            {/* Coins Section */}
+            <div className="bg-indigo-500/60 backdrop-blur-sm rounded-lg px-4 py-2 flex flex-col items-center border border-indigo-400/50">
+              <p className="text-xs font-bold text-indigo-100 uppercase tracking-wide">Coins Earned</p>
+              <div className="flex items-center gap-2 mt-1">
+                <i className="fa-solid fa-coins text-yellow-300 text-lg"></i>
+                <span className="text-2xl font-black text-yellow-300">${moderatorCoins.toFixed(2)}</span>
+              </div>
+              <p className="text-xs text-indigo-200 mt-1">+$0.1 per reply</p>
+            </div>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={onRefresh}
+                disabled={loading}
+                className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors"
+              >
+                <i className={`fa-solid fa-rotate-right ${loading ? 'animate-spin' : ''}`}></i>
+                Refresh
+              </button>
+              <button
+                onClick={onClose}
+                className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg font-bold text-sm transition-colors"
+              >
+                <i className="fa-solid fa-times"></i>
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
-          {/* Messages Panel */}
-          <div className="flex-1 flex flex-col border-r border-gray-200">
-            {/* Participants Info */}
-            <div className="bg-gray-50 p-4 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                {chat.participants.slice(0, 2).map((pid) => {
-                  const user = getMessageUserInfo(pid);
-                  return (
-                    <div
-                      key={pid}
-                      onClick={() => setSelectedUser(selectedUser === pid ? null : pid)}
-                      className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                        selectedUser === pid ? 'bg-blue-100' : 'hover:bg-gray-100'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
-                        {user.username?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">{user.name || user.username}</p>
-                        <p className="text-xs text-gray-500">{pid.substring(0, 8)}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+        <div className="flex flex-1 overflow-hidden gap-3 p-3 bg-gray-50">
+          {/* Left Panel - Operator (Intended Recipient) */}
+          <div className="w-72 flex flex-col border border-gray-300 rounded-lg bg-white overflow-hidden shadow-sm">
+            <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 border-b border-indigo-300 p-3 text-center text-white">
+              <p className="text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2"><i className="fa-solid fa-user"></i> Recipient (Operator)</p>
+              <p className="text-xs text-indigo-100 mt-1">Who moderator is replying as</p>
+            </div>
+            
+            {/* Photos */}
+            <div className="p-3 border-b border-gray-200 bg-gray-50">
+              <p className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
+                <i className="fa-solid fa-images text-indigo-500"></i>
+                Profile Photos
+              </p>
+              <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto">
+                {renderProfilePhotos(operatorProfile?.images)}
               </div>
-              <div className="text-xs text-gray-500">
-                {messages.length} messages • {chat.flaggedCount || 0} flagged
+            </div>
+
+            {/* User Info */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
+              <div>
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Full Name</p>
+                <p className="text-gray-900 font-bold text-base">{operatorProfile?.name || 'Unknown'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Username</p>
+                <p className="text-gray-700 font-mono text-xs break-all bg-gray-100 p-2 rounded">{operatorProfile?.username}</p>
+              </div>
+              {operatorProfile?.age && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Age</p>
+                  <p className="text-gray-900">{operatorProfile.age}</p>
+                </div>
+              )}
+              {operatorProfile?.location && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1"><i className="fa-solid fa-location-dot text-indigo-600"></i>Location</p>
+                  <p className="text-gray-900">{operatorProfile.location}</p>
+                </div>
+              )}
+              {operatorProfile?.bio && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Bio</p>
+                  <p className="text-gray-700 text-xs italic">{operatorProfile.bio}</p>
+                </div>
+              )}
+              <div className="pt-2 border-t border-gray-200">
+                <div className="flex flex-wrap gap-2">
+                  {operatorProfile?.isPhotoVerified && (
+                    <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-semibold">
+                      <i className="fa-solid fa-check-circle"></i> Verified
+                    </span>
+                  )}
+                  {operatorProfile?.isPremium && (
+                    <span className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-semibold">
+                      <i className="fa-solid fa-crown"></i> Premium
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Center Panel - Messages */}
+          <div className="flex-1 flex flex-col border border-gray-300 rounded-lg bg-white overflow-hidden shadow-sm relative">
+            {/* Conversation Header */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-200 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-xs font-bold text-purple-700 uppercase tracking-wide mb-2 flex items-center justify-center gap-2"><i className="fa-solid fa-comments"></i> Message Thread</p>
+                </div>
+                <div className="text-right text-xs text-gray-600">
+                  <p className="font-bold text-lg text-purple-700">
+                    {searchQuery ? `${messages.filter(m => m.text.toLowerCase().includes(searchQuery.toLowerCase())).length}/${messages.length}` : messages.length}
+                  </p>
+                  <p>{searchQuery ? 'found' : 'total'} messages</p>
+                </div>
               </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-              {messages.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-gray-400">
-                  <p>No messages yet</p>
-                </div>
-              ) : (
-                messages.map((msg) => {
-                  const sender = getMessageUserInfo(msg.senderId);
-                  const isSenderSelected = selectedMessage?.id === msg.id;
-                  return (
-                    <div
-                      key={msg.id}
-                      onClick={() => setSelectedMessage(isSenderSelected ? null : msg)}
-                      className={`p-4 rounded-lg cursor-pointer transition-all ${
-                        msg.isDeleted
-                          ? 'bg-gray-200 opacity-50'
-                          : isSenderSelected
-                          ? 'bg-blue-100 border-2 border-blue-500'
-                          : msg.isFlagged
-                          ? 'bg-red-50 border-2 border-red-300'
-                          : 'bg-white border border-gray-200 hover:border-blue-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
-                            {sender.username?.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">{sender.name || sender.username}</p>
-                            <p className="text-xs text-gray-500">{new Date(msg.timestamp).toLocaleTimeString()}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {msg.isFlagged && (
-                            <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded">
-                              🚩 FLAGGED
-                            </span>
-                          )}
-                          {msg.isEditedByModerator && (
-                            <span className="bg-yellow-100 text-yellow-600 text-[10px] font-bold px-2 py-1 rounded">
-                              EDITED
-                            </span>
-                          )}
-                          {msg.isDeleted && (
-                            <span className="bg-gray-300 text-gray-600 text-[10px] font-bold px-2 py-1 rounded">
-                              DELETED
-                            </span>
-                          )}
-                        </div>
-                      </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 whatsapp-chat-background pb-32 relative" ref={messagesEndRef}>
+              {/* Search Field Inside Messages */}
+              <div className="sticky top-0 z-10 mb-4 flex items-center gap-2 bg-white rounded-full px-4 py-2.5 border border-gray-200 shadow-md">
+                <i className="fa-solid fa-search text-purple-600 text-lg flex-shrink-0"></i>
+                <input
+                  type="text"
+                  placeholder="Search messages..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="bg-transparent flex-1 focus:outline-none text-sm text-gray-900 placeholder:text-gray-500"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="text-gray-400 hover:text-gray-600 transition-colors active:scale-75"
+                    title="Clear search"
+                  >
+                    <i className="fa-solid fa-times text-lg flex-shrink-0"></i>
+                  </button>
+                )}
+              </div>
 
-                      {msg.isDeleted ? (
-                        <p className="text-gray-500 italic text-sm">[Message deleted by moderator]</p>
+              {(() => {
+                const filteredMessages = searchQuery.trim() === '' 
+                  ? messages 
+                  : messages.filter(msg => 
+                      msg.text.toLowerCase().includes(searchQuery.toLowerCase())
+                    );
+
+                return filteredMessages.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="text-center">
+                      {searchQuery.trim() === '' ? (
+                        <>
+                          <i className="fa-solid fa-message text-4xl mb-2 text-gray-300"></i>
+                          <p className="text-sm">No messages yet</p>
+                        </>
                       ) : (
-                        <p className="text-sm text-gray-800">{msg.text}</p>
-                      )}
-
-                      {msg.flagReason && (
-                        <p className="text-xs text-red-600 mt-2 italic">Reason: {msg.flagReason}</p>
-                      )}
-
-                      {isSenderSelected && !msg.isDeleted && (
-                        <div className="mt-3 flex gap-2 flex-wrap">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleFlagMessage(msg);
-                            }}
-                            disabled={isSendingAction}
-                            className={`text-xs font-bold px-3 py-1 rounded transition-colors ${
-                              msg.isFlagged
-                                ? 'bg-red-500 text-white hover:bg-red-600'
-                                : 'bg-red-100 text-red-600 hover:bg-red-200'
-                            }`}
-                          >
-                            {msg.isFlagged ? '🚩 Unflag' : '🚩 Flag'}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteMessage(msg);
-                            }}
-                            disabled={isSendingAction}
-                            className="text-xs font-bold px-3 py-1 bg-red-500 text-white hover:bg-red-600 rounded transition-colors"
-                          >
-                            🗑️ Delete
-                          </button>
-                        </div>
+                        <>
+                          <i className="fa-solid fa-search text-4xl mb-2 text-gray-300"></i>
+                          <p className="text-sm">No messages match "{searchQuery}"</p>
+                        </>
                       )}
                     </div>
-                  );
-                })
-              )}
-              <div ref={messagesEndRef} />
+                  </div>
+                ) : (
+                  filteredMessages.map((msg) => {
+                    const sender = getMessageUserInfo(msg.senderId);
+                    const isInitiator = msg.senderId === chat.participants[0];
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isInitiator ? 'justify-start' : 'justify-end'} mb-4`}
+                      >
+                        <div className={`flex flex-col ${isInitiator ? 'items-start' : 'items-end'} max-w-md`}>
+                          {/* Sender name label */}
+                          <p className={`text-xs font-bold mb-1 px-2 ${isInitiator ? 'text-green-700' : 'text-indigo-700'}`}>
+                            {isInitiator ? `${clientProfile?.name} (Client)` : `${operatorProfile?.name} (Recipient)`}
+                          </p>
+                          {/* Message bubble */}
+                          <div className={`flex items-end gap-2 ${isInitiator ? 'flex-row' : 'flex-row-reverse'}`}>
+                            <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white text-xs font-bold ${
+                              isInitiator 
+                                ? 'bg-gradient-to-br from-green-400 to-emerald-500' 
+                                : 'bg-gradient-to-br from-indigo-400 to-purple-500'
+                            }`}>
+                              {sender.username?.charAt(0).toUpperCase()}
+                            </div>
+                            <div className={`rounded-2xl px-4 py-2 break-words shadow-sm ${
+                              isInitiator 
+                                ? 'bg-green-100 text-gray-900 rounded-bl-none' 
+                                : 'bg-indigo-100 text-gray-900 rounded-br-none'
+                            }`}>
+                              <p className="text-sm font-medium">{msg.text}</p>
+                              <p className={`text-xs mt-1.5 font-semibold ${isInitiator ? 'text-green-700' : 'text-indigo-700'}`}>
+                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                );
+              })()}
+            </div>
+
+            {/* Floating Reply Input */}
+            <div className="absolute bottom-0 left-0 right-0 z-20 p-3" style={{ padding: 'calc(8px + env(safe-area-inset-bottom, 0px)) 12px 12px 12px' }}>
+              <div className="space-y-2">
+                {successMessage && (
+                  <div className={`text-xs font-semibold px-3 py-1.5 rounded flex items-center gap-2 ${
+                    successMessage.includes('sent') || successMessage.includes('successful')
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-red-100 text-red-700'
+                  }`}>
+                    <i className={`fa-solid ${successMessage.includes('sent') || successMessage.includes('successful') ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
+                    {successMessage.replace('✓ ', '').replace('✗ ', '')}
+                  </div>
+                )}
+                {selectedMedia && (
+                  <div className="text-xs font-semibold px-3 py-1.5 rounded flex items-center justify-between bg-blue-100 text-blue-700">
+                    <div className="flex items-center gap-2">
+                      <i className="fa-solid fa-file text-blue-600"></i>
+                      <span>{selectedMedia.filename || 'Media attached'}</span>
+                    </div>
+                    <button
+                      onClick={handleRemoveMedia}
+                      className="text-blue-600 hover:text-blue-800 transition-colors"
+                      title="Remove media"
+                    >
+                      <i className="fa-solid fa-times"></i>
+                    </button>
+                  </div>
+                )}
+                <div className="flex gap-2 items-center bg-white rounded-full px-4 py-2.5 border border-gray-200 shadow-md">
+                  {/* Attachment Button */}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingMedia || isSendingReply}
+                    className="text-gray-600 hover:text-gray-700 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                    title="Attach file"
+                  >
+                    <i className="fa-solid fa-plus-circle"></i>
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={handleMediaUpload}
+                    accept="image/*,video/*,.pdf,audio/*"
+                    className="hidden"
+                    disabled={uploadingMedia}
+                  />
+                  
+                  <input
+                    type="text"
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && !isSendingReply && handleSendReply()}
+                    placeholder="Type a message..."
+                    disabled={isSendingReply || uploadingMedia}
+                    className="bg-transparent flex-1 focus:outline-none text-sm text-gray-900 placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <button 
+                    onClick={handleSendReply}
+                    disabled={isSendingReply || (!replyText.trim() && !selectedMedia)}
+                    className={`text-lg transition-colors active:scale-75 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      (replyText.trim() || selectedMedia)
+                        ? 'text-indigo-600 hover:text-indigo-700'
+                        : 'text-gray-400'
+                    }`}
+                  >
+                    <i className={`fa-solid fa-paper-plane ${isSendingReply ? 'animate-pulse' : ''}`}></i>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Action Panel */}
-          <div className="w-80 bg-white border-l border-gray-200 flex flex-col overflow-hidden">
-            {/* Selected Item Info */}
-            {selectedMessage || selectedUser ? (
-              <>
-                {selectedMessage && (
-                  <div className="bg-blue-50 border-b border-blue-200 p-4">
-                    <p className="text-xs font-bold text-blue-600 uppercase mb-2">Selected Message</p>
-                    <p className="text-sm text-gray-800 line-clamp-3">{selectedMessage.text}</p>
-                  </div>
-                )}
+          {/* Right Panel - Client (Initiator) */}
+          <div className="w-72 flex flex-col border border-gray-300 rounded-lg bg-white overflow-hidden shadow-sm">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 border-b border-green-300 p-3 text-center text-white">
+              <p className="text-xs font-bold uppercase tracking-wide flex items-center justify-center gap-2"><i className="fa-solid fa-user"></i> Initiator (Client)</p>
+              <p className="text-xs text-green-100 mt-1">Who started the conversation</p>
+            </div>
+            
+            {/* Photos */}
+            <div className="p-3 border-b border-gray-200 bg-gray-50">
+              <p className="text-xs font-bold text-gray-700 mb-2 flex items-center gap-1">
+                <i className="fa-solid fa-images text-green-500"></i>
+                Profile Photos
+              </p>
+              <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto">
+                {renderProfilePhotos(clientProfile?.images)}
+              </div>
+            </div>
 
-                {selectedUser && (
-                  <div className="bg-purple-50 border-b border-purple-200 p-4">
-                    <p className="text-xs font-bold text-purple-600 uppercase mb-2">Selected User</p>
-                    <div className="flex items-center gap-2">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold">
-                        {getMessageUserInfo(selectedUser).username?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm text-gray-900">{getMessageUserInfo(selectedUser).name}</p>
-                        <p className="text-xs text-gray-600">{selectedUser.substring(0, 12)}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Action Form */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {selectedMessage && (
-                    <>
-                      <div>
-                        <label className="text-xs font-bold text-gray-700 block mb-2">Action Type</label>
-                        <select
-                          value={actionType}
-                          onChange={(e) => setActionType(e.target.value as any)}
-                          className="w-full border border-gray-300 rounded-lg p-2 text-xs"
-                        >
-                          <option value="flag">🚩 Flag</option>
-                          <option value="report">📝 Report</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-
-                  {selectedUser && (
-                    <>
-                      <div>
-                        <label className="text-xs font-bold text-gray-700 block mb-2">Action Type</label>
-                        <select
-                          value={actionType}
-                          onChange={(e) => setActionType(e.target.value as any)}
-                          className="w-full border border-gray-300 rounded-lg p-2 text-xs"
-                        >
-                          <option value="warn">⚠️ Warn User</option>
-                          <option value="timeout">⏱️ Timeout (1 hour)</option>
-                          <option value="mute">🔇 Mute (1 hour)</option>
-                          <option value="ban">🚫 Ban Permanently</option>
-                          <option value="block">🚷 Block User</option>
-                          <option value="report">📝 Report User</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 block mb-2">Reason</label>
-                    <textarea
-                      value={actionReason}
-                      onChange={(e) => setActionReason(e.target.value)}
-                      placeholder="Enter reason for this action..."
-                      className="w-full border border-gray-300 rounded-lg p-2 text-xs resize-none h-24"
-                    />
-                  </div>
-
-                  {successMessage && (
-                    <div className="bg-emerald-100 border border-emerald-300 text-emerald-700 p-3 rounded-lg text-xs font-bold">
-                      ✓ {successMessage}
-                    </div>
-                  )}
-
-                  {selectedMessage && (
-                    <button
-                      onClick={() => handleFlagMessage(selectedMessage)}
-                      disabled={isSendingAction || !actionReason.trim()}
-                      className="w-full py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors"
-                    >
-                      {selectedMessage.isFlagged ? 'Unflag Message' : 'Flag Message'}
-                    </button>
-                  )}
-
-                  {selectedUser && (
-                    <button
-                      onClick={() => {
-                        handleUserAction(selectedUser, actionType, actionReason);
-                        setActionReason('');
-                      }}
-                      disabled={isSendingAction || !actionReason.trim()}
-                      className="w-full py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold rounded-lg text-xs transition-colors"
-                    >
-                      Execute Action
-                    </button>
-                  )}
+            {/* User Info */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
+              <div>
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Full Name</p>
+                <p className="text-gray-900 font-bold text-base">{clientProfile?.name || 'Unknown'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Username</p>
+                <p className="text-gray-700 font-mono text-xs break-all bg-gray-100 p-2 rounded">{clientProfile?.username}</p>
+              </div>
+              {clientProfile?.age && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Age</p>
+                  <p className="text-gray-900">{clientProfile.age}</p>
                 </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-400">
-                <div className="text-center">
-                  <i className="fa-solid fa-hand-pointer text-4xl mb-2 text-gray-300"></i>
-                  <p className="text-sm">Select a message or user to take action</p>
+              )}
+              {clientProfile?.location && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide flex items-center gap-1"><i className="fa-solid fa-location-dot text-green-600"></i>Location</p>
+                  <p className="text-gray-900">{clientProfile.location}</p>
+                </div>
+              )}
+              {clientProfile?.bio && (
+                <div>
+                  <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Bio</p>
+                  <p className="text-gray-700 text-xs italic">{clientProfile.bio}</p>
+                </div>
+              )}
+              <div className="pt-2 border-t border-gray-200">
+                <div className="flex flex-wrap gap-2">
+                  {clientProfile?.isPhotoVerified && (
+                    <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-semibold">
+                      <i className="fa-solid fa-check-circle"></i> Verified
+                    </span>
+                  )}
+                  {clientProfile?.isPremium && (
+                    <span className="inline-flex items-center gap-1 bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-semibold">
+                      <i className="fa-solid fa-crown"></i> Premium
+                    </span>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>

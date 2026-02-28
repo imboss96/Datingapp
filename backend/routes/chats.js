@@ -66,29 +66,62 @@ router.get('/', async (req, res) => {
     const allChats = await query;
     console.log('[DEBUG] Found', allChats.length, 'total chats for user:', req.userId);
 
-    // Deduplication: Group by participantsKey to keep only the latest chat per unique pair
-    const chatsByParticipantsKey = {};
-    const dedupedChats = [];
-    
-    for (const chat of allChats) {
-      const key = chat.participantsKey || [...chat.participants].sort().join(':');
-      
-      if (!chatsByParticipantsKey[key]) {
-        chatsByParticipantsKey[key] = chat;
-        dedupedChats.push(chat);
-      } else {
-        // Keep the one with later lastUpdated
-        if (chat.lastUpdated > chatsByParticipantsKey[key].lastUpdated) {
-          const idx = dedupedChats.indexOf(chatsByParticipantsKey[key]);
-          dedupedChats[idx] = chat;
-          chatsByParticipantsKey[key] = chat;
+    // IMPORTANT: Ensure all chats have participantsKey (for migration from old data)
+    const chatsToUpdate = allChats.filter(chat => !chat.participantsKey);
+    if (chatsToUpdate.length > 0) {
+      console.log('[WARN] Found', chatsToUpdate.length, 'chats without participantsKey. Fixing...');
+      for (const chat of chatsToUpdate) {
+        if (chat.participants && chat.participants.length > 0) {
+          const key = makeParticipantsKey(chat.participants);
+          chat.participantsKey = key;
+          await chat.save();
+          console.log('[DEBUG] Fixed participantsKey for chat:', chat.id);
         }
       }
     }
+
+    // Deduplication: Group by participantsKey to keep only the latest chat per unique pair
+    const chatsByParticipantsKey = {};
+    const chatsToKeep = [];
+    const chatsToDelete = [];
     
-    console.log('[DEBUG] After deduplication:', dedupedChats.length, 'unique chats');
+    for (const chat of allChats) {
+      const key = chat.participantsKey || (chat.participants ? makeParticipantsKey(chat.participants) : null);
+      
+      if (!key) {
+        console.warn('[WARN] Chat has no valid participants, skipping:', chat.id);
+        continue;
+      }
+      
+      if (!chatsByParticipantsKey[key]) {
+        chatsByParticipantsKey[key] = chat;
+        chatsToKeep.push(chat);
+      } else {
+        // Keep the one with later lastUpdated
+        if (chat.lastUpdated > chatsByParticipantsKey[key].lastUpdated) {
+          const oldChat = chatsByParticipantsKey[key];
+          chatsToDelete.push(oldChat.id);
+          chatsToKeep[chatsToKeep.indexOf(oldChat)] = chat;
+          chatsByParticipantsKey[key] = chat;
+        } else {
+          chatsToDelete.push(chat.id);
+        }
+      }
+    }
+
+    // Hard delete duplicate old chats (keep latest only)
+    if (chatsToDelete.length > 0) {
+      console.log('[INFO] Deleting', chatsToDelete.length, 'duplicate chats, keeping latest only');
+      for (const chatId of chatsToDelete) {
+        await Chat.deleteOne({ id: chatId });
+        console.log('[DEBUG] Deleted duplicate chat:', chatId);
+      }
+    }
+    
+    console.log('[DEBUG] After deduplication:', chatsToKeep.length, 'unique chats');
+    
     // Attach unread count for requesting user to each chat object
-    const transformed = dedupedChats.map(c => {
+    const transformed = chatsToKeep.map(c => {
       const obj = c.toObject();
       if (isModerator) {
         // For moderators, attach participant count instead of unread count
@@ -137,14 +170,51 @@ router.post('/create-or-get', async (req, res) => {
     console.log('[DEBUG] create-or-get chat. User:', req.userId, 'Other:', otherUserId, 'Participants:', participants);
 
     const participantsKey = makeParticipantsKey(participants);
+    console.log('[DEBUG] Looking for chat with participantsKey:', participantsKey);
 
-    // Try to find existing chat first
-    let chat = await Chat.findOne({ participantsKey });
+    // First, try to find any existing chat with these participants (for migration/cleanup)
+    let existingChats = await Chat.find({ 
+      $or: [
+        { participantsKey },
+        { participants: { $all: participants } }
+      ]
+    });
+
+    if (existingChats.length > 1) {
+      console.log('[WARN] Found', existingChats.length, 'chats with same participants. Consolidating...');
+      
+      // Sort by lastUpdated, keep the latest
+      existingChats.sort((a, b) => b.lastUpdated - a.lastUpdated);
+      const chatToKeep = existingChats[0];
+      const chatsToDelete = existingChats.slice(1);
+
+      // Merge all messages from other chats into the latest one
+      for (const oldChat of chatsToDelete) {
+        if (oldChat.messages && oldChat.messages.length > 0) {
+          chatToKeep.messages.push(...oldChat.messages);
+          chatToKeep.messages.sort((a, b) => a.timestamp - b.timestamp);
+        }
+      }
+
+      // Ensure participantsKey is set
+      chatToKeep.participantsKey = participantsKey;
+      await chatToKeep.save();
+
+      // Delete the old duplicate chats
+      for (const oldChat of chatsToDelete) {
+        await Chat.deleteOne({ id: oldChat.id });
+        console.log('[DEBUG] Deleted duplicate chat:', oldChat.id, '(merged into', chatToKeep.id, ')');
+      }
+
+      existingChats = [chatToKeep];
+    }
+
+    let chat = existingChats.length > 0 ? existingChats[0] : null;
     let isNewChat = false;
 
     if (!chat) {
-      console.log('[DEBUG] Chat not found, attempting upsert');
-      // Upsert a single chat document for this participant key to avoid duplicates
+      console.log('[DEBUG] No existing chat found, creating new one');
+      // Ensure no duplicate key error by checking again
       try {
         chat = await Chat.findOneAndUpdate(
           { participantsKey },
@@ -166,31 +236,120 @@ router.post('/create-or-get', async (req, res) => {
           { upsert: true, new: true, setDefaultsOnInsert: true }
         );
         isNewChat = true;
-        console.log('[DEBUG] Upserted chat:', chat.id);
+        console.log('[DEBUG] Created new chat:', chat.id, 'with participantsKey:', chat.participantsKey);
       } catch (upsertErr) {
-        // Handle duplicate key error (E11000) that can occur under concurrent requests
         if (upsertErr.code === 11000) {
-          console.log('[WARN] Duplicate key error during upsert, refetching existing chat:', participantsKey);
-          // Re-fetch the document that was created by another concurrent request
+          console.log('[WARN] Duplicate key error during upsert, refetching...');
           chat = await Chat.findOne({ participantsKey });
           if (!chat) {
-            console.error('[ERROR] Chat still not found after duplicate key error. This should not happen.');
-            throw new Error('Failed to create or retrieve chat');
+            throw new Error('Failed to create or retrieve chat after duplicate key error');
           }
           isNewChat = false;
-          console.log('[DEBUG] Retrieved existing chat after duplicate key error:', chat.id);
+          console.log('[DEBUG] Retrieved chat after duplicate key error:', chat.id);
         } else {
-          // Re-throw non-duplicate-key errors
           throw upsertErr;
         }
       }
     } else {
-      console.log('[DEBUG] Found existing chat:', chat.id, 'status:', chat.requestStatus, 'with', chat.messages.length, 'messages');
+      // Ensure participantsKey is set on existing chat
+      if (!chat.participantsKey) {
+        chat.participantsKey = participantsKey;
+        await chat.save();
+        console.log('[DEBUG] Set missing participantsKey on existing chat:', chat.id);
+      }
+      console.log('[DEBUG] Found existing chat:', chat.id, 'with', chat.messages.length, 'messages');
     }
 
     res.json({ ...chat.toObject(), isNewChat });
   } catch (err) {
     console.error('[ERROR] Failed to create-or-get chat:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Clean up duplicate chats (merge into latest, delete others)
+router.post('/admin/cleanup-duplicates', async (req, res) => {
+  try {
+    const isAdmin = req.userRole === 'ADMIN';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    console.log('[INFO] Starting duplicate chat cleanup by admin:', req.userId);
+
+    // Find all chats
+    const allChats = await Chat.find({});
+    console.log('[INFO] Checking', allChats.length, 'chats for duplicates');
+
+    // Group by participantsKey
+    const chatsByKey = {};
+    let duplicateCount = 0;
+
+    for (const chat of allChats) {
+      // Assign participantsKey if missing
+      let key = chat.participantsKey;
+      if (!key && chat.participants && chat.participants.length > 0) {
+        key = makeParticipantsKey(chat.participants);
+        chat.participantsKey = key;
+        await chat.save();
+      }
+
+      if (!key) {
+        console.warn('[WARN] Chat has no valid key, skipping:', chat.id);
+        continue;
+      }
+
+      if (!chatsByKey[key]) {
+        chatsByKey[key] = [];
+      }
+      chatsByKey[key].push(chat);
+    }
+
+    // Consolidate duplicates
+    let deletedCount = 0;
+    for (const [key, chats] of Object.entries(chatsByKey)) {
+      if (chats.length > 1) {
+        duplicateCount += (chats.length - 1);
+        console.log('[INFO] Found', chats.length, 'duplicate chats with key:', key);
+
+        // Sort by lastUpdated, keep the latest
+        chats.sort((a, b) => b.lastUpdated - a.lastUpdated);
+        const chatToKeep = chats[0];
+        const chatsToDelete = chats.slice(1);
+
+        // Merge messages
+        let mergedMessageCount = 0;
+        for (const oldChat of chatsToDelete) {
+          if (oldChat.messages && oldChat.messages.length > 0) {
+            chatToKeep.messages.push(...oldChat.messages);
+            mergedMessageCount += oldChat.messages.length;
+          }
+        }
+
+        // Sort consolidated messages by timestamp
+        chatToKeep.messages.sort((a, b) => a.timestamp - b.timestamp);
+        await chatToKeep.save();
+
+        // Delete old duplicates
+        for (const oldChat of chatsToDelete) {
+          await Chat.deleteOne({ id: oldChat.id });
+          deletedCount++;
+          console.log('[DEBUG] Deleted duplicate chat:', oldChat.id);
+        }
+
+        console.log('[INFO] Consolidated chat:', chatToKeep.id, 'with', mergedMessageCount, 'merged messages');
+      }
+    }
+
+    console.log('[INFO] Cleanup complete. Total duplicates found:', duplicateCount, 'Deleted:', deletedCount);
+    res.json({ 
+      success: true, 
+      duplicatesFound: duplicateCount, 
+      chatsDeleted: deletedCount,
+      message: `Cleaned up ${deletedCount} duplicate chats`
+    });
+  } catch (err) {
+    console.error('[ERROR] Failed to cleanup duplicates:', err);
     res.status(500).json({ error: err.message });
   }
 });
