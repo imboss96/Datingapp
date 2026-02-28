@@ -90,15 +90,25 @@ export function initWebSocket(server) {
 
         // Call incoming
         else if (message.type === 'call_incoming') {
+          console.log(`[WebSocket] call_incoming: from ${userId} to ${message.to}`);
           const targetWs = connectedUsers.get(message.to);
+          console.log(`[WebSocket] Target user ${message.to} connected:`, !!targetWs);
+          if (targetWs) {
+            console.log(`[WebSocket] Target WS readyState:`, targetWs.readyState);
+          }
           if (targetWs?.readyState === 1) {
-            targetWs.send(JSON.stringify({
+            const callData = {
               type: 'call_incoming',
               from: userId,
               fromName: message.fromName,
               isVideo: message.isVideo,
               chatId: message.chatId,
-            }));
+            };
+            console.log(`[WebSocket] Sending call_incoming to ${message.to}:`, callData);
+            targetWs.send(JSON.stringify(callData));
+            console.log(`[WebSocket] call_incoming sent successfully`);
+          } else {
+            console.log(`[WebSocket] Target user ${message.to} not connected or WS not ready`);
           }
         }
 

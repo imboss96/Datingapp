@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { UserProfile, Message, UserRole, MediaFile } from '../types';
+import { UserProfile, Message, UserRole, MediaFile, VerificationStatus } from '../types';
 import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
 import { useWebSocketContext } from '../services/WebSocketProvider';
 import { formatLastSeen } from '../services/lastSeenUtils';
 import MediaRenderer from './MediaRenderer';
 import VideoCallRoom from './VideoCallRoom';
+import IncomingCall from './IncomingCall';
 import VerificationBadge from './VerificationBadge';
 import UserProfileModal from './UserProfileModal';
 import { createAudioRecorder, formatAudioDuration, AudioRecording } from '../services/AudioRecorder';
@@ -35,6 +36,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [confirmCall, setConfirmCall] = useState<{ isVideo: boolean } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ caller: UserProfile; isVideo: boolean } | null>(null);
   const [inCall, setInCall] = useState(false);
   const [callIsVideo, setCallIsVideo] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
@@ -79,15 +81,183 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
   const { sendTypingStatus, sendMessage } = useWebSocketContext();
 
-  // Register typing indicator handler
+  // Audio element for ringing tone
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Function to play ringing tone from external file
+  const playRingingTone = () => {
+    try {
+      if (!audioRef.current) {
+        audioRef.current = new Audio('/audio/ringing-tone.mp3');
+        audioRef.current.loop = true;
+        audioRef.current.volume = 0.5;
+      }
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(err => {
+        console.log('[INFO] Audio playback failed (may be blocked by browser):', err.message);
+      });
+    } catch (err) {
+      console.error('[ERROR] Failed to play ringing tone:', err);
+    }
+  };
+
+  // Function to stop ringing tone
+  const stopRingingTone = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  };
+
+  // Handle ringing when incoming call arrives
   useEffect(() => {
-    const handleTyping = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      handleTypingIndicator(customEvent.detail);
+    if (incomingCall) {
+      console.log('[ChatRoom] Incoming call detected - playing ringing tone');
+      playRingingTone();
+    } else {
+      console.log('[ChatRoom] Call ended - stopping ringing tone');
+      stopRingingTone();
+    }
+
+    return () => {
+      stopRingingTone();
     };
-    window.addEventListener('ws:typing', handleTyping);
-    return () => window.removeEventListener('ws:typing', handleTyping);
-  }, [chatId]);
+  }, [incomingCall]);
+
+  // Helper function to log call events as messages
+  const logCallEvent = async (eventDescription: string) => {
+    if (!chatId) {
+      console.log('[DEBUG] Cannot log call event - no chatId');
+      return;
+    }
+    try {
+      const timestamp = new Date().toLocaleTimeString();
+      const callLogMessage = `[CALL LOG] ${eventDescription} at ${timestamp}`;
+      console.log('[DEBUG ChatRoom] Logging call event:', callLogMessage);
+      await apiClient.sendMessage(chatId, callLogMessage);
+      // Refresh messages to show the log
+      const chatData = await apiClient.getChat(chatId);
+      setMessages(chatData.messages || []);
+    } catch (err) {
+      console.error('[ERROR] Failed to log call event:', err);
+    }
+  };
+
+  // Register WebSocket handlers for incoming calls
+  useEffect(() => {
+    console.log('[ChatRoom useEffect] Setting up ws:call_incoming listener');
+    
+    const handleIncomingCall = (event: Event) => {
+      console.log('[ChatRoom handleIncomingCall] Event received:', event);
+      const customEvent = event as CustomEvent;
+      const data = customEvent.detail;
+      console.log('[ChatRoom handleIncomingCall] Event detail data:', data);
+      console.log('[ChatRoom handleIncomingCall] Current inCall state:', inCall);
+      
+      if (!data) {
+        console.log('[ChatRoom handleIncomingCall] No data in event, returning');
+        return;
+      }
+      
+      if (!data.from) {
+        console.log('[ChatRoom handleIncomingCall] No from field in data, returning');
+        return;
+      }
+      
+      if (inCall) {
+        console.log('[ChatRoom handleIncomingCall] Already in call, ignoring incoming call');
+        return;
+      }
+      
+      console.log('[ChatRoom handleIncomingCall] Processing incoming call from:', data.from);
+      
+      // Find caller user from available data
+      const callerUser: UserProfile = {
+        id: data.from,
+        name: data.fromName || 'Unknown User',
+        username: data.from,
+        age: 0,
+        location: '',
+        bio: '',
+        interests: [],
+        images: [],
+        isPremium: false,
+        coins: 0,
+        role: UserRole.USER,
+        coordinates: { latitude: 0, longitude: 0 },
+        verification: { status: VerificationStatus.UNVERIFIED },
+        blockedUsers: [],
+        reportedUsers: []
+      };
+      
+      console.log('[ChatRoom handleIncomingCall] Setting incoming call with caller:', callerUser.name);
+      setIncomingCall({
+        caller: callerUser,
+        isVideo: data.isVideo || false
+      });
+      console.log('[ChatRoom handleIncomingCall] Incoming call state updated');
+      
+      // Log the incoming call event
+      logCallEvent(`Incoming ${data.isVideo ? 'video' : 'voice'} call from ${data.fromName || 'Unknown'}`);
+    };
+    
+    console.log('[ChatRoom useEffect] Adding event listener for ws:call_incoming');
+    window.addEventListener('ws:call_incoming', handleIncomingCall);
+    console.log('[ChatRoom useEffect] Event listener added');
+    
+    return () => {
+      console.log('[ChatRoom useEffect cleanup] Removing event listener for ws:call_incoming');
+      window.removeEventListener('ws:call_incoming', handleIncomingCall);
+    };
+  }, [inCall]);
+
+  // Handle incoming call acceptance
+  const handleAcceptIncomingCall = async () => {
+    if (!incomingCall) return;
+    
+    try {
+      console.log('[DEBUG ChatRoom] Accepting incoming call from:', incomingCall.caller.id);
+      
+      // Log call acceptance
+      await logCallEvent(`Accepted ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
+      
+      // Create or get chat with caller
+      const chatData = await apiClient.createOrGetChat(incomingCall.caller.id);
+      setChatId(chatData.id);
+      setChatUser(incomingCall.caller);
+      
+      // Set up the call
+      setCallIsVideo(incomingCall.isVideo);
+      setInCall(true);
+      setIncomingCall(null);
+      
+      // Send call accepted signal
+      sendMessage({
+        type: 'call_accepted',
+        to: incomingCall.caller.id
+      });
+    } catch (err) {
+      console.error('[ERROR ChatRoom] Failed to accept incoming call:', err);
+      showAlert('Error', 'Failed to accept call');
+    }
+  };
+  
+  // Handle incoming call rejection
+  const handleRejectIncomingCall = () => {
+    console.log('[DEBUG ChatRoom] Rejecting incoming call from:', incomingCall?.caller.id);
+    
+    if (incomingCall) {
+      // Log call rejection
+      logCallEvent(`Rejected ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
+      
+      sendMessage({
+        type: 'call_rejected',
+        to: incomingCall.caller.id
+      });
+    }
+    
+    setIncomingCall(null);
+  };
 
   // Handle keyboard visibility on mobile - scroll to bottom when keyboard shows/hides
   useEffect(() => {
@@ -759,6 +929,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     setInCall(true);
                     setConfirmCall(null);
                     if (chatUser) {
+                      console.log('[DEBUG ChatRoom] Initiating call to:', chatUser.id, 'isVideo:', confirmCall.isVideo);
+                      // Log outgoing call
+                      logCallEvent(`Outgoing ${confirmCall.isVideo ? 'video' : 'voice'} call to ${chatUser.name}`);
                       sendMessage({
                         type: 'call_incoming',
                         to: chatUser.id,
@@ -766,6 +939,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         isVideo: confirmCall.isVideo,
                         chatId: chatId
                       });
+                      console.log('[DEBUG ChatRoom] Call notification sent via WebSocket');
                     }
                   }}
                   className="px-3 py-1 rounded-md bg-red-500 text-white text-sm font-semibold"
@@ -775,6 +949,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Incoming Call Modal */}
+        {incomingCall && (
+          <IncomingCall
+            isOpen={true}
+            caller={incomingCall.caller}
+            onAccept={handleAcceptIncomingCall}
+            onReject={handleRejectIncomingCall}
+            isVideo={incomingCall.isVideo}
+          />
         )}
 
         {/* Video call room */}

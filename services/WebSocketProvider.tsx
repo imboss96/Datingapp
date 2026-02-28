@@ -68,6 +68,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          console.log('[WS onmessage] Received message type:', data.type, 'Full data:', data);
 
           // Dispatch global event so ChatList and other components can react
           if (data.type === 'new_message') {
@@ -75,6 +76,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
           }
           if (data.type === 'typing_status') {
             window.dispatchEvent(new CustomEvent('ws:typing', { detail: data }));
+          }
+          if (data.type === 'call_incoming') {
+            console.log('[WS onmessage] Dispatching ws:call_incoming event with data:', data);
+            const event = new CustomEvent('ws:call_incoming', { detail: data });
+            window.dispatchEvent(event);
+            console.log('[WS onmessage] ws:call_incoming event dispatched');
+          }
+          if (data.type === 'call_offer' || data.type === 'call_answer' || data.type === 'ice_candidate' || data.type === 'call_end') {
+            window.dispatchEvent(new CustomEvent('ws:webrtc', { detail: data }));
           }
 
           // Notify all registered handlers
