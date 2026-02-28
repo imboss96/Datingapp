@@ -44,7 +44,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [recordedAudio, setRecordedAudio] = useState<AudioRecording | null>(null);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [isScrolledNearBottom, setIsScrolledNearBottom] = useState(true);
-  const [suggestedUsers, setSuggestedUsers] = useState<UserProfile[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile | null>(null);
   const [photoIndices, setPhotoIndices] = useState<{ [userId: string]: number }>({});
@@ -52,7 +51,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [discoverySearchResults, setDiscoverySearchResults] = useState<UserProfile[]>([]);
   const [loadingSearchResults, setLoadingSearchResults] = useState(false);
   const [displayedProfiles, setDisplayedProfiles] = useState<UserProfile[]>([]);
-  const [allCachedProfiles, setAllCachedProfiles] = useState<UserProfile[]>([]);
   const [profilesPage, setProfilesPage] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreProfiles, setHasMoreProfiles] = useState(true);
@@ -903,7 +901,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     <>
       <div className="flex flex-col w-full h-full bg-white md:bg-[#f0f2f5] relative">
         {/* Header */}
-        <div className="bg-white border-b px-3 md:px-6 py-2 md:py-4 flex items-center gap-2 md:gap-4 flex-shrink-0 shadow-sm z-20 safe-area-top">
+        <div className="bg-white px-2 md:px-6 py-1.5 md:py-4 flex items-center gap-2 md:gap-4 flex-shrink-0 z-20 safe-area-top max-h-16 md:max-h-20">
           <button onClick={() => navigate('/chats')} className="md:hidden text-gray-500 hover:text-red-500 transition-colors text-lg">
             <i className="fa-solid fa-chevron-left"></i>
           </button>
@@ -911,39 +909,39 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             <>
               <button
                 onClick={() => setShowUserProfile(true)}
-                className="flex items-center gap-2 md:gap-4 flex-1 min-w-0 hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
+                className="flex items-center gap-1 md:gap-4 flex-1 min-w-0 hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
               >
-                <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-11 h-11 rounded-full border border-gray-100 shadow-sm object-cover" alt="User" />
+                <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-8 md:w-11 h-8 md:h-11 rounded-full border border-gray-100 shadow-sm object-cover flex-shrink-0" alt="User" />
                 <div className="flex-1 min-w-0 text-left">
-                  <h3 className="font-bold text-gray-900 text-lg leading-tight truncate flex items-center gap-2">
+                  <h3 className="font-bold text-gray-900 text-xs md:text-lg leading-tight truncate">
                     {chatUser.name}
                     <VerificationBadge verified={chatUser.isPhotoVerified || (chatUser as any).photoVerificationStatus === 'approved'} size="sm" />
                   </h3>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${chatUser.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`}></span>
-                    <span className={`text-[11px] font-bold uppercase tracking-widest ${chatUser.isOnline ? 'text-emerald-600' : 'text-gray-500'}`}>
+                  <div className="flex items-center gap-1 md:gap-2 flex-wrap">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${chatUser.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`}></span>
+                    <span className={`text-[9px] md:text-[11px] font-bold uppercase tracking-widest truncate ${chatUser.isOnline ? 'text-emerald-600' : 'text-gray-500'}`}>
                       {formatLastSeen(chatUser.lastSeen, !!chatUser.isOnline)}
                     </span>
                   </div>
                 </div>
               </button>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-0.5 md:gap-3 flex-shrink-0">
+                <div className="flex items-center gap-0.5 md:gap-2">
                   <button
                     onClick={() => { if (chatUser) { setConfirmCall({ isVideo: false }); } }}
                     title="Voice call"
-                    className="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-200 shadow-sm"
+                    className="w-7 md:w-9 h-7 md:h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-200 shadow-sm text-xs md:text-base"
                   >
                     <i className="fa-solid fa-phone"></i>
                   </button>
                   <button
                     onClick={() => { if (chatUser) { setConfirmCall({ isVideo: true }); } }}
                     title="Video call"
-                    className="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-200 shadow-sm"
+                    className="w-7 md:w-9 h-7 md:h-9 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-700 hover:bg-gray-200 shadow-sm text-xs md:text-base"
                   >
                     <i className="fa-solid fa-video"></i>
                   </button>
-                  <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-100 shadow-sm">
+                  <div className="hidden md:flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-full border border-amber-100 shadow-sm">
                     <i className="fa-solid fa-coins text-amber-500 text-xs"></i>
                     <span className="text-[10px] font-black text-amber-800">{currentUser.isPremium ? '∞' : currentUser.coins}</span>
                   </div>
@@ -1255,13 +1253,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           // Chat Messages
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto p-3 md:p-8 space-y-6 w-full chat-messages relative whatsapp-chat-background min-h-0"
+            className="flex-1 overflow-y-auto p-3 md:px-16 md:py-8 space-y-4 md:space-y-6 w-full chat-messages relative whatsapp-chat-background min-h-0"
             style={{
-              paddingBottom: `calc(20px + env(safe-area-inset-bottom, 16px))`,
+              paddingBottom: `calc(80px + env(safe-area-inset-bottom, 16px))`,
             }}
 >
             {/* Content Layer */}
-            <div className="relative z-10 w-full md:max-w-4xl md:mx-auto space-y-6">
+            <div className="relative z-10 w-full md:max-w-2xl md:mx-auto space-y-3 md:space-y-4 px-2 md:px-4">
               {messages.map((msg) => {
                 const isMe = msg.senderId === currentUser.id;
                 const isEditing = editingMessageId === msg.id;
@@ -1272,7 +1270,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     key={msg.id} 
                     className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                   >
-                    <div className="flex items-center gap-2 max-w-[85%] md:max-w-[70%] group">
+                    <div className={`flex items-center gap-2 w-full group ${isMe ? 'justify-end' : 'justify-start'}`}>
                       {isMe && (
                         <div className="opacity-0 group-hover:opacity-100 flex gap-2 transition-opacity order-first mr-2">
                           <button
@@ -1292,9 +1290,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         </div>
                       )}
 
-                      <div className={`rounded-2xl px-5 py-3 text-sm shadow-sm relative ${
-                        isMe ? 'bg-red-500 text-white rounded-tr-none' : `bg-white text-gray-800 rounded-tl-none border ${!msg.isRead ? 'border-2 border-blue-300 bg-blue-50' : 'border border-gray-100'}`
-                      } ${msg.isFlagged ? 'border-2 border-amber-400 bg-amber-50 text-amber-900' : ''} ${
+                     <div className={`rounded-2xl px-4 py-2.5 text-sm shadow-md relative break-words max-w-[65%] md:max-w-[55%] ${
+                        isMe ? 'bg-green-100 text-gray-900 rounded-br-none' : `bg-white text-gray-800 rounded-bl-none border ${!msg.isRead ? 'border-2 border-blue-300 bg-blue-50' : 'border border-gray-300'}`
+                        } ${msg.isFlagged ? 'border-2 border-amber-400 bg-amber-50 text-amber-900' : ''} ${
                         isEditing ? 'ring-2 ring-blue-400 border-transparent w-full shadow-lg' : ''
                       }`}>
                         {isEditing ? (
@@ -1329,7 +1327,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                           </div>
                         ) : (
                           <div>
-                            {msg.text && <div className="leading-relaxed font-medium">{msg.text}</div>}
+                           {msg.text && <p className="leading-relaxed font-normal text-sm whitespace-pre-wrap break-words m-0">{msg.text}</p>}
 
                             {msg.media && (
                               <div className="mt-2">
@@ -1339,7 +1337,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
                             {msg.isEdited && !msg.isEditedByModerator && (
                               <div className={`mt-2 pt-2 border-t text-[9px] font-semibold uppercase tracking-wider flex items-center gap-1 ${
-                                isMe ? 'border-white/10 text-white/70' : 'border-gray-100 text-gray-500'
+                                isMe ? 'border-green-200 text-green-600' : 'border-gray-200 text-gray-500'
                               }`}>
                                 <i className="fa-solid fa-pen-nib text-[8px]"></i>
                                 edited
@@ -1347,9 +1345,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                             )}
 
                             {msg.isEditedByModerator && (
-                              <div className={`mt-2 pt-2 border-t flex items-center gap-1.5 ${isMe ? 'border-white/10' : 'border-gray-50'}`}>
+                              <div className={`mt-2 pt-2 border-t flex items-center gap-1.5 ${isMe ? 'border-green-200' : 'border-gray-100'}`}>
                                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                                  isMe ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'
+                                  isMe ? 'bg-green-200 text-green-800' : 'bg-blue-50 text-blue-600'
                                 }`}>
                                   <i className="fa-solid fa-user-shield text-[8px]"></i>
                                   Modified by Moderator
@@ -1358,7 +1356,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                             )}
 
                             {msg.isFlagged && (
-                              <div className="mt-2 pt-2 border-t border-amber-200 text-[10px] font-bold flex items-center gap-1.5 text-amber-700 italic">
+                              <div className={`mt-2 pt-2 border-t text-[10px] font-bold flex items-center gap-1.5 italic ${
+                                isMe ? 'border-green-200 text-green-700' : 'border-amber-200 text-amber-700'
+                              }`}>
                                 <i className="fa-solid fa-triangle-exclamation text-amber-500"></i>
                                 Community Standard Review Pending
                               </div>
@@ -1367,14 +1367,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         )}
                       </div>
                     </div>
-                    <div className={`text-[9px] mt-1.5 font-bold tracking-tighter text-gray-400 uppercase flex items-center gap-2 ${isMe ? 'mr-1' : 'ml-1'}`}>
+                    <div className={`text-[9px] mt-0.5 font-semibold flex items-center gap-1 ${isMe ? 'text-green-600 self-end mr-1' : 'text-gray-400 self-start ml-1'}`}>
                       {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       {isMe && (
                         <span title={msg.isRead ? `Read at ${new Date(msg.readAt || 0).toLocaleTimeString()}` : 'Not read'}>
                           {msg.isRead ? (
-                            <i className="fa-solid fa-check-double text-blue-500"></i>
+                            <i className="fa-solid fa-check-double text-green-600"></i>
                           ) : (
-                            <i className="fa-solid fa-check text-gray-300"></i>
+                            <i className="fa-solid fa-check text-green-400"></i>
                           )}
                         </span>
                       )}
@@ -1384,12 +1384,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
               })}
 
               {/* Spacer so last message is visible above input/nav */}
-              <div aria-hidden="true" style={{ height: 'max(80px, calc(88px - env(safe-area-inset-bottom, 0px)))' }} />
+              <div aria-hidden="true" style={{ height: 'calc(100px + env(safe-area-inset-bottom, 16px))' }} />
 
               {/* Typing Indicator */}
               {isOtherUserTyping && (
                 <div className="flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex items-center gap-1 bg-white rounded-2xl rounded-tl-none px-5 py-3 border border-gray-100 shadow-sm">
+                  <div className="flex items-center gap-1 bg-white rounded-2xl rounded-bl-none px-4 md:px-5 py-2.5 md:py-3 border border-gray-300 shadow-sm">
                     <span className="text-xs text-gray-500 font-semibold">{chatUser?.name || 'User'} is typing</span>
                     <div className="flex gap-1.5 ml-1">
                       <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0s' }}></div>
@@ -1407,17 +1407,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         {id && (
         <div
           ref={inputContainerRef}
-          className="flex-shrink-0 w-full md:w-full border-t border-gray-200 bg-white md:relative bottom-0 md:bottom-auto left-0 md:left-auto right-0 md:right-auto"
-          style={{
-            padding: 'calc(8px + env(safe-area-inset-bottom, 0px)) 12px 8px 12px',
+           className="absolute bottom-0 left-0 right-0 z-20 md:px-16"
+           style={{
+           padding: 'calc(8px + env(safe-area-inset-bottom, 0px)) 8px 8px 8px',
           }}
         >
-          <div className="flex items-center gap-3 w-full">
+          <div className="flex items-center gap-2 md:gap-3 w-full">
             {/* Attachment Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadingMedia || isRecordingAudio}
-              className="text-gray-500 hover:text-gray-700 text-lg transition-colors active:scale-75 disabled:opacity-30 flex-shrink-0"
+              className="text-gray-600 hover:text-gray-700 text-lg md:text-xl transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
               title="Attach file"
             >
               <i className="fa-solid fa-plus-circle"></i>
@@ -1433,12 +1433,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             />
 
             {/* Text Input */}
-            <div className="flex-1 flex items-center bg-gray-100 rounded-2xl px-4 py-2.5 gap-2">
+             <div className="flex-1 flex items-center bg-white rounded-full px-4 md:px-5 py-2.5 md:py-3 gap-2 border border-gray-200 shadow-md">
               <input
                 ref={inputFieldRef}
                 type="text"
                 placeholder={isRecordingAudio ? "Recording..." : "Type a message..."}
-                className="bg-transparent flex-1 focus:outline-none text-sm text-gray-900 placeholder:text-gray-500"
+                className="bg-transparent flex-1 focus:outline-none text-sm md:text-base text-gray-900 placeholder:text-gray-500"
                 value={inputText}
                 onChange={(e) => {
                   setInputText(e.target.value);
@@ -1467,12 +1467,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     handleStartAudioRecording();
                   }
                 }}
-                className={`text-lg transition-colors active:scale-75 flex-shrink-0 ${
+                className={`text-lg md:text-xl transition-colors active:scale-75 flex-shrink-0 ${
                   (inputText.trim() || selectedMedia || recordedAudio)
-                    ? 'text-blue-600 hover:text-blue-700'
+                    ? 'text-green-500 hover:text-green-600'
                     : isRecordingAudio
                     ? 'text-red-500 animate-pulse hover:text-red-600'
-                    : 'text-gray-500 hover:text-gray-700'
+                    : 'text-gray-600 hover:text-gray-700'
                 }`}
                 disabled={!chatId || uploadingMedia}
                 title={recordedAudio ? 'Send audio' : inputText.trim() || selectedMedia ? 'Send message' : 'Record audio'}
@@ -1486,8 +1486,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
           {/* Upload Progress */}
           {uploadingMedia && (
-            <div className="mt-2 text-xs text-blue-600 font-semibold flex items-center gap-2">
-              <div className="w-3 h-3 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="mt-2 text-[10px] md:text-xs text-green-600 font-semibold flex items-center gap-2">
+              <div className="w-2 h-2 md:w-3 md:h-3 border-2 border-green-200 border-t-green-500 rounded-full animate-spin"></div>
               Uploading...
             </div>
           )}
