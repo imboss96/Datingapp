@@ -1052,7 +1052,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           </div>
         ) : !id ? (
           // Empty State with Suggested Profiles
-          <div className="flex-1 overflow-y-auto flex flex-col">
+          <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
             {loadingSuggestions ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -1099,8 +1099,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 </div>
 
                 {/* Grid of Profiles - 4 Columns with Pagination */}
-                <div className="w-full flex-1 overflow-y-auto" ref={el => el && setDiscoveryScrollRef(el)}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-8 p-6">
+                <div className="w-full flex-1 overflow-y-auto min-h-0" ref={el => el && setDiscoveryScrollRef(el)}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 pb-24 p-3 sm:p-4 md:p-6">
                     {(discoverySearch ? discoverySearchResults : displayedProfiles).map(user => {
                       const currentPhotoIndex = photoIndices[user.id] || 0;
                       const photos = user.images || [];
@@ -1128,7 +1128,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                       return (
                         <div
                           key={user.id}
-                          className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden space-y-3"
+                          className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden space-y-3 flex flex-col h-full"
                         >
                           {/* Photo Carousel */}
                           <div className="relative aspect-square bg-gray-100 overflow-hidden group">
@@ -1173,9 +1173,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                           </div>
 
                           {/* Card Content */}
-                          <div className="px-4 pb-4 space-y-3">
+                          <div className="px-4 pb-4 space-y-3 flex flex-col flex-1">
                             {/* User Info */}
-                            <div className="space-y-2">
+                            <div className="space-y-2 flex-shrink-0">
                               <div>
                                 <h3 className="font-bold text-gray-900 text-base">
                                   {user.name}, {user.age}
@@ -1197,7 +1197,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
                               {/* Interests */}
                               {user.interests && user.interests.length > 0 && (
-                                <div className="flex flex-wrap gap-1 pt-1">
+                                <div className="flex flex-wrap gap-1 pt-1 flex-shrink-0">
                                   {user.interests.slice(0, 3).map((interest, idx) => (
                                     <span key={idx} className="px-2 py-0.5 bg-red-50 text-red-600 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors">
                                       {interest}
@@ -1208,7 +1208,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="flex gap-2 pt-2 border-t border-gray-100">
+                            <div className="flex gap-2 pt-2 border-t border-gray-100 flex-shrink-0 mt-auto">
                               <button
                                 onClick={() => setSelectedUserProfile(user)}
                                 className="flex-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md font-semibold hover:bg-gray-200 transition-all duration-200 text-xs"
@@ -1255,7 +1255,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           // Chat Messages
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto p-3 md:p-8 space-y-6 w-full chat-messages relative whatsapp-chat-background"
+            className="flex-1 overflow-y-auto p-3 md:p-8 space-y-6 w-full chat-messages relative whatsapp-chat-background min-h-0"
             style={{
               paddingBottom: `calc(20px + env(safe-area-inset-bottom, 16px))`,
             }}
@@ -1384,7 +1384,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
               })}
 
               {/* Spacer so last message is visible above input/nav */}
-              <div aria-hidden="true" style={{ height: 'calc(88px + env(safe-area-inset-bottom, 16px))' }} />
+              <div aria-hidden="true" style={{ height: 'max(80px, calc(88px - env(safe-area-inset-bottom, 0px)))' }} />
 
               {/* Typing Indicator */}
               {isOtherUserTyping && (
@@ -1403,11 +1403,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           </div>
         )}
 
-        {/* Input Area - Only show when chat is selected */}
+        {/* Input Area - Fixed at bottom on mobile, relative on desktop */}
         {id && (
         <div
           ref={inputContainerRef}
-          className="flex-shrink-0 w-full border-t border-gray-200 bg-white"
+          className="flex-shrink-0 w-full md:w-full border-t border-gray-200 bg-white md:relative bottom-0 md:bottom-auto left-0 md:left-auto right-0 md:right-auto"
           style={{
             padding: 'calc(8px + env(safe-area-inset-bottom, 0px)) 12px 8px 12px',
           }}
