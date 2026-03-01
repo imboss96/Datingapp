@@ -260,6 +260,18 @@ router.post('/create-or-get', async (req, res) => {
       console.log('[DEBUG] Found existing chat:', chat.id, 'with', chat.messages.length, 'messages');
     }
 
+    // Ensure reply status fields are initialized
+    if (!chat.replyStatus || chat.replyStatus === undefined) {
+      chat.replyStatus = 'unreplied';
+    }
+    if (chat.isReplied === undefined) {
+      chat.isReplied = false;
+    }
+    if (!chat.lastMessageTime && chat.messages && chat.messages.length > 0) {
+      chat.lastMessageTime = chat.messages[chat.messages.length - 1].timestamp;
+    }
+    await chat.save();
+
     res.json({ ...chat.toObject(), isNewChat });
   } catch (err) {
     console.error('[ERROR] Failed to create-or-get chat:', err);
@@ -508,6 +520,7 @@ router.post('/:chatId/messages', async (req, res) => {
 
     chat.messages.push(message);
     chat.lastUpdated = Date.now();
+    chat.lastMessageTime = Date.now(); // Track the time of last message for reply timeout
 
     // Update unread counts and lastOpened
     const now = Date.now();

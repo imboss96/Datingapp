@@ -20,6 +20,7 @@ import matchesRoutes from './routes/matches.js';
 import verificationRoutes from './routes/verification.js';
 import emailVerificationRoutes from './routes/emailVerification.js';
 import moderationRoutes from './routes/moderation.js';
+import moderationAuthRoutes from './routes/moderationAuth.js';
 import pushRoutes from './routes/push.js';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
@@ -91,6 +92,7 @@ mongoose.connect(MONGODB_URI, {
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/moderation-auth', moderationAuthRoutes);  // Standalone moderation auth
 app.use('/api/verification', verificationRoutes);  // Email verification
 app.use('/api/email-verification', emailVerificationRoutes);
 app.use('/api/users', usersRoutes);  // Auth middleware applied selectively in users.js

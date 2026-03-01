@@ -44,14 +44,10 @@ const FLAG_DATA = [
   { name: 'Sun', count: 14 },
 ];
 
-const INITIAL_FLAGS: FlaggedItem[] = [
-  { id: '1', userId: '#9201', message: '"Hey, you look hot. Can I get your number or something more private? 😉"', status: 'pending' },
-  { id: '2', userId: '#9202', message: '"Let\'s meet up somewhere..need your location"', status: 'pending' },
-  { id: '3', userId: '#9203', message: '"Can you send more photos?"', status: 'pending' },
-];
+const INITIAL_FLAGS: FlaggedItem[] = [];
 
 const ModeratorPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'PHOTOS' | 'STALLED' | 'VERIFICATIONS'>('PENDING');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'PHOTOS' | 'STALLED' | 'VERIFICATIONS'>('CHATS');
   const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
   const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
   const [chats, setChats] = useState<ModeratorChat[]>([]);
@@ -65,6 +61,43 @@ const ModeratorPanel: React.FC = () => {
   const [stalledChats, setStalledChats] = useState<any[]>([]);
   const [loadingStalled, setLoadingStalled] = useState(false);
   const [moderators, setModerators] = useState<any[]>([]);
+  const [userMap, setUserMap] = useState<Map<string, any>>(new Map());
+  const [repliedChats, setRepliedChats] = useState<any[]>([]);
+  const [loadingRepliedChats, setLoadingRepliedChats] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Fetch flagged messages/items from backend
+  const fetchFlaggedItems = async () => {
+    try {
+      setLoadingChats(true);
+      // Fetch all chats and extract flagged messages
+      const response = await apiClient.getChats();
+      const allFlaggedItems: FlaggedItem[] = [];
+      
+      response.forEach((chat: any) => {
+        if (chat.messages && Array.isArray(chat.messages)) {
+          chat.messages.forEach((msg: Message) => {
+            if (msg.isFlagged) {
+              allFlaggedItems.push({
+                id: msg.id,
+                userId: msg.senderId,
+                message: msg.text,
+                status: 'pending',
+                action: undefined
+              });
+            }
+          });
+        }
+      });
+      
+      setFlaggedItems(allFlaggedItems);
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to fetch flagged items:', error);
+      setFlaggedItems([]);
+    } finally {
+      setLoadingChats(false);
+    }
+  };
 
   // Fetch moderators
   const fetchModerators = async () => {
@@ -82,16 +115,23 @@ const ModeratorPanel: React.FC = () => {
 
   // Fetch chats on component mount
   useEffect(() => {
-    if (activeTab === 'CHATS') {
+    // Clear search when switching tabs
+    setSearchQuery('');
+    
+    if (activeTab === 'PENDING') {
+      fetchRepliedChats();
+    } else if (activeTab === 'CHATS') {
       fetchChats();
     } else if (activeTab === 'STALLED') {
       fetchStalledChats();
       fetchModerators();
     }
     
-    // Set up auto-refresh every 10 seconds when on CHATS tab
+    // Set up auto-refresh based on active tab
     const refreshInterval = setInterval(() => {
-      if (activeTab === 'CHATS') {
+      if (activeTab === 'PENDING') {
+        fetchRepliedChats();
+      } else if (activeTab === 'CHATS') {
         fetchChats();
       } else if (activeTab === 'STALLED') {
         fetchStalledChats();
@@ -116,6 +156,32 @@ const ModeratorPanel: React.FC = () => {
         };
       });
 
+      // Collect all unique participant IDs
+      const participantIds = new Set<string>();
+      transformedChats.forEach(chat => {
+        chat.participants.forEach(p => participantIds.add(p));
+      });
+
+      // Fetch user data for all unique participants
+      const newUserMap = new Map(userMap);
+      for (const userId of participantIds) {
+        if (!newUserMap.has(userId)) {
+          try {
+            const userData = await apiClient.getUser(userId);
+            if (userData) {
+              newUserMap.set(userId, userData);
+            } else {
+              // If user not found, use UID as fallback username
+              newUserMap.set(userId, { id: userId, username: userId, name: userId });
+            }
+          } catch (err) {
+            // If fetch fails, use UID as fallback username
+            newUserMap.set(userId, { id: userId, username: userId, name: userId });
+          }
+        }
+      }
+      setUserMap(newUserMap);
+
       // Sort by last updated, most recent first
       transformedChats.sort((a, b) => b.lastUpdated - a.lastUpdated);
       
@@ -128,21 +194,21 @@ const ModeratorPanel: React.FC = () => {
       setChats([
         {
           id: '1',
-          participants: ['Elena', 'Mark'],
+          participants: ['user1', 'user2'],
           messages: [],
           lastUpdated: Date.now(),
           flaggedCount: 2
         },
         {
           id: '2',
-          participants: ['Sarah', 'Alex'],
+          participants: ['user3', 'user4'],
           messages: [],
           lastUpdated: Date.now() - 3600000,
           flaggedCount: 0
         },
         {
           id: '3',
-          participants: ['Liam', 'Julia'],
+          participants: ['user5', 'user6'],
           messages: [],
           lastUpdated: Date.now() - 7200000,
           flaggedCount: 1
@@ -166,6 +232,46 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
+  const fetchRepliedChats = async () => {
+    try {
+      setLoadingRepliedChats(true);
+      console.log('[DEBUG ModeratorPanel] Fetching replied chats...');
+      const response = await apiClient.getRepliedChats();
+      console.log('[DEBUG ModeratorPanel] Replied chats response:', response);
+      
+      // Collect participant IDs and fetch user profiles
+      const participantIds = new Set<string>();
+      response.repliedChats?.forEach((chat: any) => {
+        if (chat.participants && Array.isArray(chat.participants)) {
+          chat.participants.forEach((id: string) => participantIds.add(id));
+        }
+      });
+
+      // Fetch user data for all participants
+      const newUserMap = new Map(userMap);
+      for (const userId of Array.from(participantIds)) {
+        if (!newUserMap.has(userId)) {
+          try {
+            const userData = await apiClient.getUser(userId);
+            newUserMap.set(userId, userData);
+          } catch (error) {
+            console.warn(`[WARN ModeratorPanel] Failed to fetch user ${userId}:`, error);
+            newUserMap.set(userId, { id: userId, username: userId, name: userId });
+          }
+        }
+      }
+      setUserMap(newUserMap);
+
+      console.log('[DEBUG ModeratorPanel] Setting replied chats:', response.repliedChats);
+      setRepliedChats(response.repliedChats || []);
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to fetch replied chats:', error);
+      setRepliedChats([]);
+    } finally {
+      setLoadingRepliedChats(false);
+    }
+  };
+
   const assignModerator = async (chatId: string, moderatorId: string) => {
     try {
       await apiClient.assignModeratorToChat(chatId, moderatorId);
@@ -175,6 +281,72 @@ const ModeratorPanel: React.FC = () => {
     } catch (error) {
       console.error('[ERROR ModeratorPanel] Failed to assign moderator:', error);
     }
+  };
+
+  // Filter function for Live Chats tab
+  const getFilteredLiveChats = () => {
+    if (!searchQuery.trim()) return chats;
+    const query = searchQuery.toLowerCase();
+    return chats.filter(chat => {
+      const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
+      const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
+      const participantNames = `${user1.name || user1.username} ${user2.name || user2.username}`;
+      const participantUsernames = `${user1.username} ${user2.username}`;
+      const participantIds = `${chat.participants[0]} ${chat.participants[1]}`;
+      
+      return (
+        chat.id.toLowerCase().includes(query) ||
+        participantNames.toLowerCase().includes(query) ||
+        participantUsernames.toLowerCase().includes(query) ||
+        participantIds.toLowerCase().includes(query)
+      );
+    });
+  };
+
+  // Filter function for Replied Chats tab
+  const getFilteredRepliedChats = () => {
+    if (!searchQuery.trim()) return repliedChats;
+    const query = searchQuery.toLowerCase();
+    return repliedChats.filter(chat => {
+      const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
+      const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
+      const participantNames = `${user1.name || user1.username} ${user2.name || user2.username}`;
+      const participantUsernames = `${user1.username} ${user2.username}`;
+      const participantIds = `${chat.participants[0]} ${chat.participants[1]}`;
+      
+      return (
+        chat.id.toLowerCase().includes(query) ||
+        participantNames.toLowerCase().includes(query) ||
+        participantUsernames.toLowerCase().includes(query) ||
+        participantIds.toLowerCase().includes(query)
+      );
+    });
+  };
+
+  // Filter function for Flagged/Pending items
+  const getFilteredFlaggedItems = () => {
+    if (!searchQuery.trim()) return flaggedItems;
+    const query = searchQuery.toLowerCase();
+    return flaggedItems.filter(item => {
+      return (
+        item.id.toLowerCase().includes(query) ||
+        item.userId.toLowerCase().includes(query) ||
+        item.message.toLowerCase().includes(query)
+      );
+    });
+  };
+
+  // Filter function for Stalled Chats
+  const getFilteredStalledChats = () => {
+    if (!searchQuery.trim()) return stalledChats;
+    const query = searchQuery.toLowerCase();
+    return stalledChats.filter(chat => {
+      const participantIds = `${chat.participants[0]} ${chat.participants[1]}`;
+      return (
+        chat.id.toLowerCase().includes(query) ||
+        participantIds.toLowerCase().includes(query)
+      );
+    });
   };
 
   const handleDismiss = (id: string) => {
@@ -280,16 +452,16 @@ const ModeratorPanel: React.FC = () => {
 
         <div className="flex bg-gray-200 p-1 rounded-xl mb-6">
           <button 
-            onClick={() => setActiveTab('PENDING')}
-            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'PENDING' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
-          >
-            Pending
-          </button>
-          <button 
             onClick={() => setActiveTab('CHATS')}
             className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'CHATS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
           >
             Live Chats
+          </button>
+          <button 
+            onClick={() => setActiveTab('PENDING')}
+            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'PENDING' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+          >
+            Replied Chats
           </button>
           <button 
             onClick={() => setActiveTab('STALLED')}
@@ -317,61 +489,114 @@ const ModeratorPanel: React.FC = () => {
           </button>
         </div>
 
+        {/* Search Bar */}
+        <div className="mb-6">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search by username, chat ID, user ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-3 pl-10 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+            />
+            <i className="fa-solid fa-magnifying-glass absolute left-3 top-3.5 text-gray-400 text-sm"></i>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            )}
+          </div>
+        </div>
+
         {activeTab === 'PENDING' && (
           <div className="space-y-4">
-            {flaggedItems.length === 0 ? (
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-[10px] text-gray-500">
+                Chats that have been replied to by moderators
+              </div>
+              <button
+                onClick={() => fetchRepliedChats()}
+                disabled={loadingRepliedChats}
+                className="text-[10px] font-bold text-blue-500 hover:text-blue-600 disabled:opacity-50 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-all"
+              >
+                <i className={`fa-solid fa-rotate-right ${loadingRepliedChats ? 'animate-spin' : ''}`}></i>
+                Refresh
+              </button>
+            </div>
+            {loadingRepliedChats ? (
+              <div className="text-center py-8">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                <p className="text-gray-500 text-sm mt-2">Loading replied chats...</p>
+              </div>
+            ) : repliedChats.length === 0 ? (
               <div className="text-center py-12">
                 <i className="fa-solid fa-check-circle text-4xl text-emerald-100 mb-2"></i>
-                <p className="text-gray-400 text-sm">No pending flags. Good job!</p>
+                <p className="text-gray-400 text-sm">No replied chats yet. Get started!</p>
+              </div>
+            ) : getFilteredRepliedChats().length === 0 ? (
+              <div className="text-center py-12">
+                <i className="fa-solid fa-search text-4xl text-gray-200 mb-2"></i>
+                <p className="text-gray-400 text-sm">No chats match your search "{searchQuery}"</p>
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-blue-500 hover:text-blue-600 text-sm mt-2"
+                >
+                  Clear search
+                </button>
               </div>
             ) : (
-              flaggedItems.map(item => (
-                <div key={item.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
-                        <i className="fa-solid fa-comment-slash text-xs"></i>
+              getFilteredRepliedChats().map(chat => {
+                // Get user data from map, fallback to participant ID
+                const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
+                const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
+                const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
+                const replyTime = new Date(chat.markedAsRepliedAt).toLocaleDateString() + ' ' + new Date(chat.markedAsRepliedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                return (
+                  <div 
+                    key={chat.id} 
+                    className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                          {(user1.name || user1.username)[0]?.toUpperCase()}{(user2.name || user2.username)[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-bold text-gray-900">{participantNames}</h4>
+                          <p className="text-[10px] text-gray-500">Chat ID: {chat.id}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-900">Flagged Message</h4>
-                        <p className="text-[10px] text-gray-500">From User ID: {item.userId}</p>
-                      </div>
+                      <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">Replied</span>
                     </div>
-                    <span className="bg-red-50 text-red-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">High Risk</span>
-                  </div>
-                  
-                  <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100 relative group">
-                    <p className="text-xs text-gray-700 italic">{item.message}</p>
-                    <button 
-                      onClick={() => navigate('/chat/1')}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-white shadow-sm border px-2 py-1 rounded text-[10px] font-bold text-blue-500 transition-opacity"
-                    >
-                      Edit Inline
-                    </button>
-                  </div>
+                    
+                    <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100">
+                      <p className="text-xs text-gray-600 font-semibold mb-1">Last Message:</p>
+                      {chat.messages && chat.messages.length > 0 ? (
+                        <p className="text-xs text-gray-700 italic">"{chat.messages[chat.messages.length - 1].text.slice(0, 100)}{chat.messages[chat.messages.length - 1].text.length > 100 ? '...' : ''}"</p>
+                      ) : (
+                        <p className="text-xs text-gray-500 italic">No messages</p>
+                      )}
+                    </div>
 
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleDismiss(item.id)}
-                      className="flex-1 py-2 bg-emerald-500 text-white text-[10px] font-bold rounded-lg shadow-md hover:bg-emerald-600 active:scale-95 transition-all"
-                    >
-                      Dismiss
-                    </button>
-                    <button 
-                      onClick={() => handleWarn(item.id)}
-                      className="flex-1 py-2 bg-amber-500 text-white text-[10px] font-bold rounded-lg shadow-md hover:bg-amber-600 active:scale-95 transition-all"
-                    >
-                      Warn
-                    </button>
-                    <button 
-                      onClick={() => handleBan(item.id)}
-                      className="flex-1 py-2 bg-red-500 text-white text-[10px] font-bold rounded-lg shadow-md hover:bg-red-600 active:scale-95 transition-all"
-                    >
-                      Ban
-                    </button>
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] text-gray-500">
+                        <i className="fa-solid fa-clock text-emerald-500 mr-1"></i>
+                        Replied: {replyTime}
+                      </div>
+                      <button 
+                        onClick={() => { setSelectedChat(chat); setViewingChatModal(chat); }}
+                        className="py-1 px-3 bg-blue-500 text-white text-[10px] font-bold rounded-lg shadow-sm hover:bg-blue-600 active:scale-95 transition-all"
+                      >
+                        View Chat
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         )}
@@ -406,9 +631,24 @@ const ModeratorPanel: React.FC = () => {
                 <i className="fa-solid fa-comments text-4xl text-gray-200 mb-2"></i>
                 <p className="text-gray-400 text-sm">No chats available</p>
               </div>
+            ) : getFilteredLiveChats().length === 0 ? (
+              <div className="text-center py-12">
+                <i className="fa-solid fa-search text-4xl text-gray-200 mb-2"></i>
+                <p className="text-gray-400 text-sm">No chats match your search "{searchQuery}"</p>
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-blue-500 hover:text-blue-600 text-sm mt-2"
+                >
+                  Clear search
+                </button>
+              </div>
             ) : (
-              chats.map(chat => {
-                const participantNames = chat.participants.slice(0, 2).join(' & ');
+              getFilteredLiveChats().map(chat => {
+                // Get user data from map, fallback to participant ID
+                const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
+                const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
+                const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
+                
                 return (
                   <div 
                     key={chat.id} 
@@ -420,11 +660,11 @@ const ModeratorPanel: React.FC = () => {
                     <div className="flex items-center gap-3 flex-1">
                       <div className="flex -space-x-2">
                         <div className="w-8 h-8 rounded-full border-2 border-white bg-blue-200 flex items-center justify-center text-[10px] font-bold text-blue-700">
-                          {chat.participants[0]?.charAt(0).toUpperCase()}
+                          {user1.name?.charAt(0).toUpperCase() || chat.participants[0].charAt(0).toUpperCase()}
                         </div>
                         {chat.participants[1] && (
                           <div className="w-8 h-8 rounded-full border-2 border-white bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-700">
-                            {chat.participants[1]?.charAt(0).toUpperCase()}
+                            {user2.name?.charAt(0).toUpperCase() || chat.participants[1].charAt(0).toUpperCase()}
                           </div>
                         )}
                       </div>
@@ -607,6 +847,7 @@ const ModeratorPanel: React.FC = () => {
           currentUserId={currentUserId}
           onClose={() => setViewingChatModal(null)}
           onRefresh={() => fetchChats()}
+          onRepliedChatAdded={() => fetchRepliedChats()}
         />
       )}
     </div>

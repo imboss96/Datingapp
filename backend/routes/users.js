@@ -194,13 +194,26 @@ router.get('/', async (req, res) => {
 // Update user profile
 router.put('/:userId', async (req, res) => {
   try {
-    console.log('[DEBUG Backend] PUT /users/:userId - req.userId:', req.userId, 'params.userId:', req.params.userId);
-    if (req.userId !== req.params.userId) {
+    console.log('[DEBUG Backend] PUT /users/:userId called');
+    console.log('[DEBUG Backend] req.userId:', req.userId);
+    console.log('[DEBUG Backend] params.userId:', req.params.userId);
+    console.log('[DEBUG Backend] req.userRole:', req.userRole);
+    console.log('[DEBUG Backend] req.userInfo:', req.userInfo);
+    
+    // Allow users to update their own profile, or allow moderators/admins to update any profile
+    const isOwnProfile = req.userId === req.params.userId;
+    const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
+    
+    console.log('[DEBUG Backend] isOwnProfile:', isOwnProfile);
+    console.log('[DEBUG Backend] isModerator:', isModerator);
+    
+    if (!isOwnProfile && !isModerator) {
+      console.log('[DEBUG Backend] Authorization failed - not own profile and not moderator');
       return res.status(403).json({ error: 'Not authorized' });
     }
 
     const { name, age, bio, location, interests, images, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted, legalAcceptanceDate, coordinates } = req.body;
-    console.log('[DEBUG Backend] Updating user profile with:', { name, age, bio, location, interests, images, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted });
+    console.log('[DEBUG Backend] Updating user profile with:', { name, age, bio, location, interests, username });
     
     // If username is being updated, check if it's available
     if (username) {
@@ -241,10 +254,14 @@ router.put('/:userId', async (req, res) => {
       { new: true }
     ).select('-passwordHash');
 
-    console.log('[DEBUG Backend] User profile updated:', { id: user.id, age: user.age, location: user.location, interests: user.interests, username: user.username, termsOfServiceAccepted: user.termsOfServiceAccepted, privacyPolicyAccepted: user.privacyPolicyAccepted, cookiePolicyAccepted: user.cookiePolicyAccepted });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    console.log('[DEBUG Backend] User profile updated successfully:', { id: user.id, name: user.name, age: user.age });
     res.json(user);
   } catch (err) {
-    console.error('[DEBUG Backend] Error updating profile:', err.message);
+    console.error('[DEBUG Backend] Error updating profile:', err.message, err.stack);
     res.status(500).json({ error: err.message });
   }
 });

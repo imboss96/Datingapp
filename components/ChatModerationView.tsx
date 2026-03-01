@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../services/apiClient';
 import { useWebSocketContext } from '../services/WebSocketProvider';
+import PaymentMethodModal from './PaymentMethodModal';
 import '../styles/whatsapp-background.css';
+
+// AlertContext fallback
+const AlertContext = React.createContext<any>(null);
+const useAlert = () => React.useContext(AlertContext) || { showAlert: (title: string, message: string) => alert(`${title}: ${message}`) };
 
 interface User {
   id: string;
@@ -9,7 +14,15 @@ interface User {
   name: string;
   avatar?: string;
   role?: string;
+  email?: string;
   verificationStatus?: string;
+  images?: string[];
+  age?: number;
+  location?: string;
+  bio?: string;
+  interests?: string[];
+  isPhotoVerified?: boolean;
+  isPremium?: boolean;
 }
 
 interface ModerationAction {
@@ -22,7 +35,7 @@ interface ModerationAction {
   duration?: number;
 }
 
-interface Message {
+export interface Message {
   id: string;
   senderId: string;
   text: string;
@@ -32,9 +45,10 @@ interface Message {
   isEditedByModerator?: boolean;
   isDeleted?: boolean;
   deletedAt?: number;
+  media?: any;
 }
 
-interface ModeratorChat {
+export interface ModeratorChat {
   id: string;
   participants: string[];
   participantDetails?: User[];
@@ -46,11 +60,12 @@ interface ModeratorChat {
 interface Props {
   chat: ModeratorChat;
   currentUserId: string;
-  onClose: () => void;
-  onRefresh: () => void;
+  onClose?: () => void;
+  onRefresh?: () => void;
+  onRepliedChatAdded?: () => void;
 }
 
-const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onRefresh }) => {
+const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onRefresh, onRepliedChatAdded }) => {
   const [messages, setMessages] = useState<Message[]>(chat.messages || []);
   const [users, setUsers] = useState<Map<string, User>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -67,8 +82,36 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
   const [selectedMedia, setSelectedMedia] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [moderatorCoins, setModeratorCoins] = useState<number>(0);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [moderatorData, setModeratorData] = useState<User | null>(null);
+  const [unrepliedChatsCount, setUnrepliedChatsCount] = useState<number>(0);
+  const [moderatedChats, setModeratedChats] = useState<ModeratorChat[]>([]);
+  const [showModeratedChats, setShowModeratedChats] = useState(false);
+  const [isCurrentChatReplied, setIsCurrentChatReplied] = useState(false);
+  const [showUnrepliedChatsDropdown, setShowUnrepliedChatsDropdown] = useState(false);
+  const [unrepliedChatsList, setUnrepliedChatsList] = useState<ModeratorChat[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string>(chat.id);
+  const [currentChat, setCurrentChat] = useState<ModeratorChat>(chat);
+  const [showProfileEditModal, setShowProfileEditModal] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [editingProfileData, setEditingProfileData] = useState<any>(null);
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileEditError, setProfileEditError] = useState<string | null>(null);
+  const [sessionEarnings, setSessionEarnings] = useState<number>(0);
+  const [totalEarnings, setTotalEarnings] = useState<number>(0);
+  const [moderatedChatsList, setModeratedChatsList] = useState<any[]>([]);
+  const [lastEarningsReset, setLastEarningsReset] = useState<Date | null>(null);
+  const [showProfileInfoModal, setShowProfileInfoModal] = useState(false);
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const profilePhotoInputRef = useRef<HTMLInputElement>(null);
+  const { showAlert } = useAlert();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const unrepliedChatsButtonRef = useRef<HTMLButtonElement>(null);
 
   // WebSocket for real-time updates (moderator registers as separate client)
   const { addMessageHandler } = useWebSocketContext();
@@ -83,7 +126,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     // Register WebSocket message handler for real-time new_message events
     const unregister = addMessageHandler((data: any) => {
       try {
-        if (data && data.type === 'new_message' && data.chatId === chat.id) {
+        if (data && data.type === 'new_message' && data.chatId === selectedChatId) {
           // Append message if not present
           setMessages(prev => {
             const exists = prev.find(m => m.id === data.message.id);
@@ -98,20 +141,118 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     return () => {
       try { unregister(); } catch (e) { /* ignore */ }
     };
-  }, [addMessageHandler, chat.id]);
+  }, [addMessageHandler, selectedChatId]);
+
+  // Fetch moderator profile from session on mount
+  useEffect(() => {
+    const fetchModeratorData = async () => {
+      try {
+        const userData = await apiClient.get(`/users/${currentUserId}`);
+        setModeratorData(userData);
+      } catch (error) {
+        console.error('Failed to fetch moderator data:', error);
+        // Try to get from localStorage as fallback
+        const sessionUser = localStorage.getItem('user');
+        if (sessionUser) {
+          setModeratorData(JSON.parse(sessionUser));
+        }
+      }
+    };
+    if (currentUserId) {
+      fetchModeratorData();
+    }
+  }, [currentUserId]);
+
+  // Fetch session earnings and moderated chats
+  useEffect(() => {
+    const fetchEarningsAndChats = async () => {
+      try {
+        // Fetch session earnings
+        const earningsData = await apiClient.getSessionEarnings();
+        setSessionEarnings(earningsData.sessionEarnings || 0);
+        setTotalEarnings(earningsData.totalEarnings || 0);
+        setLastEarningsReset(new Date(earningsData.lastResetAt));
+        
+        // Fetch moderated chats
+        const chatsData = await apiClient.getModeratedChats();
+        setModeratedChatsList(chatsData.moderatedChats || []);
+      } catch (error) {
+        console.error('Failed to fetch earnings and chats:', error);
+      }
+    };
+
+    if (currentUserId) {
+      fetchEarningsAndChats();
+      
+      // Refresh earnings every 30 seconds
+      const interval = setInterval(fetchEarningsAndChats, 30000);
+      
+      // Check for daily reset at 12:00 hrs
+      const checkDailyReset = () => {
+        const now = new Date();
+        const today = new Date(now);
+        today.setUTCHours(12, 0, 0, 0);
+        
+        if (lastEarningsReset && lastEarningsReset < today) {
+          // It's past 12:00 hrs, clear session earnings
+          apiClient.clearSessionEarnings().catch(err => 
+            console.error('Failed to clear session earnings:', err)
+          );
+        }
+      };
+      
+      checkDailyReset();
+      const dailyCheckInterval = setInterval(checkDailyReset, 60000); // Check every minute
+      
+      return () => {
+        clearInterval(interval);
+        clearInterval(dailyCheckInterval);
+      };
+    }
+  }, [currentUserId, lastEarningsReset]);
+
+  const handleNavigateBack = () => {
+    if (onClose) {
+      onClose();
+    } else {
+      window.history.back();
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const menuBtn = document.getElementById('hamburger-menu');
+      const menuDropdown = document.getElementById('menu-dropdown');
+      if (menuBtn && menuDropdown && !menuBtn.contains(e.target as Node) && !menuDropdown.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [isMenuOpen]);
 
   // Fetch messages in real-time
   useEffect(() => {
     const refreshMessages = async () => {
       try {
         setLoading(true);
-        const response = await apiClient.get(`/chats/${chat.id}`);
+        const response = await apiClient.get(`/chats/${selectedChatId}`);
         if (response.messages) {
           setMessages(response.messages);
         }
         // Fetch user details
         const userMap = new Map(users);
-        for (const userId of chat.participants) {
+        for (const userId of currentChat.participants) {
           if (!userMap.has(userId)) {
             try {
               const userData = await apiClient.get(`/users/${userId}`);
@@ -135,13 +276,75 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     return () => {
       clearInterval(interval);
     };
-  }, [chat.id]);
+  }, [selectedChatId]);
+
+  // Fetch unreplied chats count and moderated chats
+  useEffect(() => {
+    const fetchUnrepliedChats = async () => {
+      try {
+        // Fetch unreplied chats from backend using new endpoint
+        const response = await apiClient.getUnrepliedChats();
+        
+        if (response.unrepliedChats) {
+          setUnrepliedChatsCount(response.unrepliedChats.length);
+          setUnrepliedChatsList(response.unrepliedChats);
+          
+          // Check if current chat is in the unreplied list
+          const currentIsUnreplied = response.unrepliedChats.some((c: any) => c.id === selectedChatId);
+          setIsCurrentChatReplied(!currentIsUnreplied);
+        }
+      } catch (error) {
+        console.error('Failed to fetch unreplied chats:', error);
+        // Default to counting messages with at least one reply from operator
+        const operatorId = currentChat.participants[1];
+        const operatorReplies = messages.filter(m => m.senderId === operatorId).length;
+        setIsCurrentChatReplied(operatorReplies > 0);
+      }
+    };
+
+    fetchUnrepliedChats();
+    const interval = setInterval(fetchUnrepliedChats, 10000); // Refresh every 10 seconds
+    
+    return () => clearInterval(interval);
+  }, [selectedChatId, messages]);
+
+  // Handle selecting a chat from unreplied chats list
+  const handleSelectChat = async (selectedChat: ModeratorChat) => {
+    try {
+      setSelectedChatId(selectedChat.id);
+      setCurrentChat(selectedChat);
+      setMessages(selectedChat.messages || []);
+      
+      // Fetch fresh user data for the selected chat
+      const userMap = new Map<string, User>();
+      for (const userId of selectedChat.participants || []) {
+        try {
+          const userData = await apiClient.get(`/users/${userId}`);
+          userMap.set(userId, userData);
+        } catch (err) {
+          userMap.set(userId, { id: userId, username: userId, name: 'Unknown User' });
+        }
+      }
+      setUsers(userMap);
+      
+      // Close the dropdown
+      setShowUnrepliedChatsDropdown(false);
+      
+      // Re-check if this chat is in unreplied list
+      const currentIsUnreplied = unrepliedChatsList.some((c: any) => c.id === selectedChat.id);
+      setIsCurrentChatReplied(!currentIsUnreplied);
+    } catch (error) {
+      console.error('Error loading chat:', error);
+      setSuccessMessage('Failed to load chat');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  };
 
   const handleFlagMessage = async (message: Message) => {
     if (!message.isFlagged) {
       try {
         setIsSendingAction(true);
-        await apiClient.put(`/chats/${chat.id}/messages/${message.id}/flag`, {
+        await apiClient.put(`/chats/${selectedChatId}/messages/${message.id}/flag`, {
           flagReason: actionReason || 'Flagged by moderator'
         });
         setMessages(messages.map(m => m.id === message.id ? { ...m, isFlagged: true, flagReason: actionReason } : m));
@@ -156,7 +359,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
       // Unflag
       try {
         setIsSendingAction(true);
-        await apiClient.put(`/chats/${chat.id}/messages/${message.id}/flag`, {
+        await apiClient.put(`/chats/${selectedChatId}/messages/${message.id}/flag`, {
           flagReason: undefined
         });
         setMessages(messages.map(m => m.id === message.id ? { ...m, isFlagged: false, flagReason: undefined } : m));
@@ -174,7 +377,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     if (confirm('Are you sure you want to delete this message? This action cannot be undone.')) {
       try {
         setIsSendingAction(true);
-        await apiClient.delete(`/chats/${chat.id}/messages/${message.id}`);
+        await apiClient.delete(`/chats/${selectedChatId}/messages/${message.id}`);
         setMessages(messages.map(m => m.id === message.id ? { ...m, isDeleted: true, deletedAt: Date.now() } : m));
         setSuccessMessage('Message deleted successfully');
         setTimeout(() => setSuccessMessage(null), 3000);
@@ -193,7 +396,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
         userId,
         action,
         reason,
-        chatId: chat.id,
+        chatId: selectedChatId,
         moderatorId: currentUserId,
         duration: action === 'timeout' ? 3600000 : undefined // 1 hour timeout by default
       });
@@ -227,7 +430,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
         payload.media = selectedMedia;
       }
 
-      const response = await apiClient.post(`/moderation/send-response/${chat.id}`, payload);
+      const response = await apiClient.post(`/moderation/send-response/${selectedChatId}`, payload);
 
       if (response.success) {
         const newMessage: Message = {
@@ -246,8 +449,38 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
         setReplyText('');
         setSelectedMedia(null);
         
+        // Mark current chat as replied on backend
+        try {
+          console.log('[DEBUG ChatModerationView] Marking chat as replied:', selectedChatId);
+          const response = await apiClient.markChatAsReplied(selectedChatId);
+          console.log('[DEBUG ChatModerationView] Chat marked as replied successfully:', response);
+          // Trigger refresh of replied chats in parent component
+          onRepliedChatAdded?.();
+          console.log('[DEBUG ChatModerationView] Called onRepliedChatAdded callback');
+        } catch (error) {
+          console.warn('Could not mark chat as replied on backend:', error);
+        }
+        
+        // Mark current chat as replied locally
+        setIsCurrentChatReplied(true);
+        
+        // Decrease unreplied chats count
+        setUnrepliedChatsCount(prev => Math.max(0, prev - 1));
+        
+        // Remove from unreplied chats list
+        setUnrepliedChatsList(prev => prev.filter(c => c.id !== selectedChatId));
+        
         // Increment moderator coins (0.1 per reply)
         setModeratorCoins(prev => prev + 0.1);
+        
+        // Update session earnings via API
+        try {
+          const earningsRes = await apiClient.addSessionEarnings(0.10);
+          setSessionEarnings(earningsRes.newSessionEarnings || 0);
+          setTotalEarnings(earningsRes.totalEarnings || 0);
+        } catch (error) {
+          console.warn('Failed to update session earnings:', error);
+        }
         
         // Show success
         setSuccessMessage('Reply sent on behalf of ' + operatorProfile?.name);
@@ -299,7 +532,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
       setUploadingMedia(true);
 
       // Upload media using apiClient same as ChatRoom
-      const result = await apiClient.uploadChatMedia(chat.id, file);
+      const result = await apiClient.uploadChatMedia(selectedChatId, file);
 
       if (result.success && result.media) {
         setSelectedMedia(result.media);
@@ -328,9 +561,106 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     }
   };
 
+  // Profile editing functions
+  const openProfileEditModal = (profileId: string) => {
+    const profile = users.get(profileId);
+    if (profile) {
+      setEditingProfileId(profileId);
+      setEditingProfileData({
+        name: profile.name || '',
+        age: profile.age || '',
+        location: profile.location || '',
+        bio: profile.bio || '',
+        interests: profile.interests || []
+      });
+      setProfilePhotoPreview(null);
+      setProfilePhotoFile(null);
+      setProfileEditError(null);
+      setShowProfileEditModal(true);
+    }
+  };
+
+  const handleProfilePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setProfilePhotoFile(file);
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        setProfilePhotoPreview(ev.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const saveProfileChanges = async () => {
+    if (!editingProfileId || !editingProfileData) return;
+
+    try {
+      setSavingProfile(true);
+      setProfileEditError(null);
+
+      const updatePayload: any = {
+        name: editingProfileData.name,
+        age: editingProfileData.age,
+        location: editingProfileData.location,
+        bio: editingProfileData.bio,
+        interests: editingProfileData.interests || []
+      };
+
+      // Handle photo upload - convert to base64 data URL
+      if (profilePhotoFile) {
+        try {
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(profilePhotoFile);
+          });
+          
+          // Get existing images or start with empty array
+          const existingImages = users.get(editingProfileId)?.images || [];
+          // Replace first image with new one, or add as first
+          updatePayload.images = [base64, ...existingImages.slice(1)];
+        } catch (photoError) {
+          console.warn('[WARN] Failed to convert photo to base64:', photoError);
+          setProfileEditError('Failed to process photo. Please try again.');
+          return;
+        }
+      }
+
+      // Send update to backend
+      const response = await apiClient.put(`/users/${editingProfileId}`, updatePayload);
+
+      // Refresh user data from response
+      if (response && response.id) {
+        const newUserMap = new Map(users);
+        newUserMap.set(editingProfileId, response);
+        setUsers(newUserMap);
+      }
+
+      setSuccessMessage(`Profile updated successfully for ${editingProfileData.name}`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+      setShowProfileEditModal(false);
+    } catch (error) {
+      console.error('[ERROR] Failed to save profile:', error);
+      setProfileEditError(error instanceof Error ? error.message : 'Failed to save profile changes');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const closeProfileEditModal = () => {
+    setShowProfileEditModal(false);
+    setEditingProfileId(null);
+    setEditingProfileData(null);
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(null);
+    setProfileEditError(null);
+  };
+
   // Get client and operator profiles
-  const clientId = chat.participants[0]; // Person who initiated chat (John)
-  const operatorId = chat.participants[1]; // Person intended to receive (Profile X)
+  const clientId = currentChat.participants[0]; // Person who initiated chat (John)
+  const operatorId = currentChat.participants[1]; // Person intended to receive (Profile X)
   const clientProfile = users.get(clientId) || { id: clientId, username: clientId, name: 'User' };
   const operatorProfile = users.get(operatorId) || { id: operatorId, username: operatorId, name: 'User' };
 
@@ -351,40 +681,263 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center p-2 backdrop-blur-sm">
       <div className="bg-white rounded-2xl w-screen h-screen max-w-full max-h-full flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white p-4 flex items-center justify-between rounded-t-2xl">
+        <div className="bg-white/80 backdrop-blur-md border-b border-gray-200 p-2 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-black flex items-center gap-2">
-              <i className="fa-solid fa-shield-halved"></i>
-              Moderator Portal - Unreplied Chat
+            <h2 className="text-sm font-black flex items-center gap-1 text-gray-800">
+              <i className="fa-solid fa-shield-halved text-xs"></i>
+              Moderator Portal
             </h2>
-            <p className="text-indigo-100 text-xs mt-1">Chat ID: {chat.id} • {messages.length} messages • Moderating: <strong>{clientProfile.name}</strong> → <strong>{operatorProfile.name}</strong></p>
+            <p className="text-gray-600 text-xs mt-0.5">Chat ID: {selectedChatId} • {messages.length} messages</p>
           </div>
-          <div className="flex gap-3 items-center">
-            {/* Coins Section */}
-            <div className="bg-indigo-500/60 backdrop-blur-sm rounded-lg px-4 py-2 flex flex-col items-center border border-indigo-400/50">
-              <p className="text-xs font-bold text-indigo-100 uppercase tracking-wide">Coins Earned</p>
-              <div className="flex items-center gap-2 mt-1">
-                <i className="fa-solid fa-coins text-yellow-300 text-lg"></i>
-                <span className="text-2xl font-black text-yellow-300">${moderatorCoins.toFixed(2)}</span>
+          <div className="flex gap-4 items-center">
+            {/* Unreplied Chats Section - Dropdown Button */}
+            <div className="relative">
+              <button
+                ref={unrepliedChatsButtonRef}
+                onClick={() => setShowUnrepliedChatsDropdown(!showUnrepliedChatsDropdown)}
+                className="bg-gray-200 backdrop-blur-sm rounded px-3 py-2 flex flex-col items-center hover:bg-gray-300 transition-colors cursor-pointer active:scale-95"
+              >
+                <p className="text-xs font-bold text-gray-800 uppercase tracking-wide">Unreplied</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <i className="fa-solid fa-exclamation-circle text-gray-700 text-sm"></i>
+                  <span className="text-xl font-black text-gray-800">{unrepliedChatsCount}</span>
+                </div>
+              </button>
+
+              {/* Unreplied Chats Dropdown */}
+              {showUnrepliedChatsDropdown && (
+                <>
+                  {/* Backdrop to close dropdown */}
+                  <div 
+                    className="fixed inset-0 z-[80]"
+                    onClick={() => setShowUnrepliedChatsDropdown(false)}
+                  />
+                  
+                  {/* Dropdown Menu */}
+                  <div className="fixed top-20 right-4 z-[90] bg-white rounded-lg w-72 max-h-[400px] shadow-2xl border border-gray-200 flex flex-col">
+                    {/* Header */}
+                    <div className="bg-gradient-to-r from-gray-100 to-gray-200 border-b border-gray-300 p-2 flex items-center justify-between sticky top-0">
+                      <h3 className="text-sm font-bold flex items-center gap-1 text-gray-800">
+                        <i className="fa-solid fa-exclamation-circle text-gray-700"></i>
+                        Unreplied Chats
+                      </h3>
+                      <button
+                        onClick={() => setShowUnrepliedChatsDropdown(false)}
+                        className="text-gray-600 hover:text-gray-800 transition-colors text-lg"
+                      >
+                        <i className="fa-solid fa-times"></i>
+                      </button>
+                    </div>
+
+                    {/* Chats List */}
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                      {unrepliedChatsList.length === 0 ? (
+                        <div className="flex items-center justify-center h-40 text-gray-400">
+                          <div className="text-center">
+                            <i className="fa-solid fa-check text-3xl mb-2 text-gray-300"></i>
+                            <p className="text-sm font-semibold">All chats replied!</p>
+                            <p className="text-xs text-gray-500 mt-1">Great work today</p>
+                          </div>
+                        </div>
+                      ) : (
+                        unrepliedChatsList.map((c) => {
+                          const chatClientId = c.participants?.[0];
+                          const chatOperatorId = c.participants?.[1];
+                          const chatClient = users.get(chatClientId) || { id: chatClientId, name: 'Unknown User', username: 'unknown' };
+                          const chatOperator = users.get(chatOperatorId) || { id: chatOperatorId, name: 'Unknown User', username: 'unknown' };
+                          
+                          return (
+                            <button
+                              key={c.id}
+                              onClick={() => {
+                                handleSelectChat(c);
+                                setShowUnrepliedChatsDropdown(false);
+                              }}
+                              className="w-full p-3 bg-gradient-to-r from-gray-100 to-gray-200 rounded-lg border border-gray-300 hover:border-gray-400 hover:shadow-lg hover:bg-gradient-to-r hover:from-gray-200 hover:to-gray-300 transition-all cursor-pointer active:scale-98 text-left group"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-gray-900 truncate group-hover:text-red-700">
+                                    {chatClient?.name} → {chatOperator?.name}
+                                  </p>
+                                  <p className="text-xs text-gray-700 mt-0.5">
+                                    <span className="inline-block bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs font-bold">
+                                      {c.id}
+                                    </span>
+                                  </p>
+                                  <p className="text-xs text-gray-600 mt-1 line-clamp-1">
+                                    {c.messages?.[c.messages.length - 1]?.text || 'No messages'}
+                                  </p>
+                                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                    <span>
+                                      <i className="fa-solid fa-comments text-red-600 mr-1"></i>
+                                      {c.messages?.length || 0}
+                                    </span>
+                                    <span>
+                                      <i className="fa-solid fa-clock text-amber-600 mr-1"></i>
+                                      {new Date(c.lastUpdated).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex-shrink-0 ml-2 text-red-600 group-hover:translate-x-1 transition-transform">
+                                  <i className="fa-solid fa-chevron-right"></i>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Replied Status Section */}
+            {isCurrentChatReplied && (
+              <div className="bg-gray-200 backdrop-blur-sm rounded px-3 py-2 flex flex-col items-center">
+                <p className="text-xs font-bold text-gray-800 uppercase tracking-wide">Status</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <i className="fa-solid fa-check-circle text-gray-800 text-xs"></i>
+                  <span className="text-xs font-bold text-gray-800">Replied</span>
+                </div>
               </div>
-              <p className="text-xs text-indigo-200 mt-1">+$0.1 per reply</p>
+            )}
+            
+            {/* Coins Section */}
+            <div className="bg-gray-200 backdrop-blur-sm rounded px-3 py-2 flex flex-col items-center">
+              <p className="text-xs font-bold text-gray-800 uppercase tracking-wide">Earnings</p>
+              <div className="flex items-center gap-1 mt-1">
+                <i className="fa-solid fa-coins text-gray-800 text-xs"></i>
+                <span className="text-xl font-black text-gray-800">${moderatorCoins.toFixed(2)}</span>
+              </div>
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex gap-1 items-center relative">
               <button
-                onClick={onRefresh}
-                disabled={loading}
-                className="bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white px-3 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors"
+                onClick={handleNavigateBack}
+                className="bg-gray-800 hover:bg-gray-900 text-white px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors"
+                title="Go back to previous page"
               >
-                <i className={`fa-solid fa-rotate-right ${loading ? 'animate-spin' : ''}`}></i>
-                Refresh
+                <i className="fa-solid fa-arrow-left text-xs"></i>
               </button>
-              <button
-                onClick={onClose}
-                className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg font-bold text-sm transition-colors"
-              >
-                <i className="fa-solid fa-times"></i>
-              </button>
+
+              {/* Hamburger Menu */}
+              <div className="relative">
+                <button
+                  id="hamburger-menu"
+                  onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  className="bg-gray-800 hover:bg-gray-900 text-white px-2 py-1 rounded text-xs transition-colors"
+                  title="Menu"
+                >
+                  <i className="fa-solid fa-bars text-xs"></i>
+                </button>
+
+                {/* Dropdown Menu */}
+                {isMenuOpen && (
+                  <div id="menu-dropdown" className="absolute right-0 top-full mt-2 w-40 bg-white rounded shadow-xl border border-gray-200 z-50 overflow-hidden">
+                    {/* Moderator Info Header */}
+                    {moderatorData && (
+                      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-2 border-b border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <img 
+                            src={moderatorData.avatar || 'https://i.pravatar.cc/150?img=1'} 
+                            alt={moderatorData.name} 
+                            className="w-8 h-8 rounded-full border border-indigo-300"
+                          />
+                          <div>
+                            <h3 className="font-bold text-gray-900 text-xs">{moderatorData.name}</h3>
+                            <p className="text-xs text-gray-600">{moderatorData.role || 'Mod'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Menu Items */}
+                    <div className="py-2">
+                      {/* Profile Information */}
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setShowProfileInfoModal(true);
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors flex items-center gap-3 text-gray-700 border-b border-gray-100"
+                      >
+                        <i className="fa-solid fa-user text-blue-500 w-4"></i>
+                        <span className="text-sm font-medium">Profile</span>
+                      </button>
+
+                      {/* Payment Method */}
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setShowPaymentMethodModal(true);
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-green-50 transition-colors flex items-center gap-3 text-gray-700 border-b border-gray-100"
+                      >
+                        <i className="fa-solid fa-credit-card text-green-500 w-4"></i>
+                        <span className="text-sm font-medium">Payment</span>
+                      </button>
+
+                      {/* My Earnings */}
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setShowEarningsModal(true);
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-purple-50 transition-colors flex items-center justify-between gap-3 text-gray-700 border-b border-gray-100"
+                      >
+                        <div className="flex items-center gap-3">
+                          <i className="fa-solid fa-wallet text-purple-500 w-4"></i>
+                          <span className="text-sm font-medium">Earnings</span>
+                        </div>
+                        <span className="text-sm font-semibold text-purple-600">${sessionEarnings.toFixed(2)}</span>
+                      </button>
+
+                      {/* Stats */}
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setShowStatsModal(true);
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-amber-50 transition-colors flex items-center gap-3 text-gray-700 border-b border-gray-100"
+                      >
+                        <i className="fa-solid fa-chart-line text-amber-500 w-4"></i>
+                        <span className="text-sm font-medium">Stats</span>
+                      </button>
+
+                      {/* Moderated Chats */}
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setShowModeratedChats(true);
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-cyan-50 transition-colors flex items-center justify-between gap-3 text-gray-700 border-b border-gray-100"
+                      >
+                        <div className="flex items-center gap-3">
+                          <i className="fa-solid fa-check-circle text-cyan-500 w-4"></i>
+                          <span className="text-sm font-medium">Chats</span>
+                        </div>
+                        <span className="inline-flex items-center justify-center h-4 w-4 bg-cyan-100 text-cyan-600 rounded-full text-xs font-bold">
+                          {moderatedChatsList.length}
+                        </span>
+                      </button>
+
+                      {/* Logout */}
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          handleLogout();
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-red-50 transition-colors flex items-center gap-3 text-red-600"
+                      >
+                        <i className="fa-solid fa-sign-out-alt text-red-500 w-4"></i>
+                        <span className="text-sm font-medium">Logout</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -437,7 +990,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                 </div>
               )}
               <div className="pt-2 border-t border-gray-200">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 mb-3">
                   {operatorProfile?.isPhotoVerified && (
                     <span className="inline-flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-semibold">
                       <i className="fa-solid fa-check-circle"></i> Verified
@@ -449,6 +1002,13 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                     </span>
                   )}
                 </div>
+                <button
+                  onClick={() => openProfileEditModal(operatorId)}
+                  className="w-full px-3 py-2 bg-indigo-500 text-white text-xs font-bold rounded-lg hover:bg-indigo-600 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-edit"></i>
+                  Edit Profile
+                </button>
               </div>
             </div>
           </div>
@@ -695,6 +1255,504 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
           </div>
         </div>
       </div>
+
+      {/* Moderated Chats Modal */}
+      {showModeratedChats && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-96 h-96 flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-b border-cyan-200 p-4 flex items-center justify-between">
+              <h3 className="text-lg font-black flex items-center gap-2 text-gray-800">
+                <i className="fa-solid fa-check-circle text-cyan-600"></i>
+                Moderated Chats
+              </h3>
+              <button
+                onClick={() => setShowModeratedChats(false)}
+                className="text-gray-600 hover:text-gray-800 transition-colors text-lg"
+              >
+                <i className="fa-solid fa-times"></i>
+              </button>
+            </div>
+
+            {/* Chats List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {moderatedChatsList.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-gray-400">
+                  <div className="text-center">
+                    <i className="fa-solid fa-inbox text-4xl mb-2 text-gray-300"></i>
+                    <p className="text-sm">No moderated chats yet</p>
+                    <p className="text-xs text-gray-500 mt-1">Chats you've replied to will appear here</p>
+                  </div>
+                </div>
+              ) : (
+                moderatedChatsList.map((chat) => {
+                  const participant1 = chat.participants?.[0];
+                  const participant2 = chat.participants?.[1];
+                  
+                  return (
+                    <div
+                      key={chat.id}
+                      className="p-3 bg-gradient-to-r from-cyan-50 to-blue-50 rounded-lg border border-cyan-200 hover:border-cyan-400 hover:shadow-md transition-all cursor-pointer active:scale-98"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-gray-900 truncate">
+                            {participant1?.name || 'User'} → {participant2?.name || 'Operator'}
+                          </p>
+                          <p className="text-xs text-gray-700 mt-0.5">
+                            {participant1?.username || 'user'} | {participant2?.username || 'operator'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-600">
+                              <i className="fa-solid fa-comments text-cyan-600 mr-1"></i>
+                              {chat.messageCount || 0} messages
+                            </span>
+                            <span className="text-xs text-gray-600">
+                              <i className="fa-solid fa-clock text-amber-600 mr-1"></i>
+                              {new Date(chat.markedAsRepliedAt || chat.lastUpdated).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0 ml-2">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold">
+                            <i className="fa-solid fa-check text-white"></i>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Edit Modal */}
+      {showProfileEditModal && editingProfileData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-indigo-500 to-purple-500 px-6 py-4 flex items-center justify-between border-b border-gray-200">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <i className="fa-solid fa-user-edit"></i>
+                Edit Profile
+              </h2>
+              <button
+                onClick={closeProfileEditModal}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-full w-8 h-8 flex items-center justify-center transition-all"
+              >
+                <i className="fa-solid fa-xmark text-lg"></i>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-5">
+              {/* Error Message */}
+              {profileEditError && (
+                <div className="bg-red-50 border border-red-200 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2">
+                  <i className="fa-solid fa-exclamation-circle"></i>
+                  {profileEditError}
+                </div>
+              )}
+
+              {/* Photo Upload */}
+              <div>
+                <label className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2 block">
+                  <i className="fa-solid fa-camera text-indigo-500 mr-1"></i>
+                  Profile Photo
+                </label>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-indigo-400 transition-colors cursor-pointer"
+                      onClick={() => profilePhotoInputRef.current?.click()}
+                    >
+                      {profilePhotoPreview ? (
+                        <img src={profilePhotoPreview} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
+                      ) : operatorProfile?.images?.[0] ? (
+                        <img src={operatorProfile.images[0]} alt="Current" className="w-full h-40 object-cover rounded-lg" />
+                      ) : (
+                        <div className="py-8">
+                          <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2 block"></i>
+                          <p className="text-gray-600 text-sm">Click to upload photo</p>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      ref={profilePhotoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProfilePhotoSelect}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Name Field */}
+              <div>
+                <label className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2 block">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  value={editingProfileData.name}
+                  onChange={(e) => setEditingProfileData({ ...editingProfileData, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter full name"
+                />
+              </div>
+
+              {/* Age Field */}
+              <div>
+                <label className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2 block">
+                  Age
+                </label>
+                <input
+                  type="number"
+                  value={editingProfileData.age}
+                  onChange={(e) => setEditingProfileData({ ...editingProfileData, age: parseInt(e.target.value) || '' })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter age"
+                  min="18"
+                  max="100"
+                />
+              </div>
+
+              {/* Location Field */}
+              <div>
+                <label className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2 block">
+                  <i className="fa-solid fa-location-dot text-indigo-500 mr-1"></i>
+                  Location
+                </label>
+                <input
+                  type="text"
+                  value={editingProfileData.location}
+                  onChange={(e) => setEditingProfileData({ ...editingProfileData, location: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Enter location"
+                />
+              </div>
+
+              {/* Bio Field */}
+              <div>
+                <label className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2 block">
+                  Bio
+                </label>
+                <textarea
+                  value={editingProfileData.bio}
+                  onChange={(e) => setEditingProfileData({ ...editingProfileData, bio: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  placeholder="Enter bio/about"
+                  rows={4}
+                />
+              </div>
+
+              {/* Interests Field */}
+              <div>
+                <label className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2 block">
+                  <i className="fa-solid fa-heart text-red-500 mr-1"></i>
+                  Interests (comma separated)
+                </label>
+                <input
+                  type="text"
+                  value={Array.isArray(editingProfileData.interests) ? editingProfileData.interests.join(', ') : ''}
+                  onChange={(e) => setEditingProfileData({ ...editingProfileData, interests: e.target.value.split(',').map(i => i.trim()).filter(i => i) })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. travel, cooking, hiking"
+                />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex gap-2 justify-end">
+              <button
+                onClick={closeProfileEditModal}
+                disabled={savingProfile}
+                className="px-4 py-2 bg-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-400 active:scale-95 transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveProfileChanges}
+                disabled={savingProfile}
+                className="px-6 py-2 bg-indigo-500 text-white font-bold rounded-lg hover:bg-indigo-600 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {savingProfile ? (
+                  <>
+                    <i className="fa-solid fa-spinner animate-spin"></i>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-save"></i>
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Info Modal */}
+      {showProfileInfoModal && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-2xl max-w-xs w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <i className="fa-solid fa-user text-lg"></i>
+                <h2 className="text-lg font-black">Profile</h2>
+              </div>
+              <button
+                onClick={() => setShowProfileInfoModal(false)}
+                className="text-white/70 hover:text-white transition-colors text-2xl"
+              >
+                <i className="fa-solid fa-times"></i>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-3">
+              {moderatorData && (
+                <>
+                  <div className="flex items-center gap-2 pb-3 border-b border-gray-200">
+                    <img
+                      src={moderatorData.avatar || 'https://i.pravatar.cc/150?img=1'}
+                      alt={moderatorData.name}
+                      className="w-12 h-12 rounded-full border border-blue-400"
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Moderator</p>
+                      <p className="text-base font-black text-gray-900">{moderatorData.name}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-0.5">Username</p>
+                    <p className="text-gray-900 font-mono bg-gray-100 px-2 py-1 rounded text-xs">@{moderatorData.username}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-0.5">Role</p>
+                    <p className="text-gray-900 font-semibold text-xs inline-flex items-center gap-1 bg-amber-50 px-2 py-1 rounded">
+                      <i className="fa-solid fa-shield text-amber-600"></i>
+                      {moderatorData.role || 'Moderator'}
+                    </p>
+                  </div>
+
+                  {moderatorData.email && (
+                    <div>
+                      <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-0.5">Email</p>
+                      <p className="text-gray-900 break-all text-xs">{moderatorData.email}</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 px-4 py-2 flex gap-2 justify-end border-t border-gray-200">
+              <button
+                onClick={() => setShowProfileInfoModal(false)}
+                className="px-3 py-1 bg-gray-300 text-gray-700 font-bold rounded text-sm hover:bg-gray-400 active:scale-95 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Earnings Modal */}
+      {showEarningsModal && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-2xl max-w-xs w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <i className="fa-solid fa-wallet text-lg"></i>
+                <h2 className="text-lg font-black">Earnings</h2>
+              </div>
+              <button
+                onClick={() => setShowEarningsModal(false)}
+                className="text-white/70 hover:text-white transition-colors text-2xl"
+              >
+                <i className="fa-solid fa-times"></i>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-3">
+              {/* Session Earnings Card */}
+              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded p-3">
+                <p className="text-xs font-bold text-purple-700 uppercase tracking-wide mb-0.5">Session Earnings</p>
+                <p className="text-2xl font-black text-purple-600 flex items-center gap-1">
+                  <i className="fa-solid fa-coins text-sm"></i>
+                  ${sessionEarnings.toFixed(2)}
+                </p>
+                <p className="text-xs text-purple-600 mt-0.5">This session</p>
+              </div>
+
+              {/* Total Earnings Card */}
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded p-3">
+                <p className="text-xs font-bold text-green-700 uppercase tracking-wide mb-0.5">Total Earnings</p>
+                <p className="text-2xl font-black text-green-600 flex items-center gap-1">
+                  <i className="fa-solid fa-piggy-bank text-sm"></i>
+                  ${totalEarnings.toFixed(2)}
+                </p>
+                <p className="text-xs text-green-600 mt-0.5">Lifetime</p>
+              </div>
+
+              {/* Per Reply */}
+              <div className="bg-gray-50 border border-gray-200 rounded p-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-700">Per Reply</p>
+                  <p className="text-base font-black text-amber-600">$0.10</p>
+                </div>
+              </div>
+
+              {/* Next Reset */}
+              <div className="bg-blue-50 border border-blue-200 rounded p-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-blue-700 flex items-center gap-1">
+                    <i className="fa-solid fa-clock text-sm"></i>
+                    Reset
+                  </p>
+                  <p className="text-xs font-bold text-blue-600">
+                    {lastEarningsReset
+                      ? new Date(new Date(lastEarningsReset).getTime() + 24 * 60 * 60 * 1000)
+                          .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+                      : '12:00 PM UTC'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Pending Payout */}
+              <div className="bg-gray-50 border border-gray-200 rounded p-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-700">Pending</p>
+                  <p className="text-base font-black text-gray-600">$0.00</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 px-4 py-2 flex gap-2 justify-end border-t border-gray-200">
+              <button
+                onClick={() => setShowEarningsModal(false)}
+                className="px-3 py-1 bg-gray-300 text-gray-700 font-bold rounded text-sm hover:bg-gray-400 active:scale-95 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats Modal */}
+      {showStatsModal && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-2xl max-w-xs w-full overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-amber-500 to-orange-600 p-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <i className="fa-solid fa-chart-line text-lg"></i>
+                <h2 className="text-lg font-black">Stats</h2>
+              </div>
+              <button
+                onClick={() => setShowStatsModal(false)}
+                className="text-white/70 hover:text-white transition-colors text-2xl"
+              >
+                <i className="fa-solid fa-times"></i>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-2">
+              {/* Messages Moderated */}
+              <div className="bg-blue-50 border border-blue-200 rounded p-3 flex items-center gap-2 justify-between">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-comments text-blue-600 text-xs"></i>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">Messages</p>
+                    <p className="text-xs text-blue-600 mt-0 font-semibold">{messages.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Session Earnings */}
+              <div className="bg-purple-50 border border-purple-200 rounded p-3 flex items-center gap-2 justify-between">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-coins text-purple-600 text-xs"></i>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-purple-700 uppercase tracking-wide">This Session</p>
+                    <p className="text-xs text-purple-600 mt-0 font-semibold">${sessionEarnings.toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Total Earnings */}
+              <div className="bg-green-50 border border-green-200 rounded p-3 flex items-center gap-2 justify-between">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-piggy-bank text-green-600 text-xs"></i>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-green-700 uppercase tracking-wide">Lifetime</p>
+                    <p className="text-xs text-green-600 mt-0 font-semibold">${totalEarnings.toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Moderated Chats */}
+              <div className="bg-cyan-50 border border-cyan-200 rounded p-3 flex items-center gap-2 justify-between">
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="w-8 h-8 rounded bg-cyan-100 flex items-center justify-center flex-shrink-0">
+                    <i className="fa-solid fa-check-circle text-cyan-600 text-xs"></i>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-cyan-700 uppercase tracking-wide">Chats</p>
+                    <p className="text-xs text-cyan-600 mt-0 font-semibold">{moderatedChatsList.length}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Chat ID */}
+              <div className="bg-gray-50 border border-gray-200 rounded p-2">
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-0.5">Chat ID</p>
+                <p className="text-xs text-gray-900 font-mono bg-white px-1.5 py-1 rounded break-all border border-gray-200">
+                  {selectedChatId}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 px-4 py-2 flex gap-2 justify-end border-t border-gray-200">
+              <button
+                onClick={() => setShowStatsModal(false)}
+                className="px-3 py-1 bg-gray-300 text-gray-700 font-bold rounded text-sm hover:bg-gray-400 active:scale-95 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Method Modal - Using existing component */}
+      {showPaymentMethodModal && (
+        <PaymentMethodModal
+          isOpen={showPaymentMethodModal}
+          onClose={() => setShowPaymentMethodModal(false)}
+          moderatorId={currentUserId}
+        />
+      )}
     </div>
   );
 };

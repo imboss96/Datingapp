@@ -458,6 +458,50 @@ class APIClient {
   async resolveSupportChat(chatId: string) {
     return this.request(`/chats/${chatId}/resolve-support`, { method: 'POST' });
   }
+
+  // Moderation - Unreplied chats
+  async getUnrepliedChats() {
+    return this.request('/moderation/unreplied-chats', { method: 'GET' });
+  }
+
+  // Moderation - Replied chats
+  async getRepliedChats() {
+    return this.request('/moderation/replied-chats', { method: 'GET' });
+  }
+
+  async markChatAsReplied(chatId: string) {
+    return this.request(`/moderation/mark-replied/${chatId}`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    });
+  }
+
+  // Session Earnings
+  async getSessionEarnings() {
+    return this.request('/moderation/session-earnings', { method: 'GET' });
+  }
+
+  async addSessionEarnings(amount: number) {
+    return this.request('/moderation/session-earnings/add', {
+      method: 'POST',
+      body: JSON.stringify({ amount }),
+    });
+  }
+
+  async clearSessionEarnings() {
+    return this.request('/moderation/session-earnings/clear', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  }
+
+  async getEarningsHistory() {
+    return this.request('/moderation/earnings-history', { method: 'GET' });
+  }
+
+  async getModeratedChats() {
+    return this.request('/moderation/moderated-chats', { method: 'GET' });
+  }
 }
 
 export default new APIClient();
