@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { jwtDecode } from 'jwt-decode';
 import { v4 as uuidv4 } from 'uuid';
+import { logSignup, logLogin, logLogout, logEmailVerification } from '../utils/activityLogger.js';
 
 const router = express.Router();
 
@@ -61,6 +62,9 @@ router.post('/verify-email', async (req, res) => {
     user.verificationToken = undefined;
     user.verificationTokenExpiry = undefined;
     await user.save();
+
+    // Log email verification
+    await logEmailVerification(user.id, user.email);
 
     return res.json({ message: 'Email verified successfully' });
   } catch (err) {
@@ -126,6 +130,9 @@ router.post('/register', async (req, res) => {
 
     await user.save();
 
+    // Log signup
+    await logSignup(userId, normEmail, 'APP', req);
+
     // Send verification email
     try {
       const { sendEmailVerificationEmail } = await import('../utils/email.js');
@@ -187,6 +194,9 @@ router.post('/login', async (req, res) => {
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
+
+    // Log login
+    await logLogin(user.id, req);
 
     console.log('[DEBUG Backend] Login successful for user:', user.id, { age: user.age, location: user.location, interests: user.interests });
 
@@ -453,13 +463,24 @@ router.post('/change-password', authMiddleware, async (req, res) => {
 });
 
 // Logout - Clear authentication cookie
-router.post('/logout', (req, res) => {
-  res.clearCookie('authToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax'
-  });
-  res.json({ message: 'Logged out successfully' });
+router.post('/logout', async (req, res) => {
+  try {
+    // Log logout if user ID is available
+    if (req.userId) {
+      await logLogout(req.userId, req);
+    }
+    
+    res.clearCookie('authToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    console.error('[ERROR] Logout error:', error);
+    res.clearCookie('authToken');
+    res.json({ message: 'Logged out successfully' });
+  }
 });
 
 export default router;

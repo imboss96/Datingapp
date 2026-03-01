@@ -5,7 +5,9 @@ import Chat from '../models/Chat.js';
 import ModeratorEarnings from '../models/ModeratorEarnings.js';
 import PaymentMethod from '../models/PaymentMethod.js';
 import PaymentTransaction from '../models/PaymentTransaction.js';
+import ActivityLog from '../models/ActivityLog.js';
 import { v4 as uuidv4 } from 'uuid';
+import { logBan, logWarn, logModeratorAction, logRoleChange } from '../utils/activityLogger.js';
 
 const router = express.Router();
 
@@ -15,6 +17,18 @@ const modOnlyMiddleware = (req, res, next) => {
     const isModerator = req.userRole === 'MODERATOR' || req.userRole === 'ADMIN';
     if (!isModerator) {
       return res.status(403).json({ error: 'Moderator access required' });
+    }
+    next();
+  } catch (error) {
+    res.status(401).json({ error: 'Unauthorized' });
+  }
+};
+
+// Middleware to check if user is admin
+const adminOnlyMiddleware = (req, res, next) => {
+  try {
+    if (req.userRole !== 'ADMIN') {
+      return res.status(403).json({ error: 'Admin access required' });
     }
     next();
   } catch (error) {
@@ -51,12 +65,16 @@ router.post('/user-action', modOnlyMiddleware, async (req, res) => {
       case 'warn':
         user.warnings = (user.warnings || 0) + 1;
         user.lastWarning = new Date();
+        // Log warning
+        await logWarn(userId, reason, req.userId);
         break;
 
       case 'ban':
         user.banned = true;
         user.bannedAt = new Date();
         user.banReason = reason;
+        // Log ban
+        await logBan(userId, reason, duration ? 'temporary' : 'permanent', req.userId);
         break;
 
       case 'block':
@@ -157,6 +175,9 @@ router.post('/user/:userId/lift-ban', modOnlyMiddleware, async (req, res) => {
 
     await user.save();
 
+    // Log ban lift action
+    await logModeratorAction(user.id, 'lift-ban', null, req.body.reason || 'Ban lifted by moderator', req.userId);
+
     res.json({ success: true, message: 'Ban lifted successfully', userId: user.id });
   } catch (error) {
     console.error('[ERROR moderation] Failed to lift ban:', error);
@@ -185,6 +206,9 @@ router.post('/user/:userId/clear-restrictions', modOnlyMiddleware, async (req, r
     });
 
     await user.save();
+
+    // Log restriction clear action
+    await logModeratorAction(user.id, 'clear-restrictions', null, req.body.reason || 'Restrictions cleared by moderator', req.userId);
 
     res.json({ success: true, message: 'Restrictions cleared', userId: user.id });
   } catch (error) {
@@ -219,6 +243,9 @@ router.post('/report-user', modOnlyMiddleware, async (req, res) => {
       if (!user.reports) user.reports = [];
       user.reports.push(report);
       await user.save();
+      
+      // Log the report action
+      await logModeratorAction(userId, 'report', null, `User reported: ${reason}`, req.userId);
     }
 
     res.json({ success: true, reportId: report.id, message: 'User reported successfully' });
@@ -349,6 +376,9 @@ router.post('/send-response/:chatId', modOnlyMiddleware, async (req, res) => {
 
     await chat.save();
 
+    // Log moderator response action
+    await logModeratorAction(recipientId, 'send-response', chatId, `Moderator sent response to chat`, req.userId);
+
     console.log('[DEBUG] Moderation response sent successfully. Chat:', chatId, 'From moderator:', req.userId, 'As:', recipientId);
 
     res.json({
@@ -427,8 +457,12 @@ router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
     chat.isReplied = true;
     chat.replyStatus = 'replied';
     chat.markedAsRepliedAt = Date.now();
+    chat.assignedModerator = req.userId; // Capture which moderator replied
     
     await chat.save();
+
+    // Log moderator action
+    await logModeratorAction(chat.userId, 'replied', chatId, `Chat marked as replied by moderator`, req.userId);
 
     console.log('[DEBUG] Chat saved successfully:', {
       id: chat.id,
@@ -473,9 +507,31 @@ router.get('/replied-chats', modOnlyMiddleware, async (req, res) => {
         isReplied: c.isReplied,
         replyStatus: c.replyStatus,
         markedAsRepliedAt: c.markedAsRepliedAt,
-        participants: c.participants
+        participants: c.participants,
+        assignedModerator: c.assignedModerator
       }))
     });
+
+    // Fetch moderator details for all assigned moderators
+    const moderatorIds = [...new Set(repliedChats.map(c => c.assignedModerator).filter(Boolean))];
+    const moderatorMap = {};
+    
+    for (const modId of moderatorIds) {
+      try {
+        const mod = await User.findById(modId).select('id name email username role');
+        if (mod) {
+          moderatorMap[modId] = {
+            id: mod.id,
+            name: mod.name,
+            email: mod.email,
+            username: mod.username,
+            role: mod.role
+          };
+        }
+      } catch (err) {
+        console.warn(`[WARN] Failed to fetch moderator ${modId}:`, err.message);
+      }
+    }
 
     // Transform chats to match expected format
     const formattedChats = repliedChats.map(chat => ({
@@ -485,13 +541,16 @@ router.get('/replied-chats', modOnlyMiddleware, async (req, res) => {
       lastUpdated: chat.lastUpdated,
       markedAsRepliedAt: chat.markedAsRepliedAt,
       flaggedCount: (chat.messages || []).filter(msg => msg.isFlagged).length,
-      replyStatus: chat.replyStatus || 'replied'
+      replyStatus: chat.replyStatus || 'replied',
+      assignedModerator: chat.assignedModerator,
+      moderatorDetails: moderatorMap[chat.assignedModerator] || null
     }));
 
     res.json({
       success: true,
       repliedChats: formattedChats,
-      count: formattedChats.length
+      count: formattedChats.length,
+      moderators: moderatorMap
     });
   } catch (error) {
     console.error('[ERROR moderation] Failed to fetch replied chats:', error.message, error.stack);
@@ -504,11 +563,23 @@ router.get('/session-earnings', modOnlyMiddleware, async (req, res) => {
   try {
     const moderatorId = req.userId;
     
+    console.log('[DEBUG] Fetching earnings for moderator:', moderatorId);
+    
     let earnings = await ModeratorEarnings.findOne({ moderatorId });
+    
+    console.log('[DEBUG] Found earnings record:', !!earnings, 'moderatorId:', earnings?.moderatorId);
     
     if (!earnings) {
       // Create new earnings record if doesn't exist
-      earnings = new ModeratorEarnings({ moderatorId });
+      console.log('[DEBUG] Creating new earnings record for moderator:', moderatorId);
+      earnings = new ModeratorEarnings({ 
+        moderatorId,
+        sessionEarnings: 0,
+        totalEarnings: 0,
+        dailyEarnings: [],
+        lastResetAt: new Date(),
+        replyRate: 0
+      });
       await earnings.save();
     }
 
@@ -674,7 +745,7 @@ router.get('/moderated-chats', modOnlyMiddleware, async (req, res) => {
           markedAsRepliedAt: chat.markedAsRepliedAt,
           isReplied: chat.isReplied === true,
           replyStatus: chat.replyStatus || 'replied',
-          unreadCounts: chat.unreadCounts ? Object.fromEntries(chat.unreadCounts) : {}
+          unreadCounts: chat.unreadCounts || {}
         };
       })
     );
@@ -1081,6 +1152,267 @@ router.post('/record-payment/:moderatorId', modOnlyMiddleware, async (req, res) 
   } catch (error) {
     console.error('[ERROR moderation] Failed to record payment:', error);
     res.status(500).json({ error: 'Failed to record payment' });
+  }
+});
+
+// Get all standalone operators (external signups)
+router.get('/standalone', modOnlyMiddleware, async (req, res) => {
+  try {
+    const standaloneOperators = await User.find({
+      accountType: 'STANDALONE',
+      role: { $in: ['MODERATOR', 'ADMIN'] }
+    }).select('id name email username role accountType createdAt -_id');
+
+    const operatorsWithMetadata = standaloneOperators.map(op => ({
+      id: op.id,
+      name: op.name,
+      email: op.email,
+      username: op.username,
+      role: op.role,
+      accountType: op.accountType,
+      joinDate: op.createdAt,
+      chatCount: 0
+    }));
+
+    res.json({
+      success: true,
+      count: operatorsWithMetadata.length,
+      operators: operatorsWithMetadata
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to fetch standalone operators:', error);
+    res.status(500).json({ error: 'Failed to fetch standalone operators' });
+  }
+});
+
+// Get all onboarded moderators (app users with moderator/admin role)
+router.get('/onboarded', modOnlyMiddleware, async (req, res) => {
+  try {
+    console.log('[DEBUG /onboarded] Fetching onboarded moderators...');
+    
+    const onboardedModerators = await User.find({
+      accountType: 'APP',
+      role: { $in: ['MODERATOR', 'ADMIN'] }
+    }).select('id name email username role accountType createdAt -_id');
+
+    console.log('[DEBUG /onboarded] Found:', onboardedModerators.length, 'moderators');
+    
+    const moderatorsWithMetadata = onboardedModerators.map(mod => ({
+      id: mod.id,
+      name: mod.name,
+      email: mod.email,
+      username: mod.username,
+      role: mod.role,
+      accountType: mod.accountType,
+      onboardDate: mod.createdAt,
+      chatCount: 0
+    }));
+
+    res.json({
+      success: true,
+      count: moderatorsWithMetadata.length,
+      moderators: moderatorsWithMetadata
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to fetch onboarded moderators:', error);
+    res.status(500).json({ error: 'Failed to fetch onboarded moderators' });
+  }
+});
+
+// Get activity logs
+router.get('/logs/activity', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { limit = 50, skip = 0, action, userId } = req.query;
+
+    const query = {};
+    if (action) query.action = action;
+    if (userId) query.userId = userId;
+
+    const logs = await ActivityLog.find(query)
+      .sort({ timestamp: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip));
+
+    const total = await ActivityLog.countDocuments(query);
+
+    const formattedLogs = logs.map(log => ({
+      id: log.id,
+      action: log.action,
+      userId: log.userId,
+      description: log.description,
+      details: log.details,
+      timestamp: log.timestamp,
+      status: log.status,
+      metadata: log.metadata
+    }));
+
+    res.json({
+      success: true,
+      logs: formattedLogs,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to fetch activity logs:', error);
+    res.status(500).json({ error: 'Failed to fetch activity logs' });
+  }
+});
+
+// ============ USER MANAGEMENT ENDPOINTS (ADMIN ONLY) ============
+
+// GET all users with filter options
+router.get('/users/all', adminOnlyMiddleware, async (req, res) => {
+  try {
+    const { search, role, accountType, suspended, limit = 50, skip = 0 } = req.query;
+    
+    // Build query filter
+    const filter = {};
+    if (role) filter.role = role;
+    if (accountType) filter.accountType = accountType;
+    if (suspended !== undefined) filter.suspended = suspended === 'true';
+    if (search) {
+      filter.$or = [
+        { username: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } },
+        { id: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    const users = await User.find(filter)
+      .select('id email name username role accountType suspended suspendedReason suspendedAt age isPhotoVerified isPremium createdAt')
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .sort({ createdAt: -1 });
+    
+    const total = await User.countDocuments(filter);
+    
+    res.json({
+      success: true,
+      users,
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip)
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to fetch all users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// PATCH suspend/unsuspend user
+router.put('/users/:userId/suspend', adminOnlyMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { suspend, reason } = req.body;
+    
+    const user = await User.findOne({ id: userId });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (suspend) {
+      // Suspend user
+      user.suspended = true;
+      user.suspendedReason = reason || 'Account suspended by admin';
+      user.suspendedAt = new Date();
+    } else {
+      // Unsuspend user
+      user.suspended = false;
+      user.suspendedReason = null;
+      user.suspendedAt = null;
+    }
+    
+    await user.save();
+    
+    // Log the action
+    await logRoleChange(user.id, user.role, user.role, req.user.id);
+    
+    res.json({
+      success: true,
+      message: `User ${suspend ? 'suspended' : 'unsuspended'} successfully`,
+      user: {
+        id: user.id,
+        username: user.username,
+        suspended: user.suspended,
+        suspendedReason: user.suspendedReason
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to suspend/unsuspend user:', error);
+    res.status(500).json({ error: 'Failed to update user suspension status' });
+  }
+});
+
+// PUT change user role
+router.put('/users/:userId/role', adminOnlyMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newRole } = req.body;
+    
+    if (!['USER', 'MODERATOR', 'ADMIN'].includes(newRole)) {
+      return res.status(400).json({ error: 'Invalid role. Must be USER, MODERATOR, or ADMIN' });
+    }
+    
+    const user = await User.findOne({ id: userId });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const oldRole = user.role;
+    user.role = newRole;
+    await user.save();
+    
+    // Log the action
+    await logRoleChange(user.id, oldRole, newRole, req.user.id);
+    
+    res.json({
+      success: true,
+      message: `User role changed from ${oldRole} to ${newRole}`,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to change user role:', error);
+    res.status(500).json({ error: 'Failed to change user role' });
+  }
+});
+
+// PUT change account type
+router.put('/users/:userId/account-type', adminOnlyMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newAccountType } = req.body;
+    
+    if (!['APP', 'STANDALONE'].includes(newAccountType)) {
+      return res.status(400).json({ error: 'Invalid account type. Must be APP or STANDALONE' });
+    }
+    
+    const user = await User.findOne({ id: userId });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const oldAccountType = user.accountType;
+    user.accountType = newAccountType;
+    await user.save();
+    
+    res.json({
+      success: true,
+      message: `User account type changed from ${oldAccountType} to ${newAccountType}`,
+      user: {
+        id: user.id,
+        username: user.username,
+        accountType: user.accountType
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to change account type:', error);
+    res.status(500).json({ error: 'Failed to change account type' });
   }
 });
 

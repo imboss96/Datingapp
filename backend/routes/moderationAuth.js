@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import User from '../models/User.js';
+import ModeratorEarnings from '../models/ModeratorEarnings.js';
 
 const router = express.Router();
 
@@ -148,7 +149,7 @@ router.post('/register', async (req, res) => {
       name,
       age: 0, // Required field, default to 0 for external users
       accountType: 'STANDALONE', // Mark as standalone/external user
-      role: 'USER',
+      role: 'MODERATOR', // Set as MODERATOR so they appear in operators tab
       coins: 0,
       emailVerified: true, // Auto-verify for standalone users
       createdAt: new Date(),
@@ -157,6 +158,21 @@ router.post('/register', async (req, res) => {
 
     await newUser.save();
 
+    // Create ModeratorEarnings record for new user
+    const earnings = new ModeratorEarnings({
+      moderatorId: newUser.id,
+      sessionEarnings: 0,
+      totalEarnings: 0,
+      dailyEarnings: [],
+      lastResetAt: new Date(),
+      replyRate: 0
+    });
+    await earnings.save();
+
+    // Log signup
+    const { logSignup } = await import('../utils/activityLogger.js');
+    await logSignup(newUser.id, email.toLowerCase(), 'STANDALONE', { headers: req.headers || {} });
+
     // Generate JWT token
     const token = jwt.sign(
       {
@@ -164,7 +180,7 @@ router.post('/register', async (req, res) => {
         username: newUser.username,
         email: newUser.email,
         accountType: 'STANDALONE',
-        role: 'USER'
+        role: 'MODERATOR'
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRY }
@@ -175,7 +191,8 @@ router.post('/register', async (req, res) => {
       username: newUser.username,
       email: newUser.email,
       name: newUser.name,
-      accountType: 'STANDALONE'
+      accountType: 'STANDALONE',
+      role: 'MODERATOR'
     };
 
     res.status(201).json({

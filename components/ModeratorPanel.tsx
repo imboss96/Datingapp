@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import PhotoModerationPanel from './PhotoModerationPanel';
 import ChatModerationView from './ChatModerationView';
 import PhotoVerificationReviewPanel from './PhotoVerificationReviewPanel';
@@ -34,20 +33,10 @@ interface ModeratorChat {
   flaggedCount: number;
 }
 
-const FLAG_DATA = [
-  { name: 'Mon', count: 12 },
-  { name: 'Tue', count: 19 },
-  { name: 'Wed', count: 15 },
-  { name: 'Thu', count: 22 },
-  { name: 'Fri', count: 30 },
-  { name: 'Sat', count: 28 },
-  { name: 'Sun', count: 14 },
-];
-
 const INITIAL_FLAGS: FlaggedItem[] = [];
 
 const ModeratorPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'PHOTOS' | 'STALLED' | 'VERIFICATIONS'>('CHATS');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS'>('CHATS');
   const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
   const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
   const [chats, setChats] = useState<ModeratorChat[]>([]);
@@ -60,11 +49,23 @@ const ModeratorPanel: React.FC = () => {
   const [currentUserId] = useState<string>('moderator-' + Math.random().toString(36).substring(7));
   const [stalledChats, setStalledChats] = useState<any[]>([]);
   const [loadingStalled, setLoadingStalled] = useState(false);
+  const [standaloneOperators, setStandaloneOperators] = useState<any[]>([]);
+  const [onboardedModerators, setOnboardedModerators] = useState<any[]>([]);
+  const [loadingModerators, setLoadingModerators] = useState(false);
+  const [activityLog, setActivityLog] = useState<any[]>([]);
   const [moderators, setModerators] = useState<any[]>([]);
   const [userMap, setUserMap] = useState<Map<string, any>>(new Map());
   const [repliedChats, setRepliedChats] = useState<any[]>([]);
+  const [selectedModeratorInPending, setSelectedModeratorInPending] = useState<string | null>(null);
+  const [repliedChatsByModerator, setRepliedChatsByModerator] = useState<Map<string, any[]>>(new Map());
   const [loadingRepliedChats, setLoadingRepliedChats] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [userRoleFilter, setUserRoleFilter] = useState<string>('');
+  const [userAccountTypeFilter, setUserAccountTypeFilter] = useState<string>('');
+  const [userSuspendedFilter, setUserSuspendedFilter] = useState<string>('');
+  const [actioningUserId, setActioningUserId] = useState<string | null>(null);
 
   // Fetch flagged messages/items from backend
   const fetchFlaggedItems = async () => {
@@ -99,6 +100,39 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
+  // Fetch all operators/moderators
+  const fetchOperators = async () => {
+    try {
+      setLoadingModerators(true);
+      
+      // Fetch standalone moderators (from standalone signup)
+      const standaloneRes = await apiClient.get('/moderation/standalone');
+      setStandaloneOperators(standaloneRes.operators || []);
+      
+      // Fetch onboarded moderators (app users with moderator role)
+      const onboardedRes = await apiClient.get('/moderation/onboarded');
+      setOnboardedModerators(onboardedRes.moderators || []);
+      
+    } catch (error) {
+      console.error('Failed to fetch operators:', error);
+      setStandaloneOperators([]);
+      setOnboardedModerators([]);
+    } finally {
+      setLoadingModerators(false);
+    }
+  };
+
+  // Fetch activity log
+  const fetchActivityLog = async () => {
+    try {
+      const response = await apiClient.get('/moderation/logs/activity');
+      setActivityLog(response.logs || []);
+    } catch (error) {
+      console.error('Failed to fetch activity log:', error);
+      setActivityLog([]);
+    }
+  };
+
   // Fetch moderators
   const fetchModerators = async () => {
     try {
@@ -115,8 +149,9 @@ const ModeratorPanel: React.FC = () => {
 
   // Fetch chats on component mount
   useEffect(() => {
-    // Clear search when switching tabs
+    // Clear search and selected moderator when switching tabs
     setSearchQuery('');
+    setSelectedModeratorInPending(null);
     
     if (activeTab === 'PENDING') {
       fetchRepliedChats();
@@ -125,6 +160,12 @@ const ModeratorPanel: React.FC = () => {
     } else if (activeTab === 'STALLED') {
       fetchStalledChats();
       fetchModerators();
+    } else if (activeTab === 'OPERATORS') {
+      fetchOperators();
+    } else if (activeTab === 'RESOLVED') {
+      fetchActivityLog();
+    } else if (activeTab === 'USERS') {
+      fetchAllUsers();
     }
     
     // Set up auto-refresh based on active tab
@@ -135,6 +176,8 @@ const ModeratorPanel: React.FC = () => {
         fetchChats();
       } else if (activeTab === 'STALLED') {
         fetchStalledChats();
+      } else if (activeTab === 'USERS') {
+        fetchAllUsers();
       }
     }, 10000);
 
@@ -264,6 +307,18 @@ const ModeratorPanel: React.FC = () => {
 
       console.log('[DEBUG ModeratorPanel] Setting replied chats:', response.repliedChats);
       setRepliedChats(response.repliedChats || []);
+      
+      // Group chats by moderator
+      const grouped = new Map<string, any[]>();
+      response.repliedChats?.forEach((chat: any) => {
+        const modId = chat.assignedModerator || 'unassigned';
+        if (!grouped.has(modId)) {
+          grouped.set(modId, []);
+        }
+        grouped.get(modId)!.push(chat);
+      });
+      setRepliedChatsByModerator(grouped);
+      
     } catch (error) {
       console.error('[ERROR ModeratorPanel] Failed to fetch replied chats:', error);
       setRepliedChats([]);
@@ -280,6 +335,81 @@ const ModeratorPanel: React.FC = () => {
       // Could also refresh moderators list if needed
     } catch (error) {
       console.error('[ERROR ModeratorPanel] Failed to assign moderator:', error);
+    }
+  };
+
+  // Fetch all users for management
+  const fetchAllUsers = async () => {
+    try {
+      setLoadingUsers(true);
+
+      // Build query string for filters
+      const params: any = {};
+      if (searchQuery.trim()) params.search = searchQuery;
+      if (userRoleFilter) params.role = userRoleFilter;
+      if (userAccountTypeFilter) params.accountType = userAccountTypeFilter;
+      if (userSuspendedFilter) params.suspended = userSuspendedFilter;
+
+      const query = new URLSearchParams(params).toString();
+      const response = await apiClient.get(
+        `/moderation/users/all${query ? `?${query}` : ''}`,
+      );
+
+      // Backend returns { success, users, total, ... }
+      setAllUsers((response as any).users || []);
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to fetch users:', error);
+      setAllUsers([]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  // Suspend/unsuspend user
+  const toggleUserSuspension = async (userId: string, shouldSuspend: boolean, reason?: string) => {
+    try {
+      setActioningUserId(userId);
+      await apiClient.put(`/api/moderation/users/${userId}/suspend`, {
+        suspend: shouldSuspend,
+        reason: reason || 'Suspended by admin'
+      });
+      // Refresh users list
+      await fetchAllUsers();
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to update user suspension:', error);
+      alert('Failed to update user suspension status');
+    } finally {
+      setActioningUserId(null);
+    }
+  };
+
+  // Change user role
+  const changeUserRole = async (userId: string, newRole: string) => {
+    try {
+      setActioningUserId(userId);
+      await apiClient.put(`/api/moderation/users/${userId}/role`, { newRole });
+      // Refresh users list
+      await fetchAllUsers();
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to change user role:', error);
+      alert('Failed to change user role');
+    } finally {
+      setActioningUserId(null);
+    }
+  };
+
+  // Change account type
+  const changeAccountType = async (userId: string, newAccountType: string) => {
+    try {
+      setActioningUserId(userId);
+      await apiClient.put(`/api/moderation/users/${userId}/account-type`, { newAccountType });
+      // Refresh users list
+      await fetchAllUsers();
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to change account type:', error);
+      alert('Failed to change account type');
+    } finally {
+      setActioningUserId(null);
     }
   };
 
@@ -435,57 +565,66 @@ const ModeratorPanel: React.FC = () => {
       )}
 
       <div className="p-4 overflow-y-auto">
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
-          <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Security Analytics</h3>
-          <div className="h-40 w-full" style={{ minWidth: 0, minHeight: 120 }}>
-            <ResponsiveContainer width="100%" height={120}>
-              <BarChart data={FLAG_DATA}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 10}} />
-                <YAxis hide />
-                <Tooltip cursor={{fill: '#f8fafc'}} />
-                <Bar dataKey="count" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="flex bg-gray-200 p-1 rounded-xl mb-6">
+        <div className="flex gap-2 mb-6 bg-gray-100 p-1.5 rounded-xl border border-gray-200">
           <button 
             onClick={() => setActiveTab('CHATS')}
-            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'CHATS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
+              activeTab === 'CHATS' 
+                ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700' 
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
           >
-            Live Chats
+            <i className="fa-solid fa-comments mr-1.5"></i>Live Chats
           </button>
           <button 
             onClick={() => setActiveTab('PENDING')}
-            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'PENDING' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
+              activeTab === 'PENDING' 
+                ? 'bg-emerald-600 text-white shadow-lg hover:bg-emerald-700' 
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
           >
-            Replied Chats
+            <i className="fa-solid fa-check-circle mr-1.5"></i>Replied Chats
           </button>
           <button 
             onClick={() => setActiveTab('STALLED')}
-            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'STALLED' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
+              activeTab === 'STALLED' 
+                ? 'bg-amber-600 text-white shadow-lg hover:bg-amber-700' 
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
           >
-            Support
+            <i className="fa-solid fa-headset mr-1.5"></i>Support
           </button>
           <button 
-            onClick={() => setActiveTab('PHOTOS')}
-            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'PHOTOS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+            onClick={() => setActiveTab('OPERATORS')}
+            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
+              activeTab === 'OPERATORS' 
+                ? 'bg-purple-600 text-white shadow-lg hover:bg-purple-700' 
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
           >
-            Photos
+            <i className="fa-solid fa-users-gear mr-1.5"></i>Operators/Moderators
           </button>
           <button 
-            onClick={() => setActiveTab('VERIFICATIONS')}
-            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'VERIFICATIONS' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+            onClick={() => setActiveTab('USERS')}
+            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
+              activeTab === 'USERS' 
+                ? 'bg-pink-600 text-white shadow-lg hover:bg-pink-700' 
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
           >
-            Verifications
+            <i className="fa-solid fa-users mr-1.5"></i>Users
           </button>
           <button 
             onClick={() => setActiveTab('RESOLVED')}
-            className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${activeTab === 'RESOLVED' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}
+            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
+              activeTab === 'RESOLVED' 
+                ? 'bg-indigo-600 text-white shadow-lg hover:bg-indigo-700' 
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
           >
-            Log
+            <i className="fa-solid fa-list mr-1.5"></i>Log
           </button>
         </div>
 
@@ -515,7 +654,7 @@ const ModeratorPanel: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-2 mb-2">
               <div className="text-[10px] text-gray-500">
-                Chats that have been replied to by moderators
+                {selectedModeratorInPending ? 'Chats from selected moderator' : 'Chats grouped by moderator'}
               </div>
               <button
                 onClick={() => fetchRepliedChats()}
@@ -526,6 +665,7 @@ const ModeratorPanel: React.FC = () => {
                 Refresh
               </button>
             </div>
+
             {loadingRepliedChats ? (
               <div className="text-center py-8">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
@@ -536,67 +676,143 @@ const ModeratorPanel: React.FC = () => {
                 <i className="fa-solid fa-check-circle text-4xl text-emerald-100 mb-2"></i>
                 <p className="text-gray-400 text-sm">No replied chats yet. Get started!</p>
               </div>
-            ) : getFilteredRepliedChats().length === 0 ? (
-              <div className="text-center py-12">
-                <i className="fa-solid fa-search text-4xl text-gray-200 mb-2"></i>
-                <p className="text-gray-400 text-sm">No chats match your search "{searchQuery}"</p>
+            ) : selectedModeratorInPending ? (
+              // Show chats for selected moderator
+              <div>
                 <button
-                  onClick={() => setSearchQuery('')}
-                  className="text-blue-500 hover:text-blue-600 text-sm mt-2"
+                  onClick={() => setSelectedModeratorInPending(null)}
+                  className="mb-4 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg flex items-center gap-2 transition-all"
                 >
-                  Clear search
+                  <i className="fa-solid fa-arrow-left"></i>
+                  Back to Moderators
                 </button>
+
+                {(() => {
+                  const selectedChats = repliedChatsByModerator.get(selectedModeratorInPending) || [];
+                  const filtered = selectedChats.filter(chat => {
+                    if (!searchQuery) return true;
+                    const user1 = userMap.get(chat.participants[0]);
+                    const user2 = userMap.get(chat.participants[1]);
+                    const searchLower = searchQuery.toLowerCase();
+                    return (
+                      user1?.name?.toLowerCase().includes(searchLower) ||
+                      user1?.username?.toLowerCase().includes(searchLower) ||
+                      user2?.name?.toLowerCase().includes(searchLower) ||
+                      user2?.username?.toLowerCase().includes(searchLower) ||
+                      chat.id.toLowerCase().includes(searchLower)
+                    );
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-12">
+                        <i className="fa-solid fa-search text-4xl text-gray-200 mb-2"></i>
+                        <p className="text-gray-400 text-sm">No chats match your search "{searchQuery}"</p>
+                        <button
+                          onClick={() => setSearchQuery('')}
+                          className="text-blue-500 hover:text-blue-600 text-sm mt-2"
+                        >
+                          Clear search
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {filtered.map(chat => {
+                        const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
+                        const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
+                        const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
+                        const replyTime = new Date(chat.markedAsRepliedAt).toLocaleDateString() + ' ' + new Date(chat.markedAsRepliedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        
+                        return (
+                          <div 
+                            key={chat.id} 
+                            className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all"
+                          >
+                            <div className="flex justify-between items-start mb-3">
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                                  {(user1.name || user1.username)[0]?.toUpperCase()}{(user2.name || user2.username)[0]?.toUpperCase()}
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className="text-sm font-bold text-gray-900">{participantNames}</h4>
+                                  <p className="text-[10px] text-gray-500">Chat ID: {chat.id}</p>
+                                </div>
+                              </div>
+                              <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">Replied</span>
+                            </div>
+                            
+                            <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100">
+                              <p className="text-xs text-gray-600 font-semibold mb-1">Last Message:</p>
+                              {chat.messages && chat.messages.length > 0 ? (
+                                <p className="text-xs text-gray-700 italic">"{chat.messages[chat.messages.length - 1].text.slice(0, 100)}{chat.messages[chat.messages.length - 1].text.length > 100 ? '...' : ''}"</p>
+                              ) : (
+                                <p className="text-xs text-gray-500 italic">No messages</p>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <div className="text-[10px] text-gray-500">
+                                <i className="fa-solid fa-clock text-emerald-500 mr-1"></i>
+                                Replied: {replyTime}
+                              </div>
+                              <button 
+                                onClick={() => { setSelectedChat(chat); setViewingChatModal(chat); }}
+                                className="py-1 px-3 bg-blue-500 text-white text-[10px] font-bold rounded-lg shadow-sm hover:bg-blue-600 active:scale-95 transition-all"
+                              >
+                                View Chat
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
-              getFilteredRepliedChats().map(chat => {
-                // Get user data from map, fallback to participant ID
-                const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
-                const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
-                const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
-                const replyTime = new Date(chat.markedAsRepliedAt).toLocaleDateString() + ' ' + new Date(chat.markedAsRepliedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                
-                return (
-                  <div 
-                    key={chat.id} 
-                    className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
-                          {(user1.name || user1.username)[0]?.toUpperCase()}{(user2.name || user2.username)[0]?.toUpperCase()}
+              // Show moderators list
+              <div className="space-y-3">
+                {Array.from(repliedChatsByModerator.entries()).map(([moderatorId, chats]) => {
+                  const moderatorName = chats[0]?.moderatorDetails?.name || 
+                                       userMap.get(moderatorId)?.name || 
+                                       (moderatorId === 'unassigned' ? 'Unassigned' : moderatorId);
+                  const moderatorEmail = chats[0]?.moderatorDetails?.email || 
+                                        userMap.get(moderatorId)?.email || '';
+                  
+                  return (
+                    <button
+                      key={moderatorId}
+                      onClick={() => setSelectedModeratorInPending(moderatorId)}
+                      className="w-full text-left bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg">
+                            {moderatorName[0]?.toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-sm font-bold text-gray-900">{moderatorName}</h4>
+                            {moderatorEmail && <p className="text-xs text-gray-500">{moderatorEmail}</p>}
+                            <p className="text-xs text-gray-400 mt-1">
+                              <i className="fa-solid fa-comments mr-1"></i>
+                              {chats.length} chat{chats.length !== 1 ? 's' : ''} replied
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-bold text-gray-900">{participantNames}</h4>
-                          <p className="text-[10px] text-gray-500">Chat ID: {chat.id}</p>
+                        <div className="flex items-center gap-2">
+                          <div className="bg-blue-50 rounded-full px-3 py-1">
+                            <span className="text-blue-600 font-bold text-sm">{chats.length}</span>
+                          </div>
+                          <i className="fa-solid fa-chevron-right text-gray-400"></i>
                         </div>
                       </div>
-                      <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">Replied</span>
-                    </div>
-                    
-                    <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100">
-                      <p className="text-xs text-gray-600 font-semibold mb-1">Last Message:</p>
-                      {chat.messages && chat.messages.length > 0 ? (
-                        <p className="text-xs text-gray-700 italic">"{chat.messages[chat.messages.length - 1].text.slice(0, 100)}{chat.messages[chat.messages.length - 1].text.length > 100 ? '...' : ''}"</p>
-                      ) : (
-                        <p className="text-xs text-gray-500 italic">No messages</p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="text-[10px] text-gray-500">
-                        <i className="fa-solid fa-clock text-emerald-500 mr-1"></i>
-                        Replied: {replyTime}
-                      </div>
-                      <button 
-                        onClick={() => { setSelectedChat(chat); setViewingChatModal(chat); }}
-                        className="py-1 px-3 bg-blue-500 text-white text-[10px] font-bold rounded-lg shadow-sm hover:bg-blue-600 active:scale-95 transition-all"
-                      >
-                        View Chat
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
@@ -791,21 +1007,312 @@ const ModeratorPanel: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'PHOTOS' && (
-          <PhotoModerationPanel embedded={true} isAdmin={true} />
+        {activeTab === 'OPERATORS' && (
+          <div className="space-y-6">
+            {/* Standalone Operators */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <i className="fa-solid fa-user-tie text-blue-600"></i>
+                Standalone Operators ({standaloneOperators.length})
+              </h3>
+              {loadingModerators ? (
+                <div className="text-center py-4 text-gray-400"><i className="fa-solid fa-spinner animate-spin"></i></div>
+              ) : standaloneOperators.length === 0 ? (
+                <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-400 text-sm">No standalone operators</div>
+              ) : (
+                <div className="space-y-2">
+                  {standaloneOperators.map((op: any) => (
+                    <div key={op.id} className="bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-bold text-sm text-gray-900">{op.name || op.username}</p>
+                          <p className="text-xs text-gray-500">{op.email}</p>
+                          <p className="text-xs text-gray-400 mt-1">ID: {op.id.slice(0, 12)}...</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-block bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded">
+                            {op.chatsModerated || 0} chats
+                          </span>
+                          <p className="text-xs text-gray-400 mt-1">Joined {new Date(op.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Onboarded Moderators */}
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                <i className="fa-solid fa-user-check text-green-600"></i>
+                Onboarded Moderators ({onboardedModerators.length})
+              </h3>
+              {loadingModerators ? (
+                <div className="text-center py-4 text-gray-400"><i className="fa-solid fa-spinner animate-spin"></i></div>
+              ) : onboardedModerators.length === 0 ? (
+                <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-400 text-sm">No onboarded moderators</div>
+              ) : (
+                <div className="space-y-2">
+                  {onboardedModerators.map((mod: any) => (
+                    <div key={mod.id} className="bg-white p-3 rounded-lg border border-gray-200 hover:border-green-300 transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-bold text-sm text-gray-900">{mod.name || mod.username}</p>
+                          <p className="text-xs text-gray-500">{mod.email}</p>
+                          <p className="text-xs text-gray-400 mt-1">ID: {mod.id.slice(0, 12)}...</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-block bg-green-100 text-green-700 text-xs px-2 py-1 rounded">
+                            {mod.chatsModerated || 0} chats
+                          </span>
+                          <p className="text-xs text-gray-400 mt-1">Since {new Date(mod.onboardedAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
-        {activeTab === 'VERIFICATIONS' && (
-          <AdminPhotoVerificationDashboard />
+        {activeTab === 'USERS' && (
+          <div className="space-y-4">
+            {/* Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-6 bg-white p-4 rounded-xl border border-gray-200">
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">Search</label>
+                <input
+                  type="text"
+                  placeholder="Name, email, username..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">Role</label>
+                <select
+                  value={userRoleFilter}
+                  onChange={(e) => setUserRoleFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                >
+                  <option value="">All Roles</option>
+                  <option value="USER">User</option>
+                  <option value="MODERATOR">Moderator</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">Account Type</label>
+                <select
+                  value={userAccountTypeFilter}
+                  onChange={(e) => setUserAccountTypeFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                >
+                  <option value="">All Types</option>
+                  <option value="APP">App</option>
+                  <option value="STANDALONE">Standalone</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">Status</label>
+                <select
+                  value={userSuspendedFilter}
+                  onChange={(e) => setUserSuspendedFilter(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                >
+                  <option value="">All Users</option>
+                  <option value="false">Active</option>
+                  <option value="true">Suspended</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">&nbsp;</label>
+                <button 
+                  onClick={() => fetchAllUsers()}
+                  disabled={loadingUsers}
+                  className="w-full py-2 px-3 bg-pink-600 text-white text-xs font-bold rounded-lg hover:bg-pink-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <i className={`fa-solid fa-rotate-right ${loadingUsers ? 'animate-spin' : ''}`}></i>
+                  {loadingUsers ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+
+            {/* Users List */}
+            {loadingUsers ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                <p className="text-gray-500 text-sm mt-2">Loading users...</p>
+              </div>
+            ) : allUsers.length === 0 ? (
+              <div className="text-center py-12">
+                <i className="fa-solid fa-users text-4xl text-gray-200 mb-2"></i>
+                <p className="text-gray-400 text-sm">No users found with current filters.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {allUsers.map((user) => (
+                  <div 
+                    key={user.id} 
+                    className={`bg-white p-4 rounded-2xl border-2 transition-all ${
+                      user.suspended ? 'border-red-200 bg-red-50' : 'border-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      {/* User Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold text-sm">
+                            {user.name?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-gray-900">
+                              {user.name || 'N/A'}
+                              {user.suspended && <span className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">SUSPENDED</span>}
+                            </h4>
+                            <p className="text-xs text-gray-500">@{user.username || 'unknown'}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3 text-xs">
+                          <div className="truncate">
+                            <p className="text-gray-500 font-semibold">Email</p>
+                            <p className="text-gray-700 truncate text-[10px]">{user.email}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 font-semibold">Role</p>
+                            <p className={`font-bold ${
+                              user.role === 'ADMIN' ? 'text-red-600' :
+                              user.role === 'MODERATOR' ? 'text-blue-600' :
+                              'text-gray-600'
+                            }`}>{user.role}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 font-semibold">Type</p>
+                            <p className={`font-bold ${user.accountType === 'STANDALONE' ? 'text-purple-600' : 'text-blue-600'}`}>
+                              {user.accountType}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 font-semibold">Verified</p>
+                            <p className="text-gray-700">
+                              <i className={`fa-solid fa-${user.isPhotoVerified ? 'check-circle text-green-500' : 'circle text-gray-400'}`}></i>
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500 font-semibold">Age</p>
+                            <p className="text-gray-700">{user.age || 'N/A'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex flex-col gap-2 min-w-fit">
+                        {/* Suspension Toggle */}
+                        <button
+                          onClick={() => toggleUserSuspension(user.id, !user.suspended, 'Admin action')}
+                          disabled={actioningUserId === user.id}
+                          className={`text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+                            user.suspended
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200 disabled:opacity-50'
+                              : 'bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50'
+                          }`}
+                        >
+                          <i className={`fa-solid fa-${user.suspended ? 'unlock' : 'lock'}`}></i>
+                          {actioningUserId === user.id ? '...' : (user.suspended ? 'Unsuspend' : 'Suspend')}
+                        </button>
+
+                        {/* Role Change */}
+                        <select
+                          value={user.role}
+                          onChange={(e) => changeUserRole(user.id, e.target.value)}
+                          disabled={actioningUserId === user.id}
+                          className="text-xs font-bold px-2 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-50 transition-all"
+                        >
+                          <option value="USER">→ User</option>
+                          <option value="MODERATOR">→ Moderator</option>
+                          <option value="ADMIN">→ Admin</option>
+                        </select>
+
+                        {/* Account Type Change */}
+                        <select
+                          value={user.accountType}
+                          onChange={(e) => changeAccountType(user.id, e.target.value)}
+                          disabled={actioningUserId === user.id}
+                          className="text-xs font-bold px-2 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-all"
+                        >
+                          <option value="APP">→ App</option>
+                          <option value="STANDALONE">→ Standalone</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Suspension Info */}
+                    {user.suspended && user.suspendedReason && (
+                      <div className="mt-3 pt-3 border-t border-red-200">
+                        <p className="text-xs text-red-600">
+                          <i className="fa-solid fa-exclamation-triangle mr-1"></i>
+                          Reason: {user.suspendedReason}
+                        </p>
+                        {user.suspendedAt && (
+                          <p className="text-xs text-red-500 mt-1">
+                            Suspended: {new Date(user.suspendedAt).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'RESOLVED' && (
           <div className="space-y-3">
-            {resolvedItems.length === 0 ? (
+            <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+              <i className="fa-solid fa-list text-purple-600"></i>
+              Activity Log
+            </h3>
+            {activityLog.length === 0 && resolvedItems.length === 0 ? (
               <div className="text-center py-12">
                 <i className="fa-solid fa-inbox text-4xl text-gray-200 mb-2"></i>
-                <p className="text-gray-400 text-sm">No resolved actions yet.</p>
+                <p className="text-gray-400 text-sm">No activity logged yet.</p>
               </div>
+            ) : activityLog.length > 0 ? (
+              activityLog.map((log: any) => (
+                <div key={log.id} className="bg-white p-4 rounded-2xl border border-gray-100 hover:border-gray-200 transition-all">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${
+                        log.action === 'signup' ? 'bg-green-500' :
+                        log.action === 'payment_change' ? 'bg-blue-500' :
+                        log.action === 'moderator_action' ? 'bg-purple-500' :
+                        log.action === 'ban' ? 'bg-red-500' :
+                        'bg-gray-400'
+                      }`}>
+                        {log.action === 'signup' ? '✓' :
+                         log.action === 'payment_change' ? '💳' :
+                         log.action === 'moderator_action' ? '⚖' :
+                         log.action === 'ban' ? '✕' :
+                         '•'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-bold text-gray-900">{log.description}</h4>
+                        <p className="text-[10px] text-gray-600 mt-1">{log.details}</p>
+                        {log.userId && <p className="text-[10px] text-gray-500 mt-1">User: {log.userId.slice(0, 10)}...</p>}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-2">
+                      <p className="text-[10px] text-gray-400">{new Date(log.timestamp).toLocaleString()}</p>
+                      <span className="inline-block mt-1 bg-gray-100 text-gray-700 text-[9px] px-2 py-0.5 rounded">{log.action}</span>
+                    </div>
+                  </div>
+                </div>
+              ))
             ) : (
               resolvedItems.map(item => (
                 <div key={item.id} className="bg-white p-4 rounded-2xl border border-gray-100">

@@ -190,7 +190,10 @@ const StandaloneModeratorDashboard: React.FC = () => {
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center text-white font-bold">
                 <i className="fa-solid fa-shield-halved"></i>
               </div>
-              <h1 className="text-2xl font-black text-gray-900">Moderation Portal</h1>
+              <div>
+                <h1 className="text-2xl font-black text-gray-900">Moderation Portal</h1>
+                <p className="text-xs text-gray-500">Standalone Moderator Dashboard</p>
+              </div>
             </div>
             <button
               onClick={logout}
@@ -204,23 +207,27 @@ const StandaloneModeratorDashboard: React.FC = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tabs */}
-        <div className="mb-8 flex gap-4 border-b border-gray-200 overflow-x-auto">
+        {/* Tabs - Redesigned like Moderation Center */}
+        <div className="flex gap-2 mb-8 bg-gray-100 p-1.5 rounded-xl border border-gray-200">
           {[
-            { id: 'overview', label: 'Overview', icon: 'fa-chart-line' },
-            { id: 'profile', label: 'Profile', icon: 'fa-user' },
-            { id: 'moderation', label: 'Moderation', icon: 'fa-comments' }
+            { id: 'overview', label: 'Overview', icon: 'fa-chart-line', color: 'blue' },
+            { id: 'profile', label: 'Profile', icon: 'fa-user', color: 'purple' },
+            { id: 'moderation', label: 'Moderation', icon: 'fa-comments', color: 'emerald' }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-3 font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+              className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
                 activeTab === tab.id
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-600 hover:text-gray-900'
+                  ? tab.color === 'blue'
+                    ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700'
+                    : tab.color === 'purple'
+                    ? 'bg-purple-600 text-white shadow-lg hover:bg-purple-700'
+                    : 'bg-emerald-600 text-white shadow-lg hover:bg-emerald-700'
+                  : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
-              <i className={`fa-solid ${tab.icon}`}></i>
+              <i className={`fa-solid ${tab.icon} mr-1.5`}></i>
               {tab.label}
             </button>
           ))}

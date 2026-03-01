@@ -55,6 +55,7 @@ export interface ModeratorChat {
   messages: Message[];
   lastUpdated: number;
   flaggedCount: number;
+  requestInitiator?: string;
 }
 
 interface Props {
@@ -296,7 +297,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
       } catch (error) {
         console.error('Failed to fetch unreplied chats:', error);
         // Default to counting messages with at least one reply from operator
-        const operatorId = currentChat.participants[1];
+        const { operatorId } = determineParticipantRoles();
         const operatorReplies = messages.filter(m => m.senderId === operatorId).length;
         setIsCurrentChatReplied(operatorReplies > 0);
       }
@@ -658,9 +659,30 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     setProfileEditError(null);
   };
 
-  // Get client and operator profiles
-  const clientId = currentChat.participants[0]; // Person who initiated chat (John)
-  const operatorId = currentChat.participants[1]; // Person intended to receive (Profile X)
+  // Determine client (initiator) and operator (recipient) roles for this chat
+  const determineParticipantRoles = () => {
+    // Prefer explicit requestInitiator when available from backend
+    const explicitInitiator = (currentChat as any).requestInitiator as string | undefined;
+    let clientId = explicitInitiator;
+
+    // Fallback: use sender of earliest non‑moderation message
+    if (!clientId && messages.length > 0) {
+      const sortedByTime = [...messages].sort((a, b) => a.timestamp - b.timestamp);
+      const firstNonModeration = sortedByTime.find(m => !(m as any).isModerationResponse);
+      clientId = (firstNonModeration || sortedByTime[0]).senderId;
+    }
+
+    // Final fallback: first participant
+    if (!clientId) {
+      clientId = currentChat.participants[0];
+    }
+
+    const operatorId = currentChat.participants.find(p => p !== clientId) || currentChat.participants[0];
+    return { clientId, operatorId };
+  };
+
+  const { clientId, operatorId } = determineParticipantRoles();
+
   const clientProfile = users.get(clientId) || { id: clientId, username: clientId, name: 'User' };
   const operatorProfile = users.get(operatorId) || { id: operatorId, username: operatorId, name: 'User' };
 
@@ -1079,7 +1101,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                 ) : (
                   filteredMessages.map((msg) => {
                     const sender = getMessageUserInfo(msg.senderId);
-                    const isInitiator = msg.senderId === chat.participants[0];
+                    const isInitiator = msg.senderId === clientId;
                     return (
                       <div
                         key={msg.id}
