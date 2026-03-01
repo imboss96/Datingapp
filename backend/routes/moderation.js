@@ -3,6 +3,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import User from '../models/User.js';
 import Chat from '../models/Chat.js';
 import ModeratorEarnings from '../models/ModeratorEarnings.js';
+import PaymentMethod from '../models/PaymentMethod.js';
+import PaymentTransaction from '../models/PaymentTransaction.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
@@ -709,6 +711,376 @@ router.get('/earnings-history', modOnlyMiddleware, async (req, res) => {
   } catch (error) {
     console.error('[ERROR moderation] Failed to get earnings history:', error);
     res.status(500).json({ error: 'Failed to get earnings history' });
+  }
+});
+
+// ==================== PAYMENT ENDPOINTS ====================
+
+// Get all payment methods for a moderator
+router.get('/payment-methods/:moderatorId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId } = req.params;
+    
+    // Verify moderator can only access their own payment methods
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const paymentMethods = await PaymentMethod.find({ 
+      moderatorId,
+      isActive: true 
+    }).select('-details').sort({ isDefault: -1, createdAt: -1 });
+
+    res.json({
+      success: true,
+      paymentMethods: paymentMethods || [],
+      count: paymentMethods.length
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to get payment methods:', error);
+    res.status(500).json({ error: 'Failed to get payment methods' });
+  }
+});
+
+// Add a new payment method
+router.post('/payment-methods/:moderatorId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId } = req.params;
+    const { type, name, details, lastFourDigits, bankName } = req.body;
+
+    // Verify moderator can only add their own payment methods
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Validate required fields
+    if (!type || !name || !details) {
+      return res.status(400).json({ error: 'Missing required fields: type, name, details' });
+    }
+
+    // Generate unique ID
+    const id = `pm_${moderatorId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Check if this should be the default
+    const existingMethods = await PaymentMethod.find({ moderatorId, isActive: true });
+    const isDefault = existingMethods.length === 0;
+
+    const paymentMethod = await PaymentMethod.create({
+      id,
+      moderatorId,
+      type,
+      name,
+      details, // In production, encrypt this
+      lastFourDigits,
+      bankName,
+      isDefault,
+      isActive: true
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Payment method added successfully',
+      paymentMethod: {
+        id: paymentMethod.id,
+        type: paymentMethod.type,
+        name: paymentMethod.name,
+        lastFourDigits: paymentMethod.lastFourDigits,
+        bankName: paymentMethod.bankName,
+        isDefault: paymentMethod.isDefault,
+        createdAt: paymentMethod.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to add payment method:', error);
+    res.status(500).json({ error: 'Failed to add payment method' });
+  }
+});
+
+// Update a payment method
+router.put('/payment-methods/:moderatorId/:methodId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId, methodId } = req.params;
+    const { type, name, details, lastFourDigits, bankName } = req.body;
+
+    // Verify moderator can only update their own payment methods
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const paymentMethod = await PaymentMethod.findOne({ 
+      id: methodId, 
+      moderatorId 
+    });
+
+    if (!paymentMethod) {
+      return res.status(404).json({ error: 'Payment method not found' });
+    }
+
+    // Update fields
+    if (type) paymentMethod.type = type;
+    if (name) paymentMethod.name = name;
+    if (details) paymentMethod.details = details; // In production, encrypt this
+    if (lastFourDigits) paymentMethod.lastFourDigits = lastFourDigits;
+    if (bankName) paymentMethod.bankName = bankName;
+    
+    paymentMethod.lastUpdated = new Date();
+    await paymentMethod.save();
+
+    res.json({
+      success: true,
+      message: 'Payment method updated successfully',
+      paymentMethod: {
+        id: paymentMethod.id,
+        type: paymentMethod.type,
+        name: paymentMethod.name,
+        lastFourDigits: paymentMethod.lastFourDigits,
+        bankName: paymentMethod.bankName,
+        isDefault: paymentMethod.isDefault,
+        updatedAt: paymentMethod.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to update payment method:', error);
+    res.status(500).json({ error: 'Failed to update payment method' });
+  }
+});
+
+// Delete a payment method
+router.delete('/payment-methods/:moderatorId/:methodId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId, methodId } = req.params;
+
+    // Verify moderator can only delete their own payment methods
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const paymentMethod = await PaymentMethod.findOne({ 
+      id: methodId, 
+      moderatorId 
+    });
+
+    if (!paymentMethod) {
+      return res.status(404).json({ error: 'Payment method not found' });
+    }
+
+    // If this was the default, set another as default
+    if (paymentMethod.isDefault) {
+      const nextMethod = await PaymentMethod.findOne({
+        moderatorId,
+        id: { $ne: methodId },
+        isActive: true
+      });
+
+      if (nextMethod) {
+        nextMethod.isDefault = true;
+        await nextMethod.save();
+      }
+    }
+
+    // Soft delete - mark as inactive
+    paymentMethod.isActive = false;
+    await paymentMethod.save();
+
+    res.json({
+      success: true,
+      message: 'Payment method deleted successfully'
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to delete payment method:', error);
+    res.status(500).json({ error: 'Failed to delete payment method' });
+  }
+});
+
+// Set a payment method as default
+router.put('/payment-methods/:moderatorId/:methodId/set-default', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId, methodId } = req.params;
+
+    // Verify moderator can only update their own payment methods
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Remove default from all other methods
+    await PaymentMethod.updateMany(
+      { moderatorId, isActive: true },
+      { isDefault: false }
+    );
+
+    // Set this method as default
+    const paymentMethod = await PaymentMethod.findOne({
+      id: methodId,
+      moderatorId
+    });
+
+    if (!paymentMethod) {
+      return res.status(404).json({ error: 'Payment method not found' });
+    }
+
+    paymentMethod.isDefault = true;
+    await paymentMethod.save();
+
+    res.json({
+      success: true,
+      message: 'Default payment method updated',
+      paymentMethod: {
+        id: paymentMethod.id,
+        type: paymentMethod.type,
+        name: paymentMethod.name,
+        isDefault: paymentMethod.isDefault
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to set default payment method:', error);
+    res.status(500).json({ error: 'Failed to set default payment method' });
+  }
+});
+
+// Get payment balance
+router.get('/payment-balance/:moderatorId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId } = req.params;
+
+    // Verify moderator can only access their own balance
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Get pending transactions (not yet paid out)
+    const pendingTransactions = await PaymentTransaction.find({
+      moderatorId,
+      status: { $in: ['pending', 'processing'] }
+    });
+
+    // Calculate balance
+    let balance = 0;
+    pendingTransactions.forEach(tx => {
+      if (tx.transactionType === 'payout') {
+        balance -= tx.amount;
+      } else {
+        balance += tx.netAmount;
+      }
+    });
+
+    // Also get from earnings
+    let earnings = await ModeratorEarnings.findOne({ moderatorId });
+    if (earnings) {
+      balance += earnings.sessionEarnings || 0;
+    }
+
+    res.json({
+      success: true,
+      balance: Math.max(0, balance),
+      pendingPayments: pendingTransactions.length,
+      currency: 'USD'
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to get payment balance:', error);
+    res.status(500).json({ error: 'Failed to get payment balance' });
+  }
+});
+
+// Get payment history
+router.get('/payment-history/:moderatorId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId } = req.params;
+    const { limit = 20, skip = 0 } = req.query;
+
+    // Verify moderator can only access their own history
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    const payments = await PaymentTransaction.find({ moderatorId })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .select('-details -errorMessage');
+
+    const total = await PaymentTransaction.countDocuments({ moderatorId });
+
+    res.json({
+      success: true,
+      payments: payments || [],
+      total,
+      limit: parseInt(limit),
+      skip: parseInt(skip),
+      hasMore: parseInt(skip) + parseInt(limit) < total
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to get payment history:', error);
+    res.status(500).json({ error: 'Failed to get payment history' });
+  }
+});
+
+// Record a payment transaction
+router.post('/record-payment/:moderatorId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId } = req.params;
+    const { amount, methodId, description, transactionType = 'payout' } = req.body;
+
+    // Verify moderator can only record their own payments
+    if (req.userId !== moderatorId) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
+    // Validate required fields
+    if (!amount || !methodId) {
+      return res.status(400).json({ error: 'Missing required fields: amount, methodId' });
+    }
+
+    // Verify payment method exists and belongs to moderator
+    const paymentMethod = await PaymentMethod.findOne({
+      id: methodId,
+      moderatorId,
+      isActive: true
+    });
+
+    if (!paymentMethod) {
+      return res.status(404).json({ error: 'Payment method not found' });
+    }
+
+    // Generate unique transaction ID
+    const id = `txn_${moderatorId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Calculate processing fee (example: 2.5%)
+    const processingFee = amount * 0.025;
+    const netAmount = amount - processingFee;
+
+    const paymentTransaction = await PaymentTransaction.create({
+      id,
+      moderatorId,
+      paymentMethodId: methodId,
+      amount,
+      processingFee,
+      netAmount,
+      status: 'pending',
+      transactionType,
+      description: description || 'Moderation earnings',
+      events: [{
+        status: 'pending',
+        notes: 'Transaction initiated',
+        timestamp: new Date()
+      }]
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Payment recorded successfully',
+      transaction: {
+        id: paymentTransaction.id,
+        amount: paymentTransaction.amount,
+        netAmount: paymentTransaction.netAmount,
+        processingFee: paymentTransaction.processingFee,
+        status: paymentTransaction.status,
+        description: paymentTransaction.description,
+        createdAt: paymentTransaction.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to record payment:', error);
+    res.status(500).json({ error: 'Failed to record payment' });
   }
 });
 
