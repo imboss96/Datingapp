@@ -42,12 +42,20 @@ const StandaloneModeratorDashboard: React.FC = () => {
   const [sessionEarnings, setSessionEarnings] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
   const [moderatedChatsCount, setModeratedChatsCount] = useState(0);
+  
+  // Payment tracking
+  const [paymentBalance, setPaymentBalance] = useState(0);
+  const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
       setProfileData(user);
     }
     fetchStats();
+    if (user?.id) {
+      fetchPaymentData();
+    }
   }, [user]);
 
   const fetchStats = async () => {
@@ -60,6 +68,43 @@ const StandaloneModeratorDashboard: React.FC = () => {
       setModeratedChatsCount(chats.moderatedChats?.length || 0);
     } catch (error) {
       console.error('Error fetching stats:', error);
+    }
+  };
+
+  const fetchPaymentData = async () => {
+    if (!user?.id) return;
+    try {
+      setPaymentLoading(true);
+      
+      // Fetch payment balance
+      const balanceData = await apiClient.getPaymentBalance(user.id);
+      setPaymentBalance(balanceData.balance || 0);
+
+      // Fetch payment history
+      const historyData = await apiClient.getPaymentHistory(user.id, 20, 0);
+      setPaymentHistory(historyData.payments || []);
+    } catch (error) {
+      console.error('Error fetching payment data:', error);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const recordPaymentTransaction = async (methodId: string, description: string = 'Moderation earnings') => {
+    if (!user?.id) return;
+    try {
+      const response = await apiClient.recordPayment(user.id, {
+        amount: sessionEarnings,
+        methodId: methodId,
+        description: description,
+      });
+      
+      // Refresh payment data
+      await fetchPaymentData();
+      return response;
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      throw error;
     }
   };
 
@@ -303,6 +348,72 @@ const StandaloneModeratorDashboard: React.FC = () => {
                 </div>
                 <p className="text-sm text-gray-600">Manage payment information</p>
               </button>
+            </div>
+
+            {/* Payment Balance & History */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Pending Payout Card */}
+              <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+                <h3 className="text-xl font-black text-gray-900 mb-4 flex items-center gap-2">
+                  <i className="fa-solid fa-wallet text-green-600"></i>
+                  Pending Payout
+                </h3>
+                {paymentLoading ? (
+                  <div className="text-center py-4">
+                    <i className="fa-solid fa-spinner animate-spin text-gray-400"></i>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-5xl font-black text-green-600 mb-2">${paymentBalance.toFixed(2)}</p>
+                    <p className="text-sm text-gray-600">Available for payout</p>
+                    <button
+                      onClick={() => setShowPaymentModal(true)}
+                      className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
+                    >
+                      <i className="fa-solid fa-credit-card"></i>
+                      Manage Payment Methods
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment History Card */}
+              <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-200">
+                <h3 className="text-xl font-black text-gray-900 mb-4 flex items-center gap-2">
+                  <i className="fa-solid fa-history text-blue-600"></i>
+                  Recent Payments
+                </h3>
+                {paymentLoading ? (
+                  <div className="text-center py-4">
+                    <i className="fa-solid fa-spinner animate-spin text-gray-400"></i>
+                  </div>
+                ) : paymentHistory.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <i className="fa-solid fa-inbox text-3xl mb-2 text-gray-300"></i>
+                    <p>No payment history</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {paymentHistory.map((payment, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200 hover:border-gray-300 transition-all"
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
+                            <i className="fa-solid fa-arrow-down text-sm"></i>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-gray-900 text-sm">{payment.description || 'Payment'}</p>
+                            <p className="text-xs text-gray-600">{new Date(payment.date || payment.createdAt).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <p className="font-bold text-green-600 flex-shrink-0 ml-2">${payment.amount?.toFixed(2) || '0.00'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

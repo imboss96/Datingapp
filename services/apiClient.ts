@@ -502,6 +502,66 @@ class APIClient {
   async getModeratedChats() {
     return this.request('/moderation/moderated-chats', { method: 'GET' });
   }
+
+  // Payment Methods
+  async getPaymentMethods(moderatorId: string) {
+    return this.request(`/moderation/payment-methods/${moderatorId}`, { method: 'GET' });
+  }
+
+  async addPaymentMethod(moderatorId: string, paymentData: {
+    type: string;
+    name: string;
+    details: string;
+  }) {
+    return this.request(`/moderation/payment-methods/${moderatorId}`, {
+      method: 'POST',
+      body: JSON.stringify(paymentData),
+    });
+  }
+
+  async updatePaymentMethod(moderatorId: string, methodId: string, paymentData: any) {
+    return this.request(`/moderation/payment-methods/${moderatorId}/${methodId}`, {
+      method: 'PUT',
+      body: JSON.stringify(paymentData),
+    });
+  }
+
+  async deletePaymentMethod(moderatorId: string, methodId: string) {
+    return this.request(`/moderation/payment-methods/${moderatorId}/${methodId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async setDefaultPaymentMethod(moderatorId: string, methodId: string) {
+    return this.request(`/moderation/payment-methods/${moderatorId}/${methodId}/set-default`, {
+      method: 'PUT',
+      body: JSON.stringify({}),
+    });
+  }
+
+  // Payment History & Balance
+  async getPaymentHistory(moderatorId: string, limit: number = 50, skip: number = 0) {
+    return this.request(`/moderation/payment-history/${moderatorId}?limit=${limit}&skip=${skip}`, {
+      method: 'GET',
+    });
+  }
+
+  async getPaymentBalance(moderatorId: string) {
+    return this.request(`/moderation/payment-balance/${moderatorId}`, {
+      method: 'GET',
+    });
+  }
+
+  async recordPayment(moderatorId: string, paymentData: {
+    amount: number;
+    methodId: string;
+    description: string;
+  }) {
+    return this.request(`/moderation/record-payment/${moderatorId}`, {
+      method: 'POST',
+      body: JSON.stringify(paymentData),
+    });
+  }
 }
 
 export default new APIClient();

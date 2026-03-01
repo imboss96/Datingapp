@@ -34,28 +34,13 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
     try {
       setLoading(true);
       // Fetch payment methods from backend
-      const methods = [
-        {
-          id: '1',
-          type: 'mpesa' as const,
-          name: 'M-Pesa',
-          details: '+254 7XX XXX XXX',
-          isDefault: true,
-          lastUpdated: '2026-02-15'
-        },
-        {
-          id: '2',
-          type: 'bank_transfer' as const,
-          name: 'Bank Transfer',
-          details: 'Account ending in 4567',
-          isDefault: false,
-          lastUpdated: '2026-01-20'
-        }
-      ];
-      setPaymentMethods(methods);
+      const response = await apiClient.getPaymentMethods(moderatorId);
+      setPaymentMethods(response.paymentMethods || response || []);
     } catch (err) {
       console.error('Error fetching payment methods:', err);
       setError('Failed to load payment methods');
+      // Set empty array as fallback
+      setPaymentMethods([]);
     } finally {
       setLoading(false);
     }
@@ -104,9 +89,12 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
     }
 
     try {
-      // Submit to backend
-      const newMethod: PaymentMethod = {
-        id: Date.now().toString(),
+      setLoading(true);
+      // Prepare payment details based on type
+      const details = formData.phone || formData.accountNumber || formData.cardNumber || formData.paypalEmail || formData.zelleEmail || formData.cashDetails || formData.payoneerEmail || formData.chimePhone || formData.cashappHandle || '';
+      
+      // Call backend API to save payment method
+      const response = await apiClient.addPaymentMethod(moderatorId, {
         type: selectedType,
         name: selectedType === 'mpesa' ? 'M-Pesa' : 
               selectedType === 'card' ? 'Card' : 
@@ -116,26 +104,36 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
               selectedType === 'cash' ? 'Cash' :
               selectedType === 'payoneer' ? 'Payoneer' :
               selectedType === 'chime' ? 'Chime' : 'Cash App',
-        details: formData.phone || formData.accountNumber || formData.cardNumber || formData.paypalEmail || formData.zelleEmail || formData.cashDetails || formData.payoneerEmail || formData.chimePhone || formData.cashappHandle || '',
-        isDefault: paymentMethods.length === 0,
-        lastUpdated: new Date().toISOString().split('T')[0]
-      };
+        details: details,
+      });
 
-      setPaymentMethods([...paymentMethods, newMethod]);
+      // Refresh payment methods list
+      await fetchPaymentMethods();
       setSuccess('Payment method added successfully');
       setFormData({});
       setSelectedType('mpesa');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      setError('Failed to add payment method');
-      console.error(err);
+      setError((err as any).message || 'Failed to add payment method');
+      console.error('Error adding payment method:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRemovePaymentMethod = (id: string) => {
-    setPaymentMethods(paymentMethods.filter(m => m.id !== id));
-    setSuccess('Payment method removed');
-    setTimeout(() => setSuccess(''), 3000);
+  const handleRemovePaymentMethod = async (id: string) => {
+    try {
+      setLoading(true);
+      await apiClient.deletePaymentMethod(moderatorId, id);
+      setPaymentMethods(paymentMethods.filter(m => m.id !== id));
+      setSuccess('Payment method removed');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError((err as any).message || 'Failed to remove payment method');
+      console.error('Error removing payment method:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
