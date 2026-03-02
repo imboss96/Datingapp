@@ -4,6 +4,7 @@ import { GoogleLogin } from '@react-oauth/google';
 import { UserProfile, UserRole, VerificationStatus } from '../types';
 import apiClient from '../services/apiClient';
 import PasswordResetModal from './PasswordResetModal';
+import AccountSuspendedPage from './AccountSuspendedPage';
 // ...existing code...
 
 interface LoginPageProps {
@@ -23,6 +24,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
   const [error, setError] = useState('');
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [showEmailVerificationModal, setShowEmailVerificationModal] = useState(false);
+  const [showSuspensionModal, setShowSuspensionModal] = useState(false);
+  const [suspensionError, setSuspensionError] = useState<any>(null);
+  const [suspensionEmail, setSuspensionEmail] = useState('');
 
   // Helper function to check if profile is complete
   const isProfileComplete = (user: any): boolean => {
@@ -120,12 +124,35 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
           // For sign-in, report as not a signup; App will decide if profile setup is needed
           onLoginSuccess?.(user, false);
         } catch (err: any) {
+          console.log('[DEBUG LoginPage] Login error caught:', { message: err.message, code: err.code, status: err.status });
+          
           if (err.message && err.message.toLowerCase().includes('email not verified')) {
             // Redirect to verify email info page and trigger resend
             if (onClose) onClose();
             navigate('/verify-email-info', { state: { email, justResent: true } });
             return;
           }
+          
+          // Check for account suspension or ban
+          if (err.code === 'ACCOUNT_SUSPENDED' || err.code === 'ACCOUNT_BANNED') {
+            console.log('[DEBUG LoginPage] Account suspended/banned, showing modal...');
+            setSuspensionError(err);
+            setSuspensionEmail(email);
+            setShowSuspensionModal(true);
+            setLoading(false);
+            return;
+          }
+          
+          // Fallback check for suspension/ban in message
+          if (err.message && (err.message.includes('Account Suspended') || err.message.includes('Account Banned'))) {
+            console.log('[DEBUG LoginPage] Suspension detected in message, showing modal...');
+            setSuspensionError(err);
+            setSuspensionEmail(email);
+            setShowSuspensionModal(true);
+            setLoading(false);
+            return;
+          }
+          
           setError(err.message || 'Authentication failed');
           setLoading(false);
         }
@@ -334,6 +361,18 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
     </div>
   );
 
+  // Render suspension modal if needed
+  if (showSuspensionModal && suspensionError) {
+    return (
+      <AccountSuspendedPage
+        isModal={true}
+        onClose={() => setShowSuspensionModal(false)}
+        error={suspensionError}
+        email={suspensionEmail}
+      />
+    );
+  }
+
   // If modal version, wrap with overlay and close button
   if (isModal) {
     return (
@@ -357,8 +396,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
       {content}
     </div>
   );
-
-  // ...existing code...
 };
 
 export default LoginPage;

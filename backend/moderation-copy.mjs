@@ -439,8 +439,8 @@ router.get('/unreplied-chats', modOnlyMiddleware, async (req, res) => {
     const moderatorId = req.userId;
     console.log('[DEBUG] Fetching unreplied chats for moderator:', moderatorId);
     
-    // Get chats assigned to this moderator OR unassigned chats
-    const unrepliedChats = await Chat.find({
+    // First, get assigned chats for this moderator
+    const assignedChats = await Chat.find({
       $and: [
         {
           $or: [
@@ -449,26 +449,55 @@ router.get('/unreplied-chats', modOnlyMiddleware, async (req, res) => {
           ]
         },
         {
-          $or: [
-            { assignedModerator: moderatorId },
-            { assignedModerator: { $exists: false } },
-            { assignedModerator: null }
-          ]
+          assignedModerator: moderatorId
         }
       ]
     })
     .sort({ lastUpdated: -1 })
     .lean();
 
+    console.log('[DEBUG] Found assigned unreplied chats for moderator:', moderatorId, 'count:', assignedChats.length);
+
+    // Then, get truly unassigned chats for queue (up to 10 available)
+    let queueChats = [];
+    if (assignedChats.length < 5) {
+      // If they have less than 5 assigned, show them some available queue chats
+      queueChats = await Chat.find({
+        $and: [
+          {
+            $or: [
+              { replyStatus: 'unreplied' },
+              { isReplied: false }
+            ]
+          },
+          {
+            $and: [
+              { assignedModerator: { $exists: false } },
+              { assignedModerator: { $ne: moderatorId } }
+            ]
+          }
+        ]
+      })
+      .sort({ lastUpdated: -1 })
+      .limit(10)
+      .lean();
+
+      console.log('[DEBUG] Found queue unreplied chats available:', queueChats.length);
+    }
+
+    const allChats = [...assignedChats, ...queueChats];
+
     // Transform chats to match expected format
-    const formattedChats = unrepliedChats.map(chat => ({
+    const formattedChats = allChats.map(chat => ({
       id: chat.id,
       participants: chat.participants,
       messages: chat.messages || [],
       lastUpdated: chat.lastUpdated,
       flaggedCount: (chat.messages || []).filter(msg => msg.isFlagged).length,
       replyStatus: chat.replyStatus || 'unreplied',
-      assignedModerator: chat.assignedModerator || null
+      assignedModerator: chat.assignedModerator || null,
+      isAssigned: chat.assignedModerator === moderatorId,
+      isQueued: !chat.assignedModerator || !chat.assignedModerator
     }));
 
     res.json({
@@ -476,6 +505,8 @@ router.get('/unreplied-chats', modOnlyMiddleware, async (req, res) => {
       chats: formattedChats,
       unrepliedChats: formattedChats,
       count: formattedChats.length,
+      assignedCount: assignedChats.length,
+      queueCount: queueChats.length,
       moderatorId: moderatorId
     });
   } catch (error) {
@@ -484,14 +515,61 @@ router.get('/unreplied-chats', modOnlyMiddleware, async (req, res) => {
   }
 });
 
-// Mark chat as replied (when moderator sends a response)
+// Assign a chat to a moderator
+router.post('/assign-chat/:chatId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const moderatorId = req.userId;
+
+    console.log('[DEBUG] Assigning chat to moderator:', { chatId, moderatorId });
+
+    const chat = await Chat.findOne({ id: chatId });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    // Check if already assigned to someone else
+    if (chat.assignedModerator && chat.assignedModerator !== moderatorId) {
+      console.warn('[WARN] Chat already assigned to another moderator:', {
+        chatId,
+        currentModerator: chat.assignedModerator,
+        requestingModerator: moderatorId
+      });
+      return res.status(409).json({ error: 'Chat is already assigned to another moderator' });
+    }
+
+    // Assign chat to this moderator
+    chat.assignedModerator = moderatorId;
+    chat.assignedAt = Date.now();
+    await chat.save();
+
+    console.log('[DEBUG] Chat assigned successfully:', { chatId, moderatorId });
+
+    res.json({
+      success: true,
+      message: 'Chat assigned successfully',
+      chat: {
+        id: chat.id,
+        assignedModerator: chat.assignedModerator,
+        assignedAt: chat.assignedAt
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to assign chat:', error.message);
+    res.status(500).json({ error: 'Failed to assign chat: ' + error.message });
+  }
+});
+
+// Get unreplied chats for moderation view - MARKED FOR REMOVAL, use /unreplied-chats instead
+router.get('/unreplied-marked', modOnlyMiddleware, async (req, res) => {
 router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
   try {
     const { chatId } = req.params;
+    const moderatorId = req.userId;
     
     console.log('[DEBUG] Marking chat as replied:', {
       chatId,
-      moderatorId: req.userId,
+      moderatorId,
       userRole: req.userRole
     });
     
@@ -501,28 +579,44 @@ router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
+    // Verify this moderator is assigned to this chat
+    if (chat.assignedModerator && chat.assignedModerator !== moderatorId) {
+      console.warn('[WARN] Unauthorized: Chat assigned to different moderator:', {
+        chatId,
+        assignedTo: chat.assignedModerator,
+        requestingMod: moderatorId
+      });
+      return res.status(403).json({ error: 'You are not assigned to this chat' });
+    }
+
+    // If not assigned yet, assign it first
+    if (!chat.assignedModerator) {
+      chat.assignedModerator = moderatorId;
+      chat.assignedAt = Date.now();
+    }
+
     console.log('[DEBUG] Chat found before update:', {
       id: chat.id,
       isReplied: chat.isReplied,
-      replyStatus: chat.replyStatus
+      replyStatus: chat.replyStatus,
+      assignedModerator: chat.assignedModerator
     });
 
     // Mark as replied
     chat.isReplied = true;
     chat.replyStatus = 'replied';
     chat.markedAsRepliedAt = Date.now();
-    chat.assignedModerator = req.userId; // Capture which moderator replied
-    chat.repliedBy = req.userId; // Track who replied
+    chat.repliedBy = moderatorId; // Track who replied
     
     await chat.save();
 
     // Create earning record for moderator
-    const moderator = await User.findOne({ id: req.userId });
+    const moderator = await User.findOne({ id: moderatorId });
     const earningAmount = 0.50; // $0.50 per chat replied
     
     try {
       const earning = new ModeratorEarnings({
-        moderatorId: req.userId,
+        moderatorId: moderatorId,
         moderatorName: moderator?.name || moderator?.username || 'Unknown',
         chatId: chatId,
         earnedAmount: earningAmount,
@@ -532,20 +626,21 @@ router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
       });
       
       await earning.save();
-      console.log('[DEBUG] Earning record created:', { userId: req.userId, amount: earningAmount, chatId });
+      console.log('[DEBUG] Earning record created:', { userId: moderatorId, amount: earningAmount, chatId });
     } catch (earningError) {
       console.error('[ERROR] Failed to create earning record:', earningError);
       // Don't fail the entire operation if earning record fails
     }
 
     // Log moderator action
-    await logModeratorAction(chat.userId, 'replied', chatId, `Chat marked as replied by moderator`, req.userId);
+    await logModeratorAction(chat.userId || 'unknown', 'replied', chatId, `Chat marked as replied by moderator`, moderatorId);
 
     console.log('[DEBUG] Chat saved successfully:', {
       id: chat.id,
       isReplied: chat.isReplied,
       replyStatus: chat.replyStatus,
-      markedAsRepliedAt: chat.markedAsRepliedAt
+      markedAsRepliedAt: chat.markedAsRepliedAt,
+      moderatorId: moderatorId
     });
 
     res.json({
@@ -555,7 +650,8 @@ router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
         id: chat.id,
         isReplied: chat.isReplied,
         replyStatus: chat.replyStatus,
-        markedAsRepliedAt: chat.markedAsRepliedAt
+        markedAsRepliedAt: chat.markedAsRepliedAt,
+        assignedModerator: chat.assignedModerator
       }
     });
   } catch (error) {
@@ -2406,3 +2502,4 @@ router.get('/activity/chat/:chatId', adminOnlyMiddleware, async (req, res) => {
 });
 
 export default router;
+

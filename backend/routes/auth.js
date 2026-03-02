@@ -173,6 +173,35 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check if account is suspended or banned FIRST (before password check)
+    if (user.suspended) {
+      console.log('[ERROR] Login blocked - user suspended:', user.id);
+      return res.status(403).json({
+        error: 'Account Suspended',
+        code: 'ACCOUNT_SUSPENDED',
+        message: 'Your account has been suspended by our moderation team.',
+        reason: user.suspendedReason || 'Violation of community guidelines',
+        suspendedAt: user.suspendedAt,
+        supportMessage: 'If you believe this is a mistake, please contact our support team at support@lunesa.com',
+        contactEmail: 'support@lunesa.com',
+        showSuspensionPage: true
+      });
+    }
+
+    if (user.banned) {
+      console.log('[ERROR] Login blocked - user banned:', user.id);
+      return res.status(403).json({
+        error: 'Account Banned',
+        code: 'ACCOUNT_BANNED',
+        message: 'Your account has been permanently banned from our platform.',
+        reason: user.bannedReason || 'Serious violation of community guidelines',
+        bannedAt: user.bannedAt,
+        supportMessage: 'For more information, please contact our support team at support@lunesa.com',
+        contactEmail: 'support@lunesa.com',
+        showSuspensionPage: true
+      });
+    }
+
     // Block login if email not verified
     if (!user.emailVerified) {
       return res.status(403).json({ error: 'Email not verified. Please check your inbox.' });

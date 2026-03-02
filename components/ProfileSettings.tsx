@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
+import { useCoinPackages } from '../services/CoinPackageContext';
 import PasswordResetModal from './PasswordResetModal';
 import PhotoVerificationModal from './PhotoVerificationModal';
 
@@ -27,19 +28,19 @@ interface Props {
 }
 
 interface CoinPack {
-  id: string;              // must match backend PACKAGES key (coins_50, premium_1m, etc.)
-  amount: number;
-  price: string;
-  icon: string;
-  popular?: boolean;
+  id?: string;             // optional: backend uses numeric id, we use coins_XX format
+  coins: number;           // amount of coins
+  price: number;           // price in dollars
+  icon?: string;           // optional icon for display
+  popular?: boolean;       // optional popular badge
 }
 
-// these ids are defined on the backend in /routes/lipana.js PACKAGES
-const COIN_PACKS: CoinPack[] = [
-  { id: 'coins_50', amount: 50, price: '$4.99', icon: 'fa-box' },
-  { id: 'coins_100', amount: 90, price: '$14.99', icon: 'fa-boxes-stacked', popular: true },
-  { id: 'coins_250', amount: 200, price: '$29.99', icon: 'fa-vault' },
-  { id: 'coins_500', amount: 350, price: '$59.99', icon: 'fa-gem' }
+// Default coin packs (fallback if backend fetch fails)
+const DEFAULT_COIN_PACKS: CoinPack[] = [
+  { id: 'coins_50', coins: 50, price: 4.99, icon: 'fa-box' },
+  { id: 'coins_150', coins: 150, price: 12.99, icon: 'fa-boxes-stacked', popular: true },
+  { id: 'coins_350', coins: 350, price: 24.99, icon: 'fa-vault' },
+  { id: 'coins_1000', coins: 1000, price: 59.99, icon: 'fa-gem' }
 ];
 
 const PAYMENT_METHODS = [
@@ -88,6 +89,19 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushEndpoint, setPushEndpoint] = useState<string | null>(null);
   const [pushProcessing, setPushProcessing] = useState(false);
+  
+  // Get coin packages from global context (automatically updates every 10 seconds)
+  const { coinPackages, loading: loadingCoinPackages } = useCoinPackages();
+
+  // Debug logging for coin packages
+  React.useEffect(() => {
+    console.log('[DEBUG ProfileSettings] Coin packages updated:', {
+      packages: coinPackages,
+      count: coinPackages.length,
+      loading: loadingCoinPackages,
+      values: coinPackages.map(p => ({ coins: p.coins, price: p.price }))
+    });
+  }, [coinPackages, loadingCoinPackages]);
 
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
@@ -183,7 +197,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         return;
       }
 
-      const isPremium = selectedPack.amount > 1000;
+      const isPremium = selectedPack.coins > 1000;
 
       if (selectedMethod === 'momo') {
         // start Lipana mobile‑money flow; backend requires packageId rather than raw amount
@@ -576,11 +590,11 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                             <i className={`fa-solid ${selectedPack.icon} text-xl`}></i>
                           </div>
                           <div>
-                            <p className="font-black text-gray-900">{selectedPack.amount} Spark Coins</p>
+                            <p className="font-black text-gray-900">{selectedPack.coins} Spark Coins</p>
                             <p className="text-xs text-gray-500">Spark Global Virtual Currency</p>
                           </div>
                         </div>
-                        <p className="text-lg font-black text-gray-900">{selectedPack.price}</p>
+                        <p className="text-lg font-black text-gray-900">${selectedPack.price.toFixed(2)}</p>
                       </div>
 
                       <div className="space-y-3 mb-8">
@@ -638,7 +652,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         className="w-full py-4 spark-gradient text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-red-500/20 active:scale-95 transition-transform flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <i className="fa-solid fa-lock text-xs opacity-70"></i>
-                        Pay {selectedPack.price}
+                        Pay ${selectedPack.price.toFixed(2)}
                       </button>
                       <p className="text-[10px] text-gray-400 text-center mt-4">
                         Your payment is encrypted and secure. By paying, you agree to our Terms of Service.
@@ -676,7 +690,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       </div>
                       <h3 className="text-2xl font-black text-gray-900 mb-2">Purchase Successful!</h3>
                       <p className="text-sm text-gray-500 mb-8">
-                        We've added <span className="font-bold text-gray-900">{selectedPack.amount} Spark Coins</span> to your wallet.
+                        We've added <span className="font-bold text-gray-900">{selectedPack.coins} Spark Coins</span> to your wallet.
                       </p>
                       <button 
                         onClick={closeCheckout}
@@ -719,7 +733,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 <h3 className="text-xl font-bold mb-2">Upgrade to Spark Gold</h3>
                 <p className="text-xs opacity-90 mb-4 leading-relaxed">Unlimited coins, unlimited chats, see who likes you, and instant rewinds.</p>
                 <button 
-                  onClick={() => handleOpenCheckout(COIN_PACKS[3])}
+                  onClick={() => handleOpenCheckout(coinPackages[coinPackages.length - 1])}
                   className="bg-white text-orange-500 px-8 py-3 rounded-full text-xs font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform"
                 >
                   Get Gold Plan
@@ -748,15 +762,15 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                {COIN_PACKS.map((pack) => (
+                {coinPackages.map((pack) => (
                   <button 
-                    key={pack.amount}
+                    key={`${pack.coins}-${pack.price}`}
                     onClick={() => handleOpenCheckout(pack)}
                     className={`p-4 rounded-2xl border flex flex-col items-center text-center gap-2 transition-all active:scale-95 relative ${pack.popular ? 'border-amber-400 bg-amber-50 shadow-lg shadow-amber-500/10' : 'border-gray-100 bg-gray-50'}`}
                   >
-                    <i className={`fa-solid ${pack.icon} text-amber-500 text-xl mb-1`}></i>
-                    <span className="text-sm font-black text-gray-900">{pack.amount} Coins</span>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{pack.price}</span>
+                    <i className={`fa-solid ${pack.icon || 'fa-coins'} text-amber-500 text-xl mb-1`}></i>
+                    <span className="text-sm font-black text-gray-900">{pack.coins} Coins</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">${pack.price.toFixed(2)}</span>
                     {pack.popular && (
                       <span className="absolute -top-2 bg-amber-500 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase shadow-sm">
                         Best Value

@@ -22,15 +22,25 @@ class APIClient {
     });
 
     if (!response.ok) {
+      let errorData: any = { error: `API Error: ${response.statusText}` };
       let errorMessage = `API Error: ${response.statusText}`;
       try {
-        const error = await response.json();
-        errorMessage = error.error || error.message || errorMessage;
+        errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
       } catch (parseErr) {
         // couldn't parse error JSON, use the statusText
       }
       const err = new Error(errorMessage);
       (err as any).status = response.status;
+      // Preserve all error data from backend for proper error handling
+      (err as any).code = errorData.code;
+      (err as any).reason = errorData.reason;
+      (err as any).message = errorMessage;
+      (err as any).suspendedAt = errorData.suspendedAt;
+      (err as any).bannedAt = errorData.bannedAt;
+      (err as any).supportMessage = errorData.supportMessage;
+      (err as any).contactEmail = errorData.contactEmail;
+      (err as any).showSuspensionPage = errorData.showSuspensionPage;
       throw err;
     }
 
@@ -57,6 +67,29 @@ class APIClient {
 
   async delete(endpoint: string) {
     return this.request(endpoint, { method: 'DELETE' });
+  }
+
+  // Public endpoints (no auth required)
+  async getPublicCoinPackages() {
+    try {
+      console.log('[DEBUG apiClient] Requesting public coin packages from:', `${API_BASE_URL}/public/coin-packages`);
+      const response = await fetch(`${API_BASE_URL}/public/coin-packages`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+        // No credentials required for public endpoints
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch coin packages: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('[DEBUG apiClient] Coin packages response received:', data);
+      return data;
+    } catch (error) {
+      console.error('[ERROR apiClient] getPublicCoinPackages error:', error);
+      throw error;
+    }
   }
 
   // Auth
@@ -560,6 +593,180 @@ class APIClient {
     return this.request(`/moderation/record-payment/${moderatorId}`, {
       method: 'POST',
       body: JSON.stringify(paymentData),
+    });
+  }
+
+  // Coin Package Management
+  async getCoinPackages(includeInactive: boolean = false) {
+    const endpoint = includeInactive ? '/moderation/coin-packages/all' : '/moderation/coin-packages';
+    return this.request(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async createCoinPackage(packageData: {
+    coins: number;
+    price: number;
+    description?: string;
+    displayOrder?: number;
+  }) {
+    return this.request('/moderation/coin-packages', {
+      method: 'POST',
+      body: JSON.stringify(packageData),
+    });
+  }
+
+  async updateCoinPackage(packageId: number, packageData: {
+    coins?: number;
+    price?: number;
+    description?: string;
+    displayOrder?: number;
+    isActive?: boolean;
+  }) {
+    return this.request(`/moderation/coin-packages/${packageId}`, {
+      method: 'PUT',
+      body: JSON.stringify(packageData),
+    });
+  }
+
+  async deleteCoinPackage(packageId: number) {
+    return this.request(`/moderation/coin-packages/${packageId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getCoinPurchases(limit: number = 50, skip: number = 0) {
+    return this.request(`/moderation/coin-purchases?limit=${limit}&skip=${skip}`, {
+      method: 'GET',
+    });
+  }
+
+  // User Profile Management
+  async updateUserProfile(userId: string, profileData: {
+    username?: string;
+    email?: string;
+    name?: string;
+    age?: number;
+    bio?: string;
+    location?: string;
+    role?: string;
+  }) {
+    return this.request(`/moderation/users/${userId}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    });
+  }
+
+  async createUserProfile(userData: {
+    username: string;
+    email: string;
+    password: string;
+    name?: string;
+    age?: number;
+    bio?: string;
+    location?: string;
+    role?: string;
+    accountType?: string;
+  }) {
+    return this.request('/moderation/users/create', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  }
+
+  async getModeratorChats(userId: string, limit: number = 50, skip: number = 0) {
+    return this.request(`/moderation/moderator/${userId}/chats?limit=${limit}&skip=${skip}`, {
+      method: 'GET',
+    });
+  }
+
+  async getModeratorChatCount(userId: string) {
+    return this.request(`/moderation/moderator/${userId}/chat-count`, {
+      method: 'GET',
+    });
+  }
+
+  async getModeratorEarnings(userId: string) {
+    return this.request(`/moderation/moderator/${userId}/earnings`, {
+      method: 'GET',
+    });
+  }
+
+  async getModeratorEarningsHistory(userId: string, limit: number = 50, skip: number = 0, status?: string) {
+    let url = `/moderation/moderator/${userId}/earnings/history?limit=${limit}&skip=${skip}`;
+    if (status) url += `&status=${status}`;
+    return this.request(url, {
+      method: 'GET',
+    });
+  }
+
+  async getAllModeratorsEarnings() {
+    return this.request('/moderation/earnings/summary', {
+      method: 'GET',
+    });
+  }
+
+  async markEarningsAsPaid(userId: string, earningIds: string[], paymentMethod: string, transactionId?: string) {
+    return this.request(`/moderation/moderator/${userId}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify({ earningIds, paymentMethod, transactionId }),
+    });
+  }
+
+  // ==================== ACTIVITY LOG ENDPOINTS ====================
+
+  async getActivityLogs(filters: {
+    category?: string;
+    action?: string;
+    limit?: number;
+    skip?: number;
+    status?: string;
+    actorId?: string;
+    targetId?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  } = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, String(value));
+      }
+    });
+    
+    return this.request(`/moderation/activity/logs?${params.toString()}`, {
+      method: 'GET',
+    });
+  }
+
+  async getActivitySummary(startDate?: string, endDate?: string) {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    
+    return this.request(`/moderation/activity/summary?${params.toString()}`, {
+      method: 'GET',
+    });
+  }
+
+  async getUserActivityLogs(userId: string, limit: number = 30, skip: number = 0) {
+    return this.request(`/moderation/activity/user/${userId}?limit=${limit}&skip=${skip}`, {
+      method: 'GET',
+    });
+  }
+
+  async getModeratorActivityLogs(moderatorId: string, limit: number = 30, skip: number = 0, category?: string) {
+    let url = `/moderation/activity/moderator/${moderatorId}?limit=${limit}&skip=${skip}`;
+    if (category) url += `&category=${category}`;
+    
+    return this.request(url, {
+      method: 'GET',
+    });
+  }
+
+  async getChatActivityLogs(chatId: string) {
+    return this.request(`/moderation/activity/chat/${chatId}`, {
+      method: 'GET',
     });
   }
 }

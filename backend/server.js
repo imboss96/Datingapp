@@ -22,11 +22,13 @@ import emailVerificationRoutes from './routes/emailVerification.js';
 import moderationRoutes from './routes/moderation.js';
 import moderationAuthRoutes from './routes/moderationAuth.js';
 import pushRoutes from './routes/push.js';
+import publicRoutes from './routes/public.js';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { initCloudinary } from './utils/cloudinary.js';
 import { initWebSocket } from './utils/websocket.js';
 import lipanaRoutes from './routes/lipana.js';
+import CoinPackage from './models/CoinPackage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +86,26 @@ mongoose.connect(MONGODB_URI, {
   } catch (err) {
     console.warn('[WARN] Could not drop index (may not exist):', err.message);
   }
+
+  // Initialize default coin packages if they don't exist
+  try {
+    const existingPackages = await CoinPackage.countDocuments();
+    if (existingPackages === 0) {
+      console.log('[INIT] Initializing default coin packages...');
+      const defaultPackages = [
+        { id: 1, coins: 50, price: 4.99, displayOrder: 1 },
+        { id: 2, coins: 150, price: 12.99, displayOrder: 2 },
+        { id: 3, coins: 350, price: 24.99, displayOrder: 3 },
+        { id: 4, coins: 1000, price: 59.99, displayOrder: 4 }
+      ];
+      await CoinPackage.insertMany(defaultPackages);
+      console.log('[SUCCESS] Initialized 4 default coin packages');
+    } else {
+      console.log('[INFO] Coin packages already exist, skipping initialization');
+    }
+  } catch (err) {
+    console.error('[ERROR] Failed to initialize coin packages:', err.message);
+  }
 })
 .catch((err) => {
   console.error('✗ MongoDB connection error:', err);
@@ -96,6 +118,7 @@ app.use('/api/moderation-auth', moderationAuthRoutes);  // Standalone moderation
 app.use('/api/verification', verificationRoutes);  // Email verification
 app.use('/api/email-verification', emailVerificationRoutes);
 app.use('/api/users', usersRoutes);  // Auth middleware applied selectively in users.js
+app.use('/api/public', publicRoutes);  // Public endpoints (no auth required)
 app.use('/api/chats', authMiddleware, chatsRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
 app.use('/api/matches', authMiddleware, matchesRoutes);

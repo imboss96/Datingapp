@@ -74,7 +74,8 @@ const chatSchema = new mongoose.Schema({
   },
   lastMessageTime: { type: Number }, // timestamp of the last message in the chat
   replyDeadline: { type: Number }, // timestamp when chat becomes "unreplied" (24 hours after last message)
-  markedAsRepliedAt: { type: Number } // timestamp when moderator marked as replied
+  markedAsRepliedAt: { type: Number }, // timestamp when moderator marked as replied
+  repliedBy: { type: String } // moderator/operator user ID who replied to this chat
 });
 
 // Use participantsKey to enforce uniqueness across participant combinations

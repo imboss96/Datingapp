@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
+import CoinPackage from '../models/CoinPackage.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 // Lazy-load Lipana SDK to ensure environment variables are available
@@ -132,7 +133,32 @@ router.post('/initiate', async (req, res) => {
       return res.status(400).json({ error: 'Missing packageId' });
     }
     
-    const pkg = PACKAGES[packageId];
+    // Try to find package in CoinPackage collection first (new system)
+    let pkg = null;
+    let pkgNumber = null;
+    if (packageId.startsWith('coins_')) {
+      pkgNumber = parseInt(packageId.replace('coins_', ''));
+    }
+
+    if (pkgNumber) {
+      const coinPkg = await CoinPackage.findOne({ coins: pkgNumber, isActive: true }).lean();
+      if (coinPkg) {
+        pkg = {
+          coins: coinPkg.coins,
+          price: `$${coinPkg.price.toFixed(2)}`,
+          isPremium: false,
+          ...coinPkg
+        };
+        console.log(`[LIPANA /initiate] Found package in CoinPackage collection:`, pkg);
+      }
+    }
+
+    // Fallback to PACKAGES hardcoded array
+    if (!pkg && PACKAGES[packageId]) {
+      pkg = PACKAGES[packageId];
+      console.log(`[LIPANA /initiate] Using PACKAGES fallback:`, pkg);
+    }
+
     if (!pkg) {
       console.warn(`[LIPANA /initiate] VALIDATION FAILED: Invalid packageId '${packageId}'`);
       console.log(`[LIPANA /initiate] Available packages:`, Object.keys(PACKAGES));

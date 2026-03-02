@@ -6,6 +6,7 @@ import VerifyEmailInfoPage from './components/VerifyEmailInfoPage';
 import VerifyEmailPage from './components/VerifyEmailPage';
 import LoginPage from './components/LoginPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
+import AccountSuspendedPage from './components/AccountSuspendedPage';
 import SwiperScreen from "./components/SwiperScreen";
 import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
@@ -23,6 +24,8 @@ import PrivacyPage from './components/PrivacyPage';
 import CookiePolicyPage from './components/CookiePolicyPage';
 import { WebSocketProvider } from './services/WebSocketProvider';
 import { AlertProvider } from './services/AlertContext';
+import { NotificationProvider } from './services/NotificationContext';
+import { CoinPackageProvider } from './services/CoinPackageContext';
 import { UserProfile, UserRole, Chat, VerificationStatus } from './types';
 import apiClient from './services/apiClient';
 
@@ -103,6 +106,7 @@ const AppContent: React.FC<{
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email-info" element={<VerifyEmailInfoPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/account-suspended" element={<AccountSuspendedPage />} />
           <Route path="/terms" element={<TermsPage onAccept={() => setShowTerms(false)} isModal={true} />} />
           <Route path="/privacy" element={<PrivacyPage onAccept={() => setShowPrivacy(false)} isModal={true} />} />
           <Route path="/cookies" element={<CookiePolicyPage onAccept={() => setShowCookies(false)} isModal={true} />} />
@@ -528,8 +532,10 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <AlertProvider>
-        <WebSocketProvider userId={currentUser?.id || null}>
-          <HashRouter>
+        <NotificationProvider>
+          <CoinPackageProvider>
+            <WebSocketProvider userId={currentUser?.id || null}>
+            <HashRouter>
             <AppContent
               currentUser={currentUser}
               setCurrentUser={setCurrentUser}
@@ -585,8 +591,10 @@ const App: React.FC = () => {
                 </div>
               ))}
             </div>
-          </HashRouter>
-        </WebSocketProvider>
+            </HashRouter>
+          </WebSocketProvider>
+          </CoinPackageProvider>
+        </NotificationProvider>
       </AlertProvider>
     </ErrorBoundary>
   );

@@ -1,21 +1,61 @@
 import mongoose from 'mongoose';
 
 const moderatorEarningsSchema = new mongoose.Schema({
-  moderatorId: { type: String, required: true, unique: true, index: true },
-  sessionEarnings: { type: Number, default: 0 }, // Earnings since session start (12:00 hrs yesterday)
-  totalEarnings: { type: Number, default: 0 }, // Cumulative earnings for the moderator
-  dailyEarnings: [{
-    date: { type: Date, required: true }, // Date in YYYY-MM-DD format
-    amount: { type: Number, required: true }, // Earnings for that day
-    chatsModerated: { type: Number, default: 0 }, // Number of chats moderated
-    repliesCount: { type: Number, default: 0 } // Number of replies given
-  }],
-  lastResetAt: { type: Date, default: Date.now }, // Last time session earnings were cleared
-  lastEarningsUpdate: { type: Date, default: Date.now }, // Last time earnings were updated
-  replyRate: { type: Number, default: 0.10 }, // Amount earned per reply in dollars
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  moderatorId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  moderatorName: {
+    type: String,
+    required: true
+  },
+  chatId: {
+    type: String,
+    required: true
+  },
+  earnedAmount: {
+    type: Number,
+    required: true,
+    default: 0
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'paid', 'disputed'],
+    default: 'approved'
+  },
+  paymentMethod: {
+    type: String,
+    enum: ['bank_transfer', 'mobile_money', 'wallet', 'pending'],
+    default: 'pending'
+  },
+  transactionId: {
+    type: String
+  },
+  repliedAt: {
+    type: Date,
+    required: true
+  },
+  paidAt: {
+    type: Date
+  },
+  notes: {
+    type: String
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
 });
+
+// Index for efficient queries
+moderatorEarningsSchema.index({ moderatorId: 1, status: 1 });
+moderatorEarningsSchema.index({ createdAt: -1 });
+moderatorEarningsSchema.index({ moderatorId: 1, createdAt: -1 });
 
 const ModeratorEarnings = mongoose.model('ModeratorEarnings', moderatorEarningsSchema);
 export default ModeratorEarnings;

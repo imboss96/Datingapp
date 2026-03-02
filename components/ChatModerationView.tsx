@@ -56,6 +56,9 @@ export interface ModeratorChat {
   lastUpdated: number;
   flaggedCount: number;
   requestInitiator?: string;
+  assignedModerator?: string;
+  isAssigned?: boolean;
+  isQueued?: boolean;
 }
 
 interface Props {

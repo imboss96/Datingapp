@@ -6,6 +6,8 @@ import ChatModerationView from './ChatModerationView';
 import PhotoVerificationReviewPanel from './PhotoVerificationReviewPanel';
 import AdminPhotoVerificationDashboard from './AdminPhotoVerificationDashboard';
 import apiClient from '../services/apiClient';
+import { useCoinPackages } from '../services/CoinPackageContext';
+import { useNotification } from '../services/NotificationContext';
 
 interface FlaggedItem {
   id: string;
@@ -36,7 +38,7 @@ interface ModeratorChat {
 const INITIAL_FLAGS: FlaggedItem[] = [];
 
 const ModeratorPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS'>('CHATS');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS' | 'PAYMENTS' | 'REVENUE'>('CHATS');
   const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
   const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
   const [chats, setChats] = useState<ModeratorChat[]>([]);
@@ -46,6 +48,8 @@ const ModeratorPanel: React.FC = () => {
   const [chatError, setChatError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
   const navigate = useNavigate();
+  const { refetch: refetchCoinPackages } = useCoinPackages();
+  const { showNotification } = useNotification();
   const [currentUserId] = useState<string>('moderator-' + Math.random().toString(36).substring(7));
   const [stalledChats, setStalledChats] = useState<any[]>([]);
   const [loadingStalled, setLoadingStalled] = useState(false);
@@ -66,6 +70,93 @@ const ModeratorPanel: React.FC = () => {
   const [userAccountTypeFilter, setUserAccountTypeFilter] = useState<string>('');
   const [userSuspendedFilter, setUserSuspendedFilter] = useState<string>('');
   const [actioningUserId, setActioningUserId] = useState<string | null>(null);
+  const [confirmationModal, setConfirmationModal] = useState<{ isOpen: boolean; userId: string | null; action: 'suspend' | 'unsuspend' | null; reason: string }>({ isOpen: false, userId: null, action: null, reason: '' });
+  
+  // Coin Packages Management
+  const [coinPackages, setCoinPackages] = useState<any[]>([
+    { id: 1, coins: 50, price: 4.99 },
+    { id: 2, coins: 150, price: 12.99 },
+    { id: 3, coins: 350, price: 24.99 },
+    { id: 4, coins: 1000, price: 59.99 }
+  ]);
+  const [editingPackageId, setEditingPackageId] = useState<number | null>(null);
+  const [editingPackageForm, setEditingPackageForm] = useState<{ coins: string; price: string }>({ coins: '', price: '' });
+  const [showAddPackageForm, setShowAddPackageForm] = useState(false);
+  const [newPackageForm, setNewPackageForm] = useState<{ coins: string; price: string }>({ coins: '', price: '' });
+  const [loadingCoinPackages, setLoadingCoinPackages] = useState(false);
+  const [coinPackagesError, setCoinPackagesError] = useState<string | null>(null);
+
+  // Recent Coin Purchases
+  const [coinPurchases, setCoinPurchases] = useState<any[]>([]);
+  const [loadingCoinPurchases, setLoadingCoinPurchases] = useState(false);
+  const [coinPurchasesError, setCoinPurchasesError] = useState<string | null>(null);
+
+  // Profile Management
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingUserForm, setEditingUserForm] = useState({
+    username: '',
+    email: '',
+    name: '',
+    age: '',
+    bio: '',
+    location: '',
+    role: 'USER',
+  });
+  const [editingUserImages, setEditingUserImages] = useState<string[]>([]);
+  const [uploadingEditProfile, setUploadingEditProfile] = useState(false);
+  const [uploadProgressEditProfile, setUploadProgressEditProfile] = useState(0);
+
+  const [showAddProfileModal, setShowAddProfileModal] = useState(false);
+  const [newProfileForm, setNewProfileForm] = useState({
+    username: '',
+    email: '',
+    name: '',
+    age: '',
+    bio: '',
+    location: '',
+    password: '',
+    role: 'USER',
+    accountType: 'APP',
+  });
+  const [newProfileImages, setNewProfileImages] = useState<string[]>([]);
+  const [uploadingNewProfile, setUploadingNewProfile] = useState(false);
+  const [uploadProgressNewProfile, setUploadProgressNewProfile] = useState(0);
+  const [creatingProfile, setCreatingProfile] = useState(false);
+
+  // Earnings tracking state
+  const [allModeratorsEarnings, setAllModeratorsEarnings] = useState<any[]>([]);
+  const [selectedModeratorEarnings, setSelectedModeratorEarnings] = useState<any>(null);
+  const [earningsHistory, setEarningsHistory] = useState<any[]>([]);
+  const [loadingEarnings, setLoadingEarnings] = useState(false);
+  const [earningHistoryLoading, setEarningHistoryLoading] = useState(false);
+
+  // Activity Log state
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [loadingActivityLogs, setLoadingActivityLogs] = useState(false);
+  const [activityLogFilter, setActivityLogFilter] = useState({
+    category: '',
+    action: '',
+    status: '',
+    limit: 50,
+    skip: 0
+  });
+  const [activityLogSummary, setActivityLogSummary] = useState<any>(null);
+  const [activityLogTotalCount, setActivityLogTotalCount] = useState(0);
+
+  // Helper function to safely format dates
+  const formatDate = (dateInput: any, includeTime = false) => {
+    if (!dateInput) return 'N/A';
+    try {
+      const date = new Date(dateInput);
+      if (isNaN(date.getTime())) return 'N/A';
+      if (includeTime) {
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      return date.toLocaleDateString();
+    } catch (error) {
+      return 'N/A';
+    }
+  };
 
   // Fetch flagged messages/items from backend
   const fetchFlaggedItems = async () => {
@@ -107,11 +198,50 @@ const ModeratorPanel: React.FC = () => {
       
       // Fetch standalone moderators (from standalone signup)
       const standaloneRes = await apiClient.get('/moderation/standalone');
-      setStandaloneOperators(standaloneRes.operators || []);
+      const operators = standaloneRes.operators || [];
       
       // Fetch onboarded moderators (app users with moderator role)
       const onboardedRes = await apiClient.get('/moderation/onboarded');
-      setOnboardedModerators(onboardedRes.moderators || []);
+      const moderators = onboardedRes.moderators || [];
+      
+      // Fetch chat counts for each operator
+      const operatorsWithCounts = await Promise.all(
+        operators.map(async (op: any) => {
+          try {
+            const chatCountRes = await apiClient.getModeratorChatCount(op.id);
+            const earningsRes = await apiClient.getModeratorEarnings(op.id);
+            return {
+              ...op,
+              chatsModerated: chatCountRes.chatCount || 0,
+              earnings: earningsRes.summary || {}
+            };
+          } catch (error) {
+            console.error(`Failed to fetch data for operator ${op.id}:`, error);
+            return { ...op, chatsModerated: 0, earnings: {} };
+          }
+        })
+      );
+      
+      // Fetch chat counts for each moderator
+      const moderatorsWithCounts = await Promise.all(
+        moderators.map(async (mod: any) => {
+          try {
+            const chatCountRes = await apiClient.getModeratorChatCount(mod.id);
+            const earningsRes = await apiClient.getModeratorEarnings(mod.id);
+            return {
+              ...mod,
+              chatsModerated: chatCountRes.chatCount || 0,
+              earnings: earningsRes.summary || {}
+            };
+          } catch (error) {
+            console.error(`Failed to fetch data for moderator ${mod.id}:`, error);
+            return { ...mod, chatsModerated: 0, earnings: {} };
+          }
+        })
+      );
+      
+      setStandaloneOperators(operatorsWithCounts);
+      setOnboardedModerators(moderatorsWithCounts);
       
     } catch (error) {
       console.error('Failed to fetch operators:', error);
@@ -122,14 +252,66 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
-  // Fetch activity log
-  const fetchActivityLog = async () => {
+  // Fetch all moderators earnings
+  const fetchAllModeratorsEarnings = async () => {
     try {
-      const response = await apiClient.get('/moderation/logs/activity');
-      setActivityLog(response.logs || []);
+      setLoadingEarnings(true);
+      const response = await apiClient.getAllModeratorsEarnings();
+      setAllModeratorsEarnings(response.earnings || []);
+      console.log('[DEBUG] Fetched earnings for', response.count, 'moderators');
     } catch (error) {
-      console.error('Failed to fetch activity log:', error);
-      setActivityLog([]);
+      console.error('Failed to fetch earnings:', error);
+      showNotification('Failed to fetch earnings data', 'error');
+      setAllModeratorsEarnings([]);
+    } finally {
+      setLoadingEarnings(false);
+    }
+  };
+
+  // Fetch earnings history for a specific moderator
+  const fetchModeratorEarningsHistory = async (moderatorId: string) => {
+    try {
+      setEarningHistoryLoading(true);
+      const response = await apiClient.getModeratorEarningsHistory(moderatorId, 50, 0);
+      setEarningsHistory(response.earnings || []);
+      console.log('[DEBUG] Fetched earnings history for moderator:', moderatorId);
+    } catch (error) {
+      console.error('Failed to fetch earnings history:', error);
+      showNotification('Failed to fetch earnings history', 'error');
+      setEarningsHistory([]);
+    } finally {
+      setEarningHistoryLoading(false);
+    }
+  };
+
+  // Fetch activity logs with filters
+  const fetchActivityLogs = async (filters: any = {}) => {
+    try {
+      setLoadingActivityLogs(true);
+      const response = await apiClient.getActivityLogs({
+        ...activityLogFilter,
+        ...filters
+      });
+      setActivityLogs(response.data || []);
+      setActivityLogTotalCount(response.pagination?.total || 0);
+      console.log('[DEBUG] Fetched activity logs:', response.data?.length);
+    } catch (error) {
+      console.error('Failed to fetch activity logs:', error);
+      showNotification('Failed to fetch activity logs', 'error');
+      setActivityLogs([]);
+    } finally {
+      setLoadingActivityLogs(false);
+    }
+  };
+
+  // Fetch activity log summary
+  const fetchActivityLogSummary = async () => {
+    try {
+      const response = await apiClient.getActivitySummary();
+      setActivityLogSummary(response.data);
+      console.log('[DEBUG] Fetched activity summary');
+    } catch (error) {
+      console.error('Failed to fetch activity summary:', error);
     }
   };
 
@@ -162,10 +344,15 @@ const ModeratorPanel: React.FC = () => {
       fetchModerators();
     } else if (activeTab === 'OPERATORS') {
       fetchOperators();
+      fetchAllModeratorsEarnings();
     } else if (activeTab === 'RESOLVED') {
-      fetchActivityLog();
+      fetchActivityLogs();
+      fetchActivityLogSummary();
     } else if (activeTab === 'USERS') {
       fetchAllUsers();
+    } else if (activeTab === 'PAYMENTS') {
+      fetchCoinPackages();
+      fetchCoinPurchases();
     }
     
     // Set up auto-refresh based on active tab
@@ -365,19 +552,53 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
-  // Suspend/unsuspend user
-  const toggleUserSuspension = async (userId: string, shouldSuspend: boolean, reason?: string) => {
+  // Suspend/unsuspend user - shows confirmation modal
+  const toggleUserSuspension = (userId: string, shouldSuspend: boolean, reason?: string) => {
+    setConfirmationModal({
+      isOpen: true,
+      userId,
+      action: shouldSuspend ? 'suspend' : 'unsuspend',
+      reason: reason || 'Admin action'
+    });
+  };
+
+  // Confirm suspension action and execute it
+  const confirmSuspensionAction = async () => {
+    const { userId, action, reason } = confirmationModal;
+    if (!userId || !action) return;
+
     try {
       setActioningUserId(userId);
-      await apiClient.put(`/api/moderation/users/${userId}/suspend`, {
+      const shouldSuspend = action === 'suspend';
+      
+      const response = await apiClient.put(`/moderation/users/${userId}/suspend`, {
         suspend: shouldSuspend,
-        reason: reason || 'Suspended by admin'
+        reason: reason || 'Admin action'
       });
-      // Refresh users list
+
+      // Log the action
+      try {
+        await apiClient.post('/api/moderation/logs/activity', {
+          action: 'moderator_action',
+          userId,
+          description: `User ${shouldSuspend ? 'suspended' : 'unsuspended'} by admin`,
+          details: reason,
+          metadata: { actionType: shouldSuspend ? 'suspend' : 'unsuspend', reason }
+        });
+      } catch (logError) {
+        console.warn('[WARN] Failed to log action:', logError);
+      }
+
+      // Close confirmation modal
+      setConfirmationModal({ isOpen: false, userId: null, action: null, reason: '' });
+      
+      // Refresh users list and activity log
       await fetchAllUsers();
-    } catch (error) {
+      await fetchActivityLog();
+      
+    } catch (error: any) {
       console.error('[ERROR ModeratorPanel] Failed to update user suspension:', error);
-      alert('Failed to update user suspension status');
+      showNotification(`Failed to ${confirmationModal.action} user: ${error?.message || 'Unknown error'}`, 'error');
     } finally {
       setActioningUserId(null);
     }
@@ -387,12 +608,14 @@ const ModeratorPanel: React.FC = () => {
   const changeUserRole = async (userId: string, newRole: string) => {
     try {
       setActioningUserId(userId);
-      await apiClient.put(`/api/moderation/users/${userId}/role`, { newRole });
+      console.log(`[DEBUG] Changing role for ${userId} to ${newRole}`);
+      const response = await apiClient.put(`/moderation/users/${userId}/role`, { newRole });
+      console.log('[DEBUG] Role change response:', response);
       // Refresh users list
       await fetchAllUsers();
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ERROR ModeratorPanel] Failed to change user role:', error);
-      alert('Failed to change user role');
+      showNotification(`Failed to change user role: ${error?.message || 'Unknown error'}`, 'error');
     } finally {
       setActioningUserId(null);
     }
@@ -402,14 +625,183 @@ const ModeratorPanel: React.FC = () => {
   const changeAccountType = async (userId: string, newAccountType: string) => {
     try {
       setActioningUserId(userId);
-      await apiClient.put(`/api/moderation/users/${userId}/account-type`, { newAccountType });
+      console.log(`[DEBUG] Changing account type for ${userId} to ${newAccountType}`);
+      const response = await apiClient.put(`/moderation/users/${userId}/account-type`, { newAccountType });
+      console.log('[DEBUG] Account type change response:', response);
       // Refresh users list
       await fetchAllUsers();
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ERROR ModeratorPanel] Failed to change account type:', error);
-      alert('Failed to change account type');
+      showNotification(`Failed to change account type: ${error?.message || 'Unknown error'}`, 'error');
     } finally {
       setActioningUserId(null);
+    }
+  };
+
+  // Toggle user verification
+  const toggleUserVerification = async (userId: string, verified: boolean) => {
+    try {
+      setActioningUserId(userId);
+      console.log(`[DEBUG] Toggling verification for ${userId} to ${verified}`);
+      const response = await apiClient.put(`/moderation/users/${userId}/verify`, { verified });
+      console.log('[DEBUG] Verification toggle response:', response);
+      // Refresh users list
+      await fetchAllUsers();
+    } catch (error: any) {
+      console.error('[ERROR ModeratorPanel] Failed to toggle user verification:', error);
+      showNotification(`Failed to toggle user verification: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setActioningUserId(null);
+    }
+  };
+
+  // Edit user profile
+  const handleEditUser = (user: any) => {
+    setEditingUserId(user.id);
+    setEditingUserForm({
+      username: user.username || '',
+      email: user.email || '',
+      name: user.name || '',
+      age: user.age?.toString() || '',
+      bio: user.bio || '',
+      location: user.location || '',
+      role: user.role || 'USER',
+    });
+    // Initialize images from existing user data
+    setEditingUserImages(user.images || []);
+  };
+
+  const handleSaveUserProfile = async () => {
+    if (!editingUserId) return;
+    try {
+      setActioningUserId(editingUserId);
+      console.log('[DEBUG ModeratorPanel] Saving user profile:', editingUserForm);
+      const response = await apiClient.updateUserProfile(editingUserId, {
+        username: editingUserForm.username,
+        email: editingUserForm.email,
+        name: editingUserForm.name,
+        age: editingUserForm.age ? parseInt(editingUserForm.age) : undefined,
+        bio: editingUserForm.bio,
+        location: editingUserForm.location,
+        role: editingUserForm.role,
+        images: editingUserImages,
+      });
+      showNotification('Profile updated successfully', 'success');
+      setEditingUserId(null);
+      setEditingUserImages([]);
+      await fetchAllUsers();
+    } catch (error: any) {
+      console.error('[ERROR ModeratorPanel] Failed to update user profile:', error);
+      showNotification(`Failed to update profile: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setActioningUserId(null);
+    }
+  };
+
+  // Create new profile (manual onboarding)
+  const handleCreateProfile = async () => {
+    if (!newProfileForm.username || !newProfileForm.email || !newProfileForm.password) {
+      showNotification('Please fill in username, email, and password', 'warning');
+      return;
+    }
+
+    try {
+      setCreatingProfile(true);
+      console.log('[DEBUG ModeratorPanel] Creating new profile:', newProfileForm);
+      const response = await apiClient.createUserProfile({
+        username: newProfileForm.username.toLowerCase().trim(),
+        email: newProfileForm.email.toLowerCase().trim(),
+        password: newProfileForm.password,
+        name: newProfileForm.name || newProfileForm.username,
+        age: newProfileForm.age ? parseInt(newProfileForm.age) : 25,
+        bio: newProfileForm.bio || 'Onboarded by admin',
+        location: newProfileForm.location || '',
+        role: newProfileForm.role,
+        accountType: newProfileForm.accountType,
+        images: newProfileImages,
+      });
+      showNotification('Profile created successfully', 'success');
+      setShowAddProfileModal(false);
+      setNewProfileForm({
+        username: '',
+        email: '',
+        name: '',
+        age: '',
+        bio: '',
+        location: '',
+        password: '',
+        role: 'USER',
+        accountType: 'APP',
+      });
+      setNewProfileImages([]);
+      await fetchAllUsers();
+    } catch (error: any) {
+      console.error('[ERROR ModeratorPanel] Failed to create profile:', error);
+      showNotification(`Failed to create profile: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setCreatingProfile(false);
+    }
+  };
+
+  // Handle image upload for edit profile
+  const handleEditProfileImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    try {
+      setUploadingEditProfile(true);
+      const fileArray = Array.from(files);
+      let uploaded = 0;
+
+      for (const file of fileArray) {
+        try {
+          setUploadProgressEditProfile((uploaded / fileArray.length) * 100);
+          const result = await apiClient.uploadImage(file);
+          setEditingUserImages(prev => [...prev, result.imageUrl]);
+          uploaded++;
+        } catch (err: any) {
+          console.error('[ERROR] Failed to upload image:', err);
+          showNotification(`Failed to upload image: ${err?.message || 'Unknown error'}`, 'error');
+        }
+      }
+      setUploadProgressEditProfile(100);
+      setTimeout(() => setUploadProgressEditProfile(0), 1000);
+    } catch (error: any) {
+      console.error('[ERROR] Image upload failed:', error);
+      showNotification(`Image upload failed: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setUploadingEditProfile(false);
+    }
+  };
+
+  // Handle image upload for new profile
+  const handleNewProfileImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    try {
+      setUploadingNewProfile(true);
+      const fileArray = Array.from(files);
+      let uploaded = 0;
+
+      for (const file of fileArray) {
+        try {
+          setUploadProgressNewProfile((uploaded / fileArray.length) * 100);
+          const result = await apiClient.uploadImage(file);
+          setNewProfileImages(prev => [...prev, result.imageUrl]);
+          uploaded++;
+        } catch (err: any) {
+          console.error('[ERROR] Failed to upload image:', err);
+          showNotification(`Failed to upload image: ${err?.message || 'Unknown error'}`, 'error');
+        }
+      }
+      setUploadProgressNewProfile(100);
+      setTimeout(() => setUploadProgressNewProfile(0), 1000);
+    } catch (error: any) {
+      console.error('[ERROR] Image upload failed:', error);
+      showNotification(`Image upload failed: ${error?.message || 'Unknown error'}`, 'error');
+    } finally {
+      setUploadingNewProfile(false);
     }
   };
 
@@ -495,6 +887,40 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
+  // Fetch coin packages from backend
+  const fetchCoinPackages = async () => {
+    try {
+      setLoadingCoinPackages(true);
+      setCoinPackagesError(null);
+      const response = await apiClient.getCoinPackages(true);
+      if (response.success && response.packages) {
+        setCoinPackages(response.packages);
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch coin packages:', error);
+      setCoinPackagesError((error as any).message || 'Failed to fetch coin packages');
+    } finally {
+      setLoadingCoinPackages(false);
+    }
+  };
+
+  // Fetch recent coin purchases from backend
+  const fetchCoinPurchases = async () => {
+    try {
+      setLoadingCoinPurchases(true);
+      setCoinPurchasesError(null);
+      const response = await apiClient.getCoinPurchases(100, 0);
+      if (response.success && response.purchases) {
+        setCoinPurchases(response.purchases);
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch coin purchases:', error);
+      setCoinPurchasesError((error as any).message || 'Failed to fetch coin purchases');
+    } finally {
+      setLoadingCoinPurchases(false);
+    }
+  };
+
   const handleBan = (id: string) => {
     const item = flaggedItems.find(f => f.id === id);
     if (item) {
@@ -503,163 +929,337 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
+  // Coin Package Management Functions
+
+
+  const handleEditPackage = (pkg: any) => {
+    setEditingPackageId(pkg.id);
+    setEditingPackageForm({ coins: String(pkg.coins), price: String(pkg.price) });
+  };
+
+  const handleSavePackage = async () => {
+    if (!editingPackageForm.coins || !editingPackageForm.price) {
+      showNotification('Please fill in all fields', 'warning');
+      return;
+    }
+
+    try {
+      const coins = parseInt(editingPackageForm.coins);
+      const price = parseFloat(editingPackageForm.price);
+
+      if (coins <= 0 || price <= 0) {
+        showNotification('Coins and price must be greater than 0', 'warning');
+        return;
+      }
+
+      console.log('[DEBUG ModeratorPanel] Saving package:', { id: editingPackageId, coins, price });
+
+      // Call backend API to update package
+      const response = await apiClient.updateCoinPackage(editingPackageId!, {
+        coins,
+        price
+      });
+
+      if (response.success) {
+        // Update local state with the response from backend
+        setCoinPackages(coinPackages.map(pkg => 
+          pkg.id === editingPackageId 
+            ? response.package
+            : pkg
+        ));
+        setEditingPackageId(null);
+        setEditingPackageForm({ coins: '', price: '' });
+        showNotification('Package updated successfully', 'success');
+        
+        // Refetch packages in global context so ProfileSettings sees the update
+        console.log('[DEBUG ModeratorPanel] Triggering global coin packages refetch');
+        await refetchCoinPackages();
+      }
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to save package:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      showNotification(errorMsg || 'Failed to save package', 'error');
+    }
+  };
+
+  const handleDeletePackage = async (id: number) => {
+    if (confirm('Are you sure you want to delete this package?')) {
+      try {
+        console.log('[DEBUG ModeratorPanel] Deleting package:', id);
+        const response = await apiClient.deleteCoinPackage(id);
+
+        if (response.success) {
+          setCoinPackages(coinPackages.filter(pkg => pkg.id !== id));
+          showNotification('Package deleted successfully', 'success');
+          
+          // Refetch packages in global context
+          console.log('[DEBUG ModeratorPanel] Triggering global coin packages refetch after delete');
+          await refetchCoinPackages();
+        }
+      } catch (error) {
+        console.error('[ERROR ModeratorPanel] Failed to delete package:', error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        showNotification(errorMsg || 'Failed to delete package', 'error');
+      }
+    }
+  };
+
+  const handleAddPackage = async () => {
+    if (!newPackageForm.coins || !newPackageForm.price) {
+      showNotification('Please fill in all fields', 'warning');
+      return;
+    }
+
+    try {
+      const coins = parseInt(newPackageForm.coins);
+      const price = parseFloat(newPackageForm.price);
+
+      if (coins <= 0 || price <= 0) {
+        showNotification('Coins and price must be greater than 0', 'warning');
+        return;
+      }
+
+      console.log('[DEBUG ModeratorPanel] Adding new package:', { coins, price });
+
+      // Call backend API to create package
+      const response = await apiClient.createCoinPackage({
+        coins,
+        price
+      });
+
+      if (response.success) {
+        setCoinPackages([...coinPackages, response.package]);
+        setNewPackageForm({ coins: '', price: '' });
+        setShowAddPackageForm(false);
+        showNotification('Package created successfully', 'success');
+        
+        // Refetch packages in global context
+        console.log('[DEBUG ModeratorPanel] Triggering global coin packages refetch after add');
+        await refetchCoinPackages();
+      }
+    } catch (error) {
+      console.error('[ERROR ModeratorPanel] Failed to create package:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      showNotification(errorMsg || 'Failed to create package', 'error');
+    }
+  };
+
   return (
     <div className="h-full bg-gray-50 flex flex-col">
-      <div className="p-6 bg-white border-b shadow-sm">
-        <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-          <i className="fa-solid fa-shield-halved text-red-500"></i>
-          Mod Center
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">AI-assisted moderation & reporting</p>
+      {/* Professional Header */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 border-b border-slate-600 shadow-lg">
+        <div className="px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-black text-white flex items-center gap-3">
+                <i className="fa-solid fa-shield-halved text-amber-400"></i>
+                Moderation Center
+              </h2>
+              <p className="text-sm text-slate-300 mt-2 flex items-center gap-2">
+                <i className="fa-solid fa-circle text-green-400 text-xs"></i>
+                AI-assisted moderation, user management & payment tracking
+              </p>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-right bg-slate-700 bg-opacity-50 rounded-lg px-4 py-3 border border-slate-600">
+                <p className="text-xs text-slate-400 font-semibold">Last Refresh</p>
+                <p className="text-sm text-white font-bold">{new Date(lastRefresh).toLocaleTimeString()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Active Chat Display */}
+      {/* Active Chat Display - Professional */}
       {selectedChat && (
-        <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-b-2 border-blue-300 p-4 shadow-md">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 border-b border-blue-700 px-6 py-4 shadow-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex -space-x-4">
-                <div className="w-12 h-12 rounded-full border-3 border-white bg-blue-200 flex items-center justify-center text-sm font-bold text-blue-700">
+              <div className="flex -space-x-3">
+                <div className="w-14 h-14 rounded-full border-3 border-white bg-gradient-to-br from-blue-300 to-blue-500 flex items-center justify-center text-lg font-bold text-white shadow-lg">
                   {selectedChat.participants[0]?.charAt(0).toUpperCase()}
                 </div>
                 {selectedChat.participants[1] && (
-                  <div className="w-12 h-12 rounded-full border-3 border-white bg-purple-200 flex items-center justify-center text-sm font-bold text-purple-700">
+                  <div className="w-14 h-14 rounded-full border-3 border-white bg-gradient-to-br from-purple-300 to-purple-500 flex items-center justify-center text-lg font-bold text-white shadow-lg">
                     {selectedChat.participants[1]?.charAt(0).toUpperCase()}
                   </div>
                 )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold text-gray-900">
-                    Moderating: {selectedChat.participants.slice(0, 2).join(' & ')}
+                  <h3 className="text-lg font-bold text-white">
+                    <i className="fa-solid fa-comments mr-2"></i>
+                    {selectedChat.participants.slice(0, 2).join(' & ')}
                   </h3>
                   {selectedChat.flaggedCount > 0 && (
-                    <span className="bg-red-500 text-white text-xs font-black px-2 py-1 rounded-full">
+                    <span className="bg-red-400 text-white text-xs font-black px-3 py-1 rounded-full animate-pulse shadow-lg">
+                      <i className="fa-solid fa-exclamation-circle mr-1"></i>
                       {selectedChat.flaggedCount} FLAGGED
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-gray-600 mt-1">Chat ID: {selectedChat.id}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {selectedChat.messages?.length || 0} messages • Last updated: {new Date(selectedChat.lastUpdated).toLocaleTimeString()}
+                <p className="text-sm text-blue-100 mt-1">
+                  <i className="fa-solid fa-hashtag mr-1"></i>
+                  Chat ID: {selectedChat.id}
+                </p>
+                <p className="text-xs text-blue-50 mt-0.5">
+                  <i className="fa-solid fa-message mr-1"></i>
+                  {selectedChat.messages?.length || 0} messages • Last update: {new Date(selectedChat.lastUpdated).toLocaleTimeString()}
                 </p>
               </div>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setViewingChatModal(selectedChat)}
-                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+                className="bg-white text-blue-600 font-bold py-2.5 px-5 rounded-lg shadow-lg hover:bg-blue-50 hover:shadow-xl active:scale-95 transition-all flex items-center gap-2"
               >
                 <i className="fa-solid fa-magnifying-glass"></i>
                 View & Moderate
               </button>
               <button
                 onClick={() => setSelectedChat(null)}
-                className="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded-lg transition-colors"
+                className="bg-white bg-opacity-20 text-white font-bold py-2.5 px-5 rounded-lg border border-white border-opacity-30 hover:bg-opacity-30 hover:shadow-lg active:scale-95 transition-all flex items-center gap-2"
               >
-                ✕ Close
+                <i className="fa-solid fa-times"></i> Close
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="p-4 overflow-y-auto">
-        <div className="flex gap-2 mb-6 bg-gray-100 p-1.5 rounded-xl border border-gray-200">
-          <button 
-            onClick={() => setActiveTab('CHATS')}
-            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
-              activeTab === 'CHATS' 
-                ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700' 
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <i className="fa-solid fa-comments mr-1.5"></i>Live Chats
-          </button>
-          <button 
-            onClick={() => setActiveTab('PENDING')}
-            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
-              activeTab === 'PENDING' 
-                ? 'bg-emerald-600 text-white shadow-lg hover:bg-emerald-700' 
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <i className="fa-solid fa-check-circle mr-1.5"></i>Replied Chats
-          </button>
-          <button 
-            onClick={() => setActiveTab('STALLED')}
-            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
-              activeTab === 'STALLED' 
-                ? 'bg-amber-600 text-white shadow-lg hover:bg-amber-700' 
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <i className="fa-solid fa-headset mr-1.5"></i>Support
-          </button>
-          <button 
-            onClick={() => setActiveTab('OPERATORS')}
-            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
-              activeTab === 'OPERATORS' 
-                ? 'bg-purple-600 text-white shadow-lg hover:bg-purple-700' 
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <i className="fa-solid fa-users-gear mr-1.5"></i>Operators/Moderators
-          </button>
-          <button 
-            onClick={() => setActiveTab('USERS')}
-            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
-              activeTab === 'USERS' 
-                ? 'bg-pink-600 text-white shadow-lg hover:bg-pink-700' 
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <i className="fa-solid fa-users mr-1.5"></i>Users
-          </button>
-          <button 
-            onClick={() => setActiveTab('RESOLVED')}
-            className={`flex-1 py-2.5 px-3 text-[10px] font-bold rounded-lg transition-all ${
-              activeTab === 'RESOLVED' 
-                ? 'bg-indigo-600 text-white shadow-lg hover:bg-indigo-700' 
-                : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <i className="fa-solid fa-list mr-1.5"></i>Log
-          </button>
+      <div className="p-5 overflow-y-auto flex-1 flex flex-col">
+        {/* Tab Navigation - Professional Styling */}
+        <div className="mb-7 bg-white rounded-2xl p-2.5 shadow-md border border-gray-200">
+          <div className="flex gap-1.5 flex-wrap">
+            <button 
+              onClick={() => setActiveTab('CHATS')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${ activeTab === 'CHATS' 
+                ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg scale-105' 
+                : 'bg-white text-gray-600 hover:bg-blue-50 hover:text-blue-600'
+              }`}
+            >
+              <i className="fa-solid fa-comments"></i>
+              <span>Live Chats</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('PENDING')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'PENDING' 
+                  ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-emerald-50 hover:text-emerald-600'
+              }`}
+            >
+              <i className="fa-solid fa-check-circle"></i>
+              <span>Replied Chats</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('STALLED')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'STALLED' 
+                  ? 'bg-gradient-to-br from-amber-600 to-amber-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-amber-50 hover:text-amber-600'
+              }`}
+            >
+              <i className="fa-solid fa-headset"></i>
+              <span>Support Needed</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('OPERATORS')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'OPERATORS' 
+                  ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-purple-50 hover:text-purple-600'
+              }`}
+            >
+              <i className="fa-solid fa-users-gear"></i>
+              <span>Moderators</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('USERS')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'USERS' 
+                  ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-indigo-50 hover:text-indigo-600'
+              }`}
+            >
+              <i className="fa-solid fa-user-check"></i>
+              <span>Users</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('PAYMENTS')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'PAYMENTS' 
+                  ? 'bg-gradient-to-br from-green-600 to-green-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-green-50 hover:text-green-600'
+              }`}
+            >
+              <i className="fa-solid fa-credit-card"></i>
+              <span>Payments</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('REVENUE')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'REVENUE' 
+                  ? 'bg-gradient-to-br from-orange-600 to-orange-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-orange-50 hover:text-orange-600'
+              }`}
+            >
+              <i className="fa-solid fa-chart-pie"></i>
+              <span>Revenue</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('RESOLVED')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'RESOLVED' 
+                  ? 'bg-gradient-to-br from-cyan-600 to-cyan-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-cyan-50 hover:text-cyan-600'
+              }`}
+            >
+              <i className="fa-solid fa-list-check"></i>
+              <span>Activity Log</span>
+            </button>
+          </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-6">
+        {/* Advanced Search Bar */}
+        <div className="mb-7">
           <div className="relative">
             <input
               type="text"
-              placeholder="Search by username, chat ID, user ID..."
+              placeholder="🔍 Search by username, chat ID, user ID, email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-3 pl-10 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              className="w-full px-4 py-3 pl-12 text-sm font-medium border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-0 focus:border-blue-500 focus:shadow-lg bg-white transition-all duration-200 placeholder-gray-400"
             />
-            <i className="fa-solid fa-magnifying-glass absolute left-3 top-3.5 text-gray-400 text-sm"></i>
+            <i className="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-gray-400 text-sm pointer-events-none"></i>
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full p-1 transition-all"
               >
-                <i className="fa-solid fa-xmark"></i>
+                <i className="fa-solid fa-xmark text-lg"></i>
               </button>
             )}
           </div>
         </div>
 
         {activeTab === 'PENDING' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="text-[10px] text-gray-500">
-                {selectedModeratorInPending ? 'Chats from selected moderator' : 'Chats grouped by moderator'}
+          <div className="space-y-6">
+            {/* Section Header */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-emerald-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">
+                  <i className="fa-solid fa-check-circle"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Replied Chats</h3>
+                  <p className="text-xs text-gray-500">Moderation actions completed</p>
+                </div>
               </div>
               <button
                 onClick={() => fetchRepliedChats()}
                 disabled={loadingRepliedChats}
-                className="text-[10px] font-bold text-blue-500 hover:text-blue-600 disabled:opacity-50 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-all"
+                className="text-sm font-bold text-emerald-600 hover:text-emerald-700 disabled:opacity-50 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-emerald-50 transition-all border border-emerald-200"
               >
                 <i className={`fa-solid fa-rotate-right ${loadingRepliedChats ? 'animate-spin' : ''}`}></i>
                 Refresh
@@ -667,24 +1267,27 @@ const ModeratorPanel: React.FC = () => {
             </div>
 
             {loadingRepliedChats ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                <p className="text-gray-500 text-sm mt-2">Loading replied chats...</p>
+              <div className="text-center py-12">
+                <div className="inline-block">
+                  <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-emerald-600 animate-spin"></div>
+                </div>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Loading replied chats...</p>
               </div>
             ) : repliedChats.length === 0 ? (
-              <div className="text-center py-12">
-                <i className="fa-solid fa-check-circle text-4xl text-emerald-100 mb-2"></i>
-                <p className="text-gray-400 text-sm">No replied chats yet. Get started!</p>
+              <div className="text-center py-12 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
+                <i className="fa-solid fa-check-circle text-5xl text-emerald-300 mb-3"></i>
+                <p className="text-gray-600 text-lg font-semibold">No replied chats yet</p>
+                <p className="text-gray-500 text-sm mt-1">Chats that moderators have replied to will appear here</p>
               </div>
             ) : selectedModeratorInPending ? (
               // Show chats for selected moderator
-              <div>
+              <div className="space-y-4">
                 <button
                   onClick={() => setSelectedModeratorInPending(null)}
-                  className="mb-4 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-lg flex items-center gap-2 transition-all"
+                  className="mb-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-lg flex items-center gap-2 transition-all border border-slate-300"
                 >
                   <i className="fa-solid fa-arrow-left"></i>
-                  Back to Moderators
+                  Back to All Moderators
                 </button>
 
                 {(() => {
@@ -705,12 +1308,13 @@ const ModeratorPanel: React.FC = () => {
 
                   if (filtered.length === 0) {
                     return (
-                      <div className="text-center py-12">
-                        <i className="fa-solid fa-search text-4xl text-gray-200 mb-2"></i>
-                        <p className="text-gray-400 text-sm">No chats match your search "{searchQuery}"</p>
+                      <div className="text-center py-12 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                        <i className="fa-solid fa-search text-5xl text-blue-300 mb-3"></i>
+                        <p className="text-gray-600 font-semibold">No chats match your search</p>
+                        <p className="text-gray-500 text-sm mt-1">"{searchQuery}"</p>
                         <button
                           onClick={() => setSearchQuery('')}
-                          className="text-blue-500 hover:text-blue-600 text-sm mt-2"
+                          className="text-blue-600 hover:text-blue-700 text-sm mt-3 font-semibold underline"
                         >
                           Clear search
                         </button>
@@ -719,50 +1323,56 @@ const ModeratorPanel: React.FC = () => {
                   }
 
                   return (
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {filtered.map(chat => {
                         const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
                         const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
                         const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
-                        const replyTime = new Date(chat.markedAsRepliedAt).toLocaleDateString() + ' ' + new Date(chat.markedAsRepliedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const replyTime = formatDate(chat.markedAsRepliedAt, true);
                         
                         return (
                           <div 
                             key={chat.id} 
-                            className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all"
+                            className="bg-white rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:shadow-lg transition-all p-4 cursor-pointer transform hover:scale-105"
                           >
-                            <div className="flex justify-between items-start mb-3">
+                            <div className="flex justify-between items-start mb-4">
                               <div className="flex items-center gap-3 flex-1">
-                                <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-200 to-emerald-400 flex items-center justify-center text-emerald-700 font-bold shadow-sm">
                                   {(user1.name || user1.username)[0]?.toUpperCase()}{(user2.name || user2.username)[0]?.toUpperCase()}
                                 </div>
                                 <div className="flex-1">
                                   <h4 className="text-sm font-bold text-gray-900">{participantNames}</h4>
-                                  <p className="text-[10px] text-gray-500">Chat ID: {chat.id}</p>
+                                  <p className="text-xs text-gray-500">Chat ID: {chat.id.slice(0, 10)}...</p>
                                 </div>
                               </div>
-                              <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-0.5 rounded uppercase">Replied</span>
+                              <span className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-lg font-black border border-emerald-200">
+                                <i className="fa-solid fa-check mr-1"></i>Replied
+                              </span>
                             </div>
                             
-                            <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-100">
-                              <p className="text-xs text-gray-600 font-semibold mb-1">Last Message:</p>
+                            <div className="bg-gray-50 p-3 rounded-lg mb-4 border border-gray-200">
+                              <p className="text-xs text-gray-600 font-semibold mb-2">
+                                <i className="fa-solid fa-message mr-1"></i>
+                                Last Message:
+                              </p>
                               {chat.messages && chat.messages.length > 0 ? (
-                                <p className="text-xs text-gray-700 italic">"{chat.messages[chat.messages.length - 1].text.slice(0, 100)}{chat.messages[chat.messages.length - 1].text.length > 100 ? '...' : ''}"</p>
+                                <p className="text-xs text-gray-700 italic line-clamp-2">"{chat.messages[chat.messages.length - 1].text.slice(0, 100)}{chat.messages[chat.messages.length - 1].text.length > 100 ? '...' : ''}"</p>
                               ) : (
                                 <p className="text-xs text-gray-500 italic">No messages</p>
                               )}
                             </div>
 
-                            <div className="flex items-center justify-between">
-                              <div className="text-[10px] text-gray-500">
+                            <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                              <div className="text-xs text-gray-500">
                                 <i className="fa-solid fa-clock text-emerald-500 mr-1"></i>
-                                Replied: {replyTime}
+                                {replyTime}
                               </div>
                               <button 
                                 onClick={() => { setSelectedChat(chat); setViewingChatModal(chat); }}
-                                className="py-1 px-3 bg-blue-500 text-white text-[10px] font-bold rounded-lg shadow-sm hover:bg-blue-600 active:scale-95 transition-all"
+                                className="py-1.5 px-3 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm transition-all active:scale-95"
                               >
-                                View Chat
+                                <i className="fa-solid fa-eye mr-1"></i>
+                                View
                               </button>
                             </div>
                           </div>
@@ -818,223 +1428,330 @@ const ModeratorPanel: React.FC = () => {
         )}
 
         {activeTab === 'CHATS' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="text-[10px] text-gray-500">
-                Last updated: {new Date(lastRefresh).toLocaleTimeString()}
+          <div className="space-y-6">
+            {/* Section Header */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-blue-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white shadow-lg">
+                  <i className="fa-solid fa-comments"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Live Chats</h3>
+                  <p className="text-xs text-gray-500">Real-time conversations requiring moderation</p>
+                </div>
               </div>
-              <button
-                onClick={() => fetchChats()}
-                disabled={loadingChats}
-                className="text-[10px] font-bold text-blue-500 hover:text-blue-600 disabled:opacity-50 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-all"
-              >
-                <i className={`fa-solid fa-rotate-right ${loadingChats ? 'animate-spin' : ''}`}></i>
-                Refresh
-              </button>
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-gray-500 font-medium">
+                  <i className="fa-solid fa-history mr-1 text-blue-500"></i>
+                  {new Date(lastRefresh).toLocaleTimeString()}
+                </div>
+                <button
+                  onClick={() => fetchChats()}
+                  disabled={loadingChats}
+                  className="text-sm font-bold text-blue-600 hover:text-blue-700 disabled:opacity-50 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-50 transition-all border border-blue-200"
+                >
+                  <i className={`fa-solid fa-rotate-right ${loadingChats ? 'animate-spin' : ''}`}></i>
+                  Refresh
+                </button>
+              </div>
             </div>
+
             {chatError && (
-              <div className="bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded-lg text-sm">
+              <div className="bg-amber-50 border-2 border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2">
+                <i className="fa-solid fa-exclamation-triangle"></i>
                 {chatError}
               </div>
             )}
             {loadingChats ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                <p className="text-gray-500 text-sm mt-2">Loading chats...</p>
+              <div className="text-center py-12">
+                <div className="inline-block">
+                  <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-blue-600 animate-spin"></div>
+                </div>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Loading live chats...</p>
               </div>
             ) : chats.length === 0 ? (
-              <div className="text-center py-12">
-                <i className="fa-solid fa-comments text-4xl text-gray-200 mb-2"></i>
-                <p className="text-gray-400 text-sm">No chats available</p>
+              <div className="text-center py-12 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                <i className="fa-solid fa-comments text-5xl text-blue-300 mb-3"></i>
+                <p className="text-gray-600 text-lg font-semibold">No chats available</p>
+                <p className="text-gray-500 text-sm mt-1">Active conversations will appear here</p>
               </div>
             ) : getFilteredLiveChats().length === 0 ? (
-              <div className="text-center py-12">
-                <i className="fa-solid fa-search text-4xl text-gray-200 mb-2"></i>
-                <p className="text-gray-400 text-sm">No chats match your search "{searchQuery}"</p>
+              <div className="text-center py-12 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                <i className="fa-solid fa-search text-5xl text-blue-300 mb-3"></i>
+                <p className="text-gray-600 font-semibold">No chats match your search</p>
+                <p className="text-gray-500 text-sm mt-1">"{searchQuery}"</p>
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="text-blue-500 hover:text-blue-600 text-sm mt-2"
+                  className="text-blue-600 hover:text-blue-700 text-sm mt-3 font-semibold underline"
                 >
                   Clear search
                 </button>
               </div>
             ) : (
-              getFilteredLiveChats().map(chat => {
-                // Get user data from map, fallback to participant ID
-                const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
-                const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
-                const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
-                
-                return (
-                  <div 
-                    key={chat.id} 
-                    onClick={() => { setSelectedChat(chat); setViewingChatModal(chat); }}
-                    className={`bg-white p-4 rounded-2xl border-2 flex items-center justify-between active:scale-[0.98] transition-all cursor-pointer hover:shadow-md ${
-                      selectedChat?.id === chat.id ? 'border-blue-500 bg-blue-50' : 'border-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="flex -space-x-2">
-                        <div className="w-8 h-8 rounded-full border-2 border-white bg-blue-200 flex items-center justify-center text-[10px] font-bold text-blue-700">
-                          {user1.name?.charAt(0).toUpperCase() || chat.participants[0].charAt(0).toUpperCase()}
+              <div className="grid grid-cols-1 gap-3">
+                {getFilteredLiveChats().map(chat => {
+                  // Get user data from map, fallback to participant ID
+                  const user1 = userMap.get(chat.participants[0]) || { id: chat.participants[0], username: chat.participants[0], name: chat.participants[0] };
+                  const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
+                  const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
+                  
+                  return (
+                    <div 
+                      key={chat.id} 
+                      onClick={() => { setSelectedChat(chat); setViewingChatModal(chat); }}
+                      className={`bg-white rounded-xl border-2 flex items-center justify-between p-4 transition-all duration-200 cursor-pointer ${
+                        selectedChat?.id === chat.id 
+                          ? 'border-blue-500 bg-blue-50 shadow-lg' 
+                          : 'border-gray-200 hover:border-blue-300 hover:shadow-md'
+                      } active:scale-98`}
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="flex -space-x-2">
+                          <div className="w-10 h-10 rounded-full border-2 border-white bg-gradient-to-br from-blue-300 to-blue-500 flex items-center justify-center text-sm font-bold text-white shadow-md">
+                            {user1.name?.charAt(0).toUpperCase() || chat.participants[0].charAt(0).toUpperCase()}
+                          </div>
+                          {chat.participants[1] && (
+                            <div className="w-10 h-10 rounded-full border-2 border-white bg-gradient-to-br from-purple-300 to-purple-500 flex items-center justify-center text-sm font-bold text-white shadow-md">
+                              {user2.name?.charAt(0).toUpperCase() || chat.participants[1].charAt(0).toUpperCase()}
+                            </div>
+                          )}
                         </div>
-                        {chat.participants[1] && (
-                          <div className="w-8 h-8 rounded-full border-2 border-white bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-700">
-                            {user2.name?.charAt(0).toUpperCase() || chat.participants[1].charAt(0).toUpperCase()}
+                        <div className="flex-1">
+                          <h4 className="text-sm font-bold text-gray-900">{participantNames}</h4>
+                          <p className="text-xs text-gray-500">
+                            <i className="fa-solid fa-hashtag mr-1"></i>
+                            {chat.id.substring(0, 12)}...
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {chat.flaggedCount > 0 && (
+                          <div className="bg-red-100 text-red-600 text-xs font-black px-3 py-1 rounded-full border border-red-200 animate-pulse">
+                            <i className="fa-solid fa-flag mr-1"></i>
+                            {chat.flaggedCount} FLAGGED
                           </div>
                         )}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-gray-900">{participantNames}</h4>
-                        <p className="text-[10px] text-gray-500">ID: {chat.id.substring(0, 8)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {chat.flaggedCount > 0 && (
-                        <div className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-1 rounded-full">
-                          {chat.flaggedCount} FLAGGED
+                        <div className={`text-lg transition-all ${selectedChat?.id === chat.id ? 'text-blue-500' : 'text-gray-400'}`}>
+                          {selectedChat?.id === chat.id ? (
+                            <i className="fa-solid fa-check-circle"></i>
+                          ) : (
+                            <i className="fa-solid fa-chevron-right"></i>
+                          )}
                         </div>
-                      )}
-                      {selectedChat?.id === chat.id ? (
-                        <i className="fa-solid fa-check-circle text-blue-500 text-lg"></i>
-                      ) : (
-                        <i className="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
 
         {activeTab === 'STALLED' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <div className="text-[10px] text-gray-500">
-                Chats with unanswered messages (24+ hours)
+          <div className="space-y-6">
+            {/* Section Header */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-amber-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shadow-lg">
+                  <i className="fa-solid fa-headset"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Support Needed</h3>
+                  <p className="text-xs text-gray-500">Chats requiring moderator intervention</p>
+                </div>
               </div>
               <button
                 onClick={() => fetchStalledChats()}
                 disabled={loadingStalled}
-                className="text-[10px] font-bold text-blue-500 hover:text-blue-600 disabled:opacity-50 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition-all"
+                className="text-sm font-bold text-amber-600 hover:text-amber-700 disabled:opacity-50 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-amber-50 transition-all border border-amber-200"
               >
                 <i className={`fa-solid fa-rotate-right ${loadingStalled ? 'animate-spin' : ''}`}></i>
                 Refresh
               </button>
             </div>
             {loadingStalled ? (
-              <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                <p className="text-gray-500 text-sm mt-2">Loading stalled chats...</p>
+              <div className="text-center py-12">
+                <div className="inline-block">
+                  <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-amber-600 animate-spin"></div>
+                </div>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Loading stalled chats...</p>
               </div>
             ) : stalledChats.length === 0 ? (
-              <div className="text-center py-12">
-                <i className="fa-solid fa-clock text-4xl text-gray-200 mb-2"></i>
-                <p className="text-gray-400 text-sm">No stalled chats found</p>
+              <div className="text-center py-12 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                <i className="fa-solid fa-clock text-5xl text-amber-300 mb-3"></i>
+                <p className="text-gray-600 text-lg font-semibold">No stalled chats</p>
+                <p className="text-gray-500 text-sm mt-1">Chats inactive for 24+ hours will appear here</p>
               </div>
             ) : (
-              stalledChats.map(chat => (
-                <div 
-                  key={chat.id} 
-                  className="bg-white p-4 rounded-2xl border-2 border-gray-100 hover:border-amber-300 transition-all"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex -space-x-2">
-                        <img 
-                          src={chat.sender?.profilePicture || 'https://via.placeholder.com/32x32?text=?'} 
-                          alt={chat.sender?.name} 
-                          className="w-8 h-8 rounded-full border-2 border-white" 
-                        />
-                        <img 
-                          src={chat.receiver?.profilePicture || 'https://via.placeholder.com/32x32?text=?'} 
-                          alt={chat.receiver?.name} 
-                          className="w-8 h-8 rounded-full border-2 border-white" 
-                        />
+              <div className="grid grid-cols-1 gap-4">
+                {stalledChats.map(chat => (
+                  <div 
+                    key={chat.id} 
+                    className="bg-white rounded-xl border-2 border-gray-200 hover:border-amber-400 hover:shadow-lg transition-all p-4"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className="flex -space-x-2">
+                          <div className="w-10 h-10 rounded-full border-2 border-white bg-gradient-to-br from-blue-300 to-blue-500 flex items-center justify-center text-sm font-bold text-white shadow-md">
+                            {chat.sender?.name?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                          <div className="w-10 h-10 rounded-full border-2 border-white bg-gradient-to-br from-purple-300 to-purple-500 flex items-center justify-center text-sm font-bold text-white shadow-md">
+                            {chat.receiver?.name?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-bold text-gray-900">
+                            {chat.sender?.name} → {chat.receiver?.name}
+                          </h4>
+                          <p className="text-xs text-gray-500 mt-1">
+                            <i className="fa-solid fa-hourglass-end text-amber-500 mr-1"></i>
+                            Inactive for {chat.hoursStalled} hours
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-gray-900">
-                          {chat.sender?.name} → {chat.receiver?.name}
-                        </h4>
-                        <p className="text-[10px] text-gray-500">
-                          Stalled for {chat.hoursStalled} hours
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[10px] text-amber-600 font-bold">
-                        NEEDS HELP
-                      </div>
-                      <div className="text-[10px] text-gray-400">
-                        {new Date(chat.lastMessage?.timestamp).toLocaleDateString()}
+                      <div className="text-right">
+                        <div className="inline-block bg-amber-100 text-amber-700 text-xs px-3 py-1.5 rounded-lg font-black border border-amber-200">
+                          <i className="fa-solid fa-triangle-exclamation mr-1"></i>
+                          ACTION NEEDED
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="bg-gray-50 p-3 rounded-lg mb-3">
-                    <p className="text-[11px] text-gray-700 italic">
-                      "{chat.lastMessage?.text?.substring(0, 100)}{chat.lastMessage?.text?.length > 100 ? '...' : ''}"
-                    </p>
-                  </div>
+                    
+                    <div className="bg-gray-50 p-3 rounded-lg mb-4 border border-gray-200">
+                      <p className="text-xs text-gray-600 font-semibold mb-2">
+                        <i className="fa-solid fa-message mr-1"></i>
+                        Last Message:
+                      </p>
+                      <p className="text-xs text-gray-700 italic line-clamp-2">
+                        "{chat.lastMessage?.text?.substring(0, 120)}{chat.lastMessage?.text?.length > 120 ? '...' : ''}"
+                      </p>
+                      <p className="text-xs text-gray-400 mt-2">
+                        <i className="fa-solid fa-clock mr-1"></i>
+                        {formatDate(chat.lastMessage?.timestamp, true)}
+                      </p>
+                    </div>
 
-                  <div className="flex gap-2">
-                    <select 
-                      className="flex-1 text-[10px] border border-gray-300 rounded px-2 py-1"
-                      defaultValue=""
-                    >
-                      <option value="" disabled>Select Moderator</option>
-                      {moderators.map(mod => (
-                        <option key={mod.id} value={mod.id}>{mod.name}</option>
-                      ))}
-                    </select>
-                    <button 
-                      onClick={(e) => {
-                        const select = e.currentTarget.previousElementSibling as HTMLSelectElement;
-                        const moderatorId = select.value;
-                        if (moderatorId) {
-                          assignModerator(chat.id, moderatorId);
-                        }
-                      }}
-                      className="px-3 py-1 bg-blue-500 text-white text-[10px] font-bold rounded hover:bg-blue-600 transition-colors"
-                    >
-                      Assign
-                    </button>
+                    <div className="flex gap-2">
+                      <select 
+                        className="flex-1 text-sm border-2 border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-0 focus:border-amber-500 transition-all font-medium"
+                        defaultValue=""
+                      >
+                        <option value="" disabled>
+                          <i className="fa-solid fa-users-gear mr-1"></i>
+                          Select Moderator...
+                        </option>
+                        {moderators.map(mod => (
+                          <option key={mod.id} value={mod.id}>{mod.name}</option>
+                        ))}
+                      </select>
+                      <button 
+                        onClick={(e) => {
+                          const select = e.currentTarget.previousElementSibling as HTMLSelectElement;
+                          const moderatorId = select.value;
+                          if (moderatorId) {
+                            assignModerator(chat.id, moderatorId);
+                          }
+                        }}
+                        className="px-5 py-2 bg-gradient-to-br from-amber-500 to-amber-600 text-white font-bold rounded-lg hover:shadow-lg active:scale-95 transition-all flex items-center gap-2"
+                      >
+                        <i className="fa-solid fa-check"></i>
+                        Assign
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         )}
 
         {activeTab === 'OPERATORS' && (
-          <div className="space-y-6">
-            {/* Standalone Operators */}
+          <div className="space-y-8">
+            {/* Standalone Operators Section */}
             <div>
-              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                <i className="fa-solid fa-user-tie text-blue-600"></i>
-                Standalone Operators ({standaloneOperators.length})
-              </h3>
+              <div className="flex items-center justify-between mb-5 pb-3 border-b-2 border-blue-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white shadow-lg">
+                    <i className="fa-solid fa-user-tie"></i>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Standalone Operators</h3>
+                    <p className="text-xs text-gray-500">Direct platform partners</p>
+                  </div>
+                </div>
+                <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                  <p className="text-xs text-gray-600 font-semibold">Total</p>
+                  <p className="text-xl font-black text-blue-600">{standaloneOperators.length}</p>
+                </div>
+              </div>
               {loadingModerators ? (
-                <div className="text-center py-4 text-gray-400"><i className="fa-solid fa-spinner animate-spin"></i></div>
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin">
+                    <i className="fa-solid fa-spinner text-gray-400 text-2xl"></i>
+                  </div>
+                  <p className="text-gray-400 text-sm mt-3">Loading operators...</p>
+                </div>
               ) : standaloneOperators.length === 0 ? (
-                <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-400 text-sm">No standalone operators</div>
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-8 text-center border border-blue-200">
+                  <i className="fa-solid fa-users text-3xl text-blue-300 mb-3"></i>
+                  <p className="text-gray-500 text-sm font-medium">No standalone operators yet</p>
+                </div>
               ) : (
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {standaloneOperators.map((op: any) => (
-                    <div key={op.id} className="bg-white p-3 rounded-lg border border-gray-200 hover:border-blue-300 transition-all">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="font-bold text-sm text-gray-900">{op.name || op.username}</p>
-                          <p className="text-xs text-gray-500">{op.email}</p>
-                          <p className="text-xs text-gray-400 mt-1">ID: {op.id.slice(0, 12)}...</p>
+                    <div 
+                      key={op.id} 
+                      onClick={() => {
+                        setSelectedModeratorEarnings(op);
+                        fetchModeratorEarningsHistory(op.id);
+                      }}
+                      className="bg-white rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all duration-200 cursor-pointer transform hover:scale-105 p-4"
+                    >
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-bold text-sm text-gray-900">{op.name || op.username}</p>
+                              <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                            </div>
+                            <p className="text-xs text-gray-500 font-medium">{op.email}</p>
+                            <p className="text-xs text-gray-400 mt-2">
+                              <i className="fa-solid fa-id-card mr-1"></i>
+                              {op.id.slice(0, 12)}...
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="bg-blue-100 text-blue-700 text-xs px-3 py-1.5 rounded-lg font-bold">
+                              <i className="fa-solid fa-comments mr-1"></i>
+                              {op.chatsModerated || 0}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="inline-block bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded">
-                            {op.chatsModerated || 0} chats
-                          </span>
-                          <p className="text-xs text-gray-400 mt-1">Joined {new Date(op.createdAt).toLocaleDateString()}</p>
+                        
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 font-semibold mb-2">
+                            <i className="fa-solid fa-calendar mr-1"></i>
+                            Joined {formatDate(op.joinDate)}
+                          </p>
                         </div>
+                        
+                        {/* Earnings Summary */}
+                        {op.earnings && (
+                          <div className="grid grid-cols-3 gap-2 pt-2 bg-gray-50 rounded-lg p-3">
+                            <div className="text-center">
+                              <p className="text-xs text-gray-500 font-semibold">Earned</p>
+                              <p className="font-bold text-green-600 text-sm">${(op.earnings.totalEarned || 0).toFixed(2)}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-gray-500 font-semibold">Pending</p>
+                              <p className="font-bold text-amber-600 text-sm">${(op.earnings.totalPending || 0).toFixed(2)}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-gray-500 font-semibold">Paid</p>
+                              <p className="font-bold text-blue-600 text-sm">${(op.earnings.totalPaid || 0).toFixed(2)}</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1042,45 +1759,221 @@ const ModeratorPanel: React.FC = () => {
               )}
             </div>
 
-            {/* Onboarded Moderators */}
+            {/* Onboarded Moderators Section */}
             <div>
-              <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                <i className="fa-solid fa-user-check text-green-600"></i>
-                Onboarded Moderators ({onboardedModerators.length})
-              </h3>
+              <div className="flex items-center justify-between mb-5 pb-3 border-b-2 border-emerald-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-lg">
+                    <i className="fa-solid fa-user-check"></i>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Onboarded Moderators</h3>
+                    <p className="text-xs text-gray-500">Verified & certified team members</p>
+                  </div>
+                </div>
+                <div className="bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-200">
+                  <p className="text-xs text-gray-600 font-semibold">Total</p>
+                  <p className="text-xl font-black text-emerald-600">{onboardedModerators.length}</p>
+                </div>
+              </div>
               {loadingModerators ? (
-                <div className="text-center py-4 text-gray-400"><i className="fa-solid fa-spinner animate-spin"></i></div>
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin">
+                    <i className="fa-solid fa-spinner text-gray-400 text-2xl"></i>
+                  </div>
+                  <p className="text-gray-400 text-sm mt-3">Loading moderators...</p>
+                </div>
               ) : onboardedModerators.length === 0 ? (
-                <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-400 text-sm">No onboarded moderators</div>
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-8 text-center border border-emerald-200">
+                  <i className="fa-solid fa-user-check text-3xl text-emerald-300 mb-3"></i>
+                  <p className="text-gray-500 text-sm font-medium">No onboarded moderators yet</p>
+                </div>
               ) : (
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {onboardedModerators.map((mod: any) => (
-                    <div key={mod.id} className="bg-white p-3 rounded-lg border border-gray-200 hover:border-green-300 transition-all">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="font-bold text-sm text-gray-900">{mod.name || mod.username}</p>
-                          <p className="text-xs text-gray-500">{mod.email}</p>
-                          <p className="text-xs text-gray-400 mt-1">ID: {mod.id.slice(0, 12)}...</p>
+                    <div 
+                      key={mod.id} 
+                      onClick={() => {
+                        setSelectedModeratorEarnings(mod);
+                        fetchModeratorEarningsHistory(mod.id);
+                      }}
+                      className="bg-white rounded-xl border-2 border-gray-200 hover:border-emerald-400 hover:shadow-lg transition-all duration-200 cursor-pointer transform hover:scale-105 p-4"
+                    >
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-bold text-sm text-gray-900">{mod.name || mod.username}</p>
+                              <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                            </div>
+                            <p className="text-xs text-gray-500 font-medium">{mod.email}</p>
+                            <p className="text-xs text-gray-400 mt-2">
+                              <i className="fa-solid fa-id-card mr-1"></i>
+                              {mod.id.slice(0, 12)}...
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="bg-emerald-100 text-emerald-700 text-xs px-3 py-1.5 rounded-lg font-bold">
+                              <i className="fa-solid fa-comments mr-1"></i>
+                              {mod.chatsModerated || 0}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="inline-block bg-green-100 text-green-700 text-xs px-2 py-1 rounded">
-                            {mod.chatsModerated || 0} chats
-                          </span>
-                          <p className="text-xs text-gray-400 mt-1">Since {new Date(mod.onboardedAt).toLocaleDateString()}</p>
+                        
+                        <div className="pt-2 border-t border-gray-100">
+                          <p className="text-xs text-gray-500 font-semibold mb-2">
+                            <i className="fa-solid fa-calendar mr-1"></i>
+                            Since {formatDate(mod.onboardDate)}
+                          </p>
                         </div>
+                        
+                        {/* Earnings Summary */}
+                        {mod.earnings && (
+                          <div className="grid grid-cols-3 gap-2 pt-2 bg-gray-50 rounded-lg p-3">
+                            <div className="text-center">
+                              <p className="text-xs text-gray-500 font-semibold">Earned</p>
+                              <p className="font-bold text-green-600 text-sm">${(mod.earnings.totalEarned || 0).toFixed(2)}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-gray-500 font-semibold">Pending</p>
+                              <p className="font-bold text-amber-600 text-sm">${(mod.earnings.totalPending || 0).toFixed(2)}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-xs text-gray-500 font-semibold">Paid</p>
+                              <p className="font-bold text-blue-600 text-sm">${(mod.earnings.totalPaid || 0).toFixed(2)}</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+
+            {/* Earnings Detail Modal - Professional */}
+            {selectedModeratorEarnings && (
+              <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl border border-gray-300 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                  {/* Modal Header */}
+                  <div className="sticky top-0 bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5 flex items-center justify-between border-b border-slate-700 rounded-t-2xl">
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Earnings Report</h2>
+                      <p className="text-xs text-slate-300 mt-1">Detailed activity and payment summary</p>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedModeratorEarnings(null)}
+                      className="text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg p-2 transition-all"
+                    >
+                      <i className="fa-solid fa-times text-lg"></i>
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-6">
+                    {/* Moderator Info Card */}
+                    <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-5 rounded-xl border border-slate-200">
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 className="text-lg font-bold text-gray-900">{selectedModeratorEarnings.name || selectedModeratorEarnings.username}</h3>
+                          <p className="text-sm text-gray-600 mt-1">{selectedModeratorEarnings.email}</p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            <i className="fa-solid fa-id-card mr-1"></i>
+                            {selectedModeratorEarnings.id}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-gray-600 font-semibold mb-1">Status</p>
+                          <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-3 py-1.5 rounded-lg">
+                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                            <span className="text-xs font-bold">Active</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Key Metrics Cards */}
+                    <div className="grid grid-cols-4 gap-3">
+                      <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl border border-green-200 text-center">
+                        <i className="fa-solid fa-coins text-green-500 text-xl mb-2"></i>
+                        <p className="text-xs text-gray-600 font-semibold">Total Earned</p>
+                        <p className="font-black text-green-600 text-lg">${(selectedModeratorEarnings.earnings?.totalEarned || 0).toFixed(2)}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-4 rounded-xl border border-amber-200 text-center">
+                        <i className="fa-solid fa-hourglass-end text-amber-500 text-xl mb-2"></i>
+                        <p className="text-xs text-gray-600 font-semibold">Pending</p>
+                        <p className="font-black text-amber-600 text-lg">${(selectedModeratorEarnings.earnings?.totalPending || 0).toFixed(2)}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl border border-blue-200 text-center">
+                        <i className="fa-solid fa-check-circle text-blue-500 text-xl mb-2"></i>
+                        <p className="text-xs text-gray-600 font-semibold">Paid Out</p>
+                        <p className="font-black text-blue-600 text-lg">${(selectedModeratorEarnings.earnings?.totalPaid || 0).toFixed(2)}</p>
+                      </div>
+                      <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-xl border border-purple-200 text-center">
+                        <i className="fa-solid fa-comments text-purple-500 text-xl mb-2"></i>
+                        <p className="text-xs text-gray-600 font-semibold">Chats</p>
+                        <p className="font-black text-purple-600 text-lg">{selectedModeratorEarnings.earnings?.chatsCompleted || 0}</p>
+                      </div>
+                    </div>
+
+                    {/* Recent Activity */}
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <i className="fa-solid fa-clock text-blue-500"></i>
+                        Recent Earnings History
+                      </h4>
+                      {earningHistoryLoading ? (
+                        <div className="text-center py-8">
+                          <div className="inline-block animate-spin">
+                            <i className="fa-solid fa-spinner text-gray-400 text-2xl"></i>
+                          </div>
+                          <p className="text-gray-400 text-sm mt-3">Loading earnings history...</p>
+                        </div>
+                      ) : earningsHistory.length === 0 ? (
+                        <div className="bg-gray-50 rounded-lg p-8 text-center border border-gray-200">
+                          <i className="fa-solid fa-box-open text-gray-300 text-2xl mb-2"></i>
+                          <p className="text-gray-500 text-sm font-medium">No earnings history available</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                          {earningsHistory.map((earning: any) => (
+                            <div key={earning._id} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-all">
+                              <div className="flex-1">
+                                <p className="text-sm font-bold text-gray-900">
+                                  <i className="fa-solid fa-comments text-blue-500 mr-2"></i>
+                                  Chat {earning.chatId.slice(0, 8)}...
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  <i className="fa-solid fa-clock mr-1"></i>
+                                  {formatDate(earning.repliedAt, true)}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-green-600 text-sm">${earning.earnedAmount.toFixed(2)}</p>
+                                <span className={`inline-block text-xs px-2.5 py-1 rounded-md font-bold mt-1 ${
+                                  earning.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                  earning.status === 'approved' ? 'bg-blue-100 text-blue-700' :
+                                  earning.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {earning.status.charAt(0).toUpperCase() + earning.status.slice(1)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 'USERS' && (
           <div className="space-y-4">
             {/* Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-6 bg-white p-4 rounded-xl border border-gray-200">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-6 bg-white p-4 rounded-xl border border-gray-200">
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">Search</label>
                 <input
@@ -1137,6 +2030,16 @@ const ModeratorPanel: React.FC = () => {
                 >
                   <i className={`fa-solid fa-rotate-right ${loadingUsers ? 'animate-spin' : ''}`}></i>
                   {loadingUsers ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 mb-1 block">&nbsp;</label>
+                <button 
+                  onClick={() => setShowAddProfileModal(true)}
+                  className="w-full py-2 px-3 bg-green-600 text-white text-xs font-bold rounded-lg hover:bg-green-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-plus"></i>
+                  Add Profile
                 </button>
               </div>
             </div>
@@ -1210,12 +2113,23 @@ const ModeratorPanel: React.FC = () => {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex flex-col gap-2 min-w-fit">
+                      <div className="flex flex-row gap-2 min-w-fit flex-wrap justify-end">
+                        {/* Edit Profile Button */}
+                        <button
+                          onClick={() => handleEditUser(user)}
+                          title="Edit user profile"
+                          className="text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap bg-cyan-100 text-cyan-600 hover:bg-cyan-200"
+                        >
+                          <i className="fa-solid fa-pen-to-square"></i>
+                          Edit
+                        </button>
+
                         {/* Suspension Toggle */}
                         <button
                           onClick={() => toggleUserSuspension(user.id, !user.suspended, 'Admin action')}
                           disabled={actioningUserId === user.id}
-                          className={`text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-2 whitespace-nowrap ${
+                          title={user.suspended ? 'Unsuspend user' : 'Suspend user'}
+                          className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
                             user.suspended
                               ? 'bg-green-100 text-green-600 hover:bg-green-200 disabled:opacity-50'
                               : 'bg-red-100 text-red-600 hover:bg-red-200 disabled:opacity-50'
@@ -1225,16 +2139,32 @@ const ModeratorPanel: React.FC = () => {
                           {actioningUserId === user.id ? '...' : (user.suspended ? 'Unsuspend' : 'Suspend')}
                         </button>
 
+                        {/* Verification Toggle */}
+                        <button
+                          onClick={() => toggleUserVerification(user.id, !user.isPhotoVerified)}
+                          disabled={actioningUserId === user.id}
+                          title={user.isPhotoVerified ? 'Unverify user' : 'Verify user'}
+                          className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                            user.isPhotoVerified
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200 disabled:opacity-50'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50'
+                          }`}
+                        >
+                          <i className={`fa-solid fa-${user.isPhotoVerified ? 'check-circle' : 'circle'}`}></i>
+                          {actioningUserId === user.id ? '...' : (user.isPhotoVerified ? 'Verified' : 'Verify')}
+                        </button>
+
                         {/* Role Change */}
                         <select
                           value={user.role}
                           onChange={(e) => changeUserRole(user.id, e.target.value)}
                           disabled={actioningUserId === user.id}
-                          className="text-xs font-bold px-2 py-2 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-50 transition-all"
+                          title="Change user role"
+                          className="text-xs font-bold px-2 py-1.5 rounded-lg border border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-50 transition-all cursor-pointer"
                         >
-                          <option value="USER">→ User</option>
-                          <option value="MODERATOR">→ Moderator</option>
-                          <option value="ADMIN">→ Admin</option>
+                          <option value="USER">User</option>
+                          <option value="MODERATOR">Moderator</option>
+                          <option value="ADMIN">Admin</option>
                         </select>
 
                         {/* Account Type Change */}
@@ -1242,10 +2172,11 @@ const ModeratorPanel: React.FC = () => {
                           value={user.accountType}
                           onChange={(e) => changeAccountType(user.id, e.target.value)}
                           disabled={actioningUserId === user.id}
-                          className="text-xs font-bold px-2 py-2 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-all"
+                          title="Change account type"
+                          className="text-xs font-bold px-2 py-1.5 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 transition-all cursor-pointer"
                         >
-                          <option value="APP">→ App</option>
-                          <option value="STANDALONE">→ Standalone</option>
+                          <option value="APP">App</option>
+                          <option value="STANDALONE">Standalone</option>
                         </select>
                       </div>
                     </div>
@@ -1271,77 +2202,1080 @@ const ModeratorPanel: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'RESOLVED' && (
-          <div className="space-y-3">
-            <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
-              <i className="fa-solid fa-list text-purple-600"></i>
-              Activity Log
-            </h3>
-            {activityLog.length === 0 && resolvedItems.length === 0 ? (
-              <div className="text-center py-12">
-                <i className="fa-solid fa-inbox text-4xl text-gray-200 mb-2"></i>
-                <p className="text-gray-400 text-sm">No activity logged yet.</p>
+        {/* Suspension Confirmation Modal */}
+        {/* Edit User Profile Modal */}
+        {editingUserId && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-2xl border border-gray-200 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Edit User Profile</h2>
+                <button 
+                  onClick={() => setEditingUserId(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <i className="fa-solid fa-times text-xl"></i>
+                </button>
               </div>
-            ) : activityLog.length > 0 ? (
-              activityLog.map((log: any) => (
-                <div key={log.id} className="bg-white p-4 rounded-2xl border border-gray-100 hover:border-gray-200 transition-all">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3 flex-1">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${
-                        log.action === 'signup' ? 'bg-green-500' :
-                        log.action === 'payment_change' ? 'bg-blue-500' :
-                        log.action === 'moderator_action' ? 'bg-purple-500' :
-                        log.action === 'ban' ? 'bg-red-500' :
-                        'bg-gray-400'
-                      }`}>
-                        {log.action === 'signup' ? '✓' :
-                         log.action === 'payment_change' ? '💳' :
-                         log.action === 'moderator_action' ? '⚖' :
-                         log.action === 'ban' ? '✕' :
-                         '•'}
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Username</label>
+                  <input
+                    type="text"
+                    value={editingUserForm.username}
+                    onChange={(e) => setEditingUserForm({...editingUserForm, username: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={editingUserForm.email}
+                    onChange={(e) => setEditingUserForm({...editingUserForm, email: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    value={editingUserForm.name}
+                    onChange={(e) => setEditingUserForm({...editingUserForm, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Age</label>
+                  <input
+                    type="number"
+                    value={editingUserForm.age}
+                    onChange={(e) => setEditingUserForm({...editingUserForm, age: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Bio</label>
+                  <textarea
+                    value={editingUserForm.bio}
+                    onChange={(e) => setEditingUserForm({...editingUserForm, bio: e.target.value})}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Location</label>
+                  <input
+                    type="text"
+                    value={editingUserForm.location}
+                    onChange={(e) => setEditingUserForm({...editingUserForm, location: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Role</label>
+                  <select
+                    value={editingUserForm.role}
+                    onChange={(e) => setEditingUserForm({...editingUserForm, role: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+                  >
+                    <option value="USER">User</option>
+                    <option value="MODERATOR">Moderator</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
+
+                {/* Image Upload Section */}
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-2">Profile Images</label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <input
+                      type="file"
+                      id="editProfileImages"
+                      multiple
+                      accept="image/*"
+                      onChange={handleEditProfileImageUpload}
+                      disabled={uploadingEditProfile}
+                      className="hidden"
+                    />
+                    <label htmlFor="editProfileImages" className="cursor-pointer block">
+                      <div className="text-gray-600">
+                        <i className="fa-solid fa-cloud-arrow-up text-xl mb-2 block"></i>
+                        <p className="text-xs font-medium">Click to upload or drag images</p>
+                        <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-bold text-gray-900">{log.description}</h4>
-                        <p className="text-[10px] text-gray-600 mt-1">{log.details}</p>
-                        {log.userId && <p className="text-[10px] text-gray-500 mt-1">User: {log.userId.slice(0, 10)}...</p>}
+                    </label>
+                  </div>
+                  {uploadingEditProfile && (
+                    <div className="mt-2">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-cyan-600 h-2 rounded-full transition-all duration-300"
+                          style={{width: `${uploadProgressEditProfile}%`}}
+                        ></div>
                       </div>
+                      <p className="text-xs text-gray-600 text-center mt-1">{Math.round(uploadProgressEditProfile)}%</p>
                     </div>
-                    <div className="text-right flex-shrink-0 ml-2">
-                      <p className="text-[10px] text-gray-400">{new Date(log.timestamp).toLocaleString()}</p>
-                      <span className="inline-block mt-1 bg-gray-100 text-gray-700 text-[9px] px-2 py-0.5 rounded">{log.action}</span>
+                  )}
+                  
+                  {/* Display uploaded images */}
+                  {editingUserImages.length > 0 && (
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      {editingUserImages.map((imageUrl, index) => (
+                        <div key={index} className="relative group">
+                          <img 
+                            src={imageUrl} 
+                            alt={`uploaded-${index}`}
+                            className="w-full h-20 object-cover rounded-lg"
+                          />
+                          <button
+                            onClick={() => setEditingUserImages(prev => prev.filter((_, i) => i !== index))}
+                            className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                            title="Delete image"
+                          >
+                            <i className="fa-solid fa-times"></i>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setEditingUserId(null)}
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveUserProfile}
+                  disabled={actioningUserId === editingUserId}
+                  className="flex-1 px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-lg transition-all disabled:opacity-50"
+                >
+                  {actioningUserId === editingUserId ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Profile Modal */}
+        {showAddProfileModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-2xl border border-gray-200 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-gray-900">Add New Profile</h2>
+                <button 
+                  onClick={() => setShowAddProfileModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <i className="fa-solid fa-times text-xl"></i>
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-600 mb-4">Manual member onboarding - Enter profile information</p>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Username *</label>
+                  <input
+                    type="text"
+                    value={newProfileForm.username}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, username: e.target.value})}
+                    placeholder="username"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Email *</label>
+                  <input
+                    type="email"
+                    value={newProfileForm.email}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, email: e.target.value})}
+                    placeholder="email@example.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Password *</label>
+                  <input
+                    type="password"
+                    value={newProfileForm.password}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, password: e.target.value})}
+                    placeholder="Secure password"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    value={newProfileForm.name}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, name: e.target.value})}
+                    placeholder="Full name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Age</label>
+                  <input
+                    type="number"
+                    value={newProfileForm.age}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, age: e.target.value})}
+                    placeholder="25"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Bio</label>
+                  <textarea
+                    value={newProfileForm.bio}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, bio: e.target.value})}
+                    rows={2}
+                    placeholder="Profile bio"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Location</label>
+                  <input
+                    type="text"
+                    value={newProfileForm.location}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, location: e.target.value})}
+                    placeholder="City, Country"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Role</label>
+                  <select
+                    value={newProfileForm.role}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, role: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  >
+                    <option value="USER">User</option>
+                    <option value="MODERATOR">Moderator</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-1">Account Type</label>
+                  <select
+                    value={newProfileForm.accountType}
+                    onChange={(e) => setNewProfileForm({...newProfileForm, accountType: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  >
+                    <option value="APP">App</option>
+                    <option value="STANDALONE">Standalone</option>
+                  </select>
+                </div>
+
+                {/* Image Upload Section */}
+                <div>
+                  <label className="text-xs font-bold text-gray-600 block mb-2">Profile Images</label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-3 text-center bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <input
+                      type="file"
+                      id="newProfileImages"
+                      multiple
+                      accept="image/*"
+                      onChange={handleNewProfileImageUpload}
+                      disabled={uploadingNewProfile}
+                      className="hidden"
+                    />
+                    <label htmlFor="newProfileImages" className="cursor-pointer block">
+                      <div className="text-gray-600">
+                        <i className="fa-solid fa-cloud-arrow-up text-xl mb-2 block"></i>
+                        <p className="text-xs font-medium">Click to upload or drag images</p>
+                        <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 5MB</p>
+                      </div>
+                    </label>
+                  </div>
+                  {uploadingNewProfile && (
+                    <div className="mt-2">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                          style={{width: `${uploadProgressNewProfile}%`}}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-gray-600 text-center mt-1">{Math.round(uploadProgressNewProfile)}%</p>
+                    </div>
+                  )}
+                  
+                  {/* Display uploaded images */}
+                  {newProfileImages.length > 0 && (
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      {newProfileImages.map((imageUrl, index) => (
+                        <div key={index} className="relative group">
+                          <img 
+                            src={imageUrl} 
+                            alt={`uploaded-${index}`}
+                            className="w-full h-20 object-cover rounded-lg"
+                          />
+                          <button
+                            onClick={() => setNewProfileImages(prev => prev.filter((_, i) => i !== index))}
+                            className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-xs"
+                            title="Delete image"
+                          >
+                            <i className="fa-solid fa-times"></i>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowAddProfileModal(false)}
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateProfile}
+                  disabled={creatingProfile}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg transition-all disabled:opacity-50"
+                >
+                  {creatingProfile ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {confirmationModal.isOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 rounded-xl">
+            <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 shadow-2xl border border-gray-200">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+                  <i className="fa-solid fa-exclamation-triangle text-amber-600"></i>
+                </div>
+                <h2 className="text-lg font-bold text-gray-900">Confirm Action</h2>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to <span className="font-bold text-amber-600">{confirmationModal.action === 'suspend' ? 'suspend' : 'unsuspend'}</span> this user?
+              </p>
+              
+              {confirmationModal.reason && (
+                <div className="bg-gray-50 p-3 rounded-lg mb-6 border border-gray-200">
+                  <p className="text-xs text-gray-600 font-semibold mb-1">Reason:</p>
+                  <p className="text-sm text-gray-700">{confirmationModal.reason}</p>
+                </div>
+              )}
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmationModal({ isOpen: false, userId: null, action: null, reason: '' })}
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-lg transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmSuspensionAction}
+                  disabled={actioningUserId === confirmationModal.userId}
+                  className={`flex-1 px-4 py-2 font-bold rounded-lg transition-all text-white ${
+                    confirmationModal.action === 'suspend'
+                      ? 'bg-red-600 hover:bg-red-700 disabled:opacity-50'
+                      : 'bg-green-600 hover:bg-green-700 disabled:opacity-50'
+                  }`}
+                >
+                  {actioningUserId === confirmationModal.userId ? 'Processing...' : (confirmationModal.action === 'suspend' ? 'Suspend' : 'Unsuspend')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'PAYMENTS' && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <i className="fa-solid fa-dollar-sign text-green-600 text-xl"></i>
+              Coin Sales & Transactions
+            </h3>
+            
+            {/* Summary Cards - User Coins */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Coin Revenue</p>
+                    <p className="text-3xl font-bold text-green-600 mt-2">$0.00</p>
+                    <p className="text-xs text-gray-500 mt-1">All time</p>
+                  </div>
+                  <div className="bg-green-100 rounded-full p-4">
+                    <i className="fa-solid fa-dollar-sign text-green-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Coin Purchases</p>
+                    <p className="text-3xl font-bold text-blue-600 mt-2">0</p>
+                    <p className="text-xs text-gray-500 mt-1">This month</p>
+                  </div>
+                  <div className="bg-blue-100 rounded-full p-4">
+                    <i className="fa-solid fa-cart-shopping text-blue-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Avg Transaction</p>
+                    <p className="text-3xl font-bold text-purple-600 mt-2">$0.00</p>
+                    <p className="text-xs text-gray-500 mt-1">Per purchase</p>
+                  </div>
+                  <div className="bg-purple-100 rounded-full p-4">
+                    <i className="fa-solid fa-arrow-trend-up text-purple-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Active Users</p>
+                    <p className="text-3xl font-bold text-indigo-600 mt-2">0</p>
+                    <p className="text-xs text-gray-500 mt-1">Paying customers</p>
+                  </div>
+                  <div className="bg-indigo-100 rounded-full p-4">
+                    <i className="fa-solid fa-users text-indigo-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Coin Packages Management */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                  <i className="fa-solid fa-gift text-blue-600"></i>
+                  Coin Packages Management
+                </h4>
+                <button 
+                  onClick={() => setShowAddPackageForm(!showAddPackageForm)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  <i className="fa-solid fa-plus"></i>
+                  Add Package
+                </button>
+              </div>
+
+              {/* Add New Package Form */}
+              {showAddPackageForm && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200 p-4 mb-6">
+                  <h5 className="font-bold text-gray-700 text-xs mb-3 flex items-center gap-2">
+                    <i className="fa-solid fa-circle-plus text-green-600"></i>
+                    Create New Package
+                  </h5>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Coins</label>
+                      <input 
+                        type="number" 
+                        placeholder="e.g., 100"
+                        value={newPackageForm.coins}
+                        onChange={(e) => setNewPackageForm({...newPackageForm, coins: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Price ($)</label>
+                      <input 
+                        type="number" 
+                        placeholder="e.g., 9.99"
+                        value={newPackageForm.price}
+                        onChange={(e) => setNewPackageForm({...newPackageForm, price: e.target.value})}
+                        step="0.01"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                    <div className="flex gap-2 items-end">
+                      <button 
+                        onClick={handleAddPackage}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all"
+                      >
+                        <i className="fa-solid fa-check mr-1"></i>Save
+                      </button>
+                      <button 
+                        onClick={() => setShowAddPackageForm(false)}
+                        className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-lg text-xs font-bold transition-all"
+                      >
+                        <i className="fa-solid fa-times mr-1"></i>Cancel
+                      </button>
                     </div>
                   </div>
                 </div>
-              ))
+              )}
+
+              {/* Packages Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {coinPackages.map((pkg) => (
+                  <div key={pkg.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all">
+                    {editingPackageId === pkg.id ? (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-600 block mb-1">Coins</label>
+                          <input 
+                            type="number" 
+                            value={editingPackageForm.coins}
+                            onChange={(e) => setEditingPackageForm({...editingPackageForm, coins: e.target.value})}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-600 block mb-1">Price ($)</label>
+                          <input 
+                            type="number" 
+                            value={editingPackageForm.price}
+                            onChange={(e) => setEditingPackageForm({...editingPackageForm, price: e.target.value})}
+                            step="0.01"
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={handleSavePackage}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-bold transition-all"
+                          >
+                            Save
+                          </button>
+                          <button 
+                            onClick={() => setEditingPackageId(null)}
+                            className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 px-2 py-1 rounded text-xs font-bold transition-all"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="text-center mb-3">
+                          <div className="text-3xl font-bold text-green-600 mb-1">{pkg.coins}</div>
+                          <p className="text-xs text-gray-600 font-medium">Coins</p>
+                        </div>
+                        <div className="bg-green-50 rounded-lg py-2 px-3 text-center mb-3">
+                          <p className="text-lg font-bold text-green-700">${pkg.price.toFixed(2)}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleEditPackage(pkg)}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1"
+                          >
+                            <i className="fa-solid fa-edit"></i>Edit
+                          </button>
+                          <button 
+                            onClick={() => handleDeletePackage(pkg.id)}
+                            className="flex-1 bg-red-600 hover:bg-red-700 text-white px-2 py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1"
+                          >
+                            <i className="fa-solid fa-trash"></i>Delete
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-xs text-blue-800 flex items-center gap-2">
+                  <i className="fa-solid fa-info-circle text-blue-600"></i>
+                  <strong>Note:</strong> Packages modified here will appear to users on their profiles when they buy coins.
+                </p>
+              </div>
+            </div>
+
+            {/* User Coin Purchases Table */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-200 bg-gray-50">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                  <i className="fa-solid fa-file-invoice text-green-600"></i>
+                  Recent Coin Purchases
+                </h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">User</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Coins</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Amount</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Method</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Status</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loadingCoinPurchases ? (
+                      <tr className="border-b border-gray-200">
+                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                          <div className="profile-spinner" style={{ display: 'inline-block', marginBottom: '8px' }}></div>
+                          <p className="text-sm font-medium">Loading purchases...</p>
+                        </td>
+                      </tr>
+                    ) : coinPurchases.length === 0 ? (
+                      <tr className="border-b border-gray-200">
+                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                          <i className="fa-solid fa-inbox text-3xl text-gray-300 mb-2 block"></i>
+                          <p className="text-sm font-medium">No coin purchases yet</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      coinPurchases.map((purchase) => (
+                        <tr key={purchase.id} className="border-b border-gray-200 hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium text-gray-900">{purchase.username}</span>
+                              <span className="text-xs text-gray-500">{purchase.email}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-blue-600">{purchase.coins}</td>
+                          <td className="px-6 py-4 font-medium text-gray-900">${purchase.price}</td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${
+                              purchase.method === 'card' ? 'bg-blue-100 text-blue-700' :
+                              purchase.method === 'momo' ? 'bg-green-100 text-green-700' :
+                              purchase.method === 'apple' ? 'bg-gray-100 text-gray-700' :
+                              purchase.method === 'google' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {purchase.method || 'Unknown'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                              purchase.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                              purchase.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
+                              purchase.status === 'FAILED' ? 'bg-red-100 text-red-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {purchase.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-600 text-xs">
+                            {formatDate(purchase.createdAt, true)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'REVENUE' && (
+          <div className="space-y-6">
+            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <i className="fa-solid fa-hand-holding-dollar text-amber-600 text-xl"></i>
+              Revenue & Moderator Payouts
+            </h3>
+
+            {/* Summary Cards - Moderator */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Total Distributed</p>
+                    <p className="text-3xl font-bold text-amber-600 mt-2">$0.00</p>
+                    <p className="text-xs text-gray-500 mt-1">To moderators</p>
+                  </div>
+                  <div className="bg-amber-100 rounded-full p-4">
+                    <i className="fa-solid fa-hand-holding-dollar text-amber-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Pending Payouts</p>
+                    <p className="text-3xl font-bold text-orange-600 mt-2">$0.00</p>
+                    <p className="text-xs text-gray-500 mt-1">Awaiting approval</p>
+                  </div>
+                  <div className="bg-orange-100 rounded-full p-4">
+                    <i className="fa-solid fa-clock text-orange-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Active Moderators</p>
+                    <p className="text-3xl font-bold text-blue-600 mt-2">0</p>
+                    <p className="text-xs text-gray-500 mt-1">Earning commissions</p>
+                  </div>
+                  <div className="bg-blue-100 rounded-full p-4">
+                    <i className="fa-solid fa-users text-blue-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Monthly Budget</p>
+                    <p className="text-3xl font-bold text-rose-600 mt-2">$0.00</p>
+                    <p className="text-xs text-gray-500 mt-1">Allocated</p>
+                  </div>
+                  <div className="bg-rose-100 rounded-full p-4">
+                    <i className="fa-solid fa-chart-column text-rose-600 text-2xl"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Commission Structure */}
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-6">
+              <h4 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2">
+                <i className="fa-solid fa-percent text-amber-600"></i>
+                Commission Structure
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-lg p-4 border border-amber-100">
+                  <p className="text-xs text-gray-600 font-semibold mb-2">Chat Moderation</p>
+                  <p className="text-2xl font-bold text-amber-600">15%</p>
+                  <p className="text-xs text-gray-500 mt-1">Per flagged message resolved</p>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-amber-100">
+                  <p className="text-xs text-gray-600 font-semibold mb-2">Photo Verification</p>
+                  <p className="text-2xl font-bold text-amber-600">20%</p>
+                  <p className="text-xs text-gray-500 mt-1">Per verified photo package</p>
+                </div>
+                <div className="bg-white rounded-lg p-4 border border-amber-100">
+                  <p className="text-xs text-gray-600 font-semibold mb-2">User Reports</p>
+                  <p className="text-2xl font-bold text-amber-600">10%</p>
+                  <p className="text-xs text-gray-500 mt-1">Per resolved report</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Moderator Earnings Table */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-200 bg-gray-50">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                  <i className="fa-solid fa-list-check text-blue-600"></i>
+                  Moderator Earnings
+                </h4>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Moderator</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Tasks Completed</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">This Month</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Total Earned</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Balance Due</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Status</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-200">
+                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                        <i className="fa-solid fa-inbox text-3xl text-gray-300 mb-2 block"></i>
+                        <p className="text-sm font-medium">No moderators with activity yet</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Payout Methods */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <h4 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2">
+                <i className="fa-solid fa-credit-card text-blue-600"></i>
+                Payout Methods
+              </h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <i className="fa-brands fa-stripe text-2xl text-blue-600"></i>
+                    <div>
+                      <p className="font-semibold text-gray-700 text-sm">Stripe Connect</p>
+                      <p className="text-xs text-gray-500">Fast transfers, low fees</p>
+                    </div>
+                  </div>
+                  <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">Active</span>
+                </div>
+                
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <i className="fa-solid fa-building-columns text-2xl text-gray-400"></i>
+                    <div>
+                      <p className="font-semibold text-gray-700 text-sm">Bank Transfer</p>
+                      <p className="text-xs text-gray-500">Direct to bank account</p>
+                    </div>
+                  </div>
+                  <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-bold">Inactive</span>
+                </div>
+
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <i className="fa-brands fa-paypal text-2xl text-blue-500"></i>
+                    <div>
+                      <p className="font-semibold text-gray-700 text-sm">PayPal</p>
+                      <p className="text-xs text-gray-500">Via PayPal account</p>
+                    </div>
+                  </div>
+                  <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-bold">Inactive</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'RESOLVED' && (
+          <div className="space-y-6">
+            {/* Section Header with Metrics */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-cyan-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center text-white shadow-lg">
+                  <i className="fa-solid fa-list-check"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Activity Log</h3>
+                  <p className="text-xs text-gray-500">Complete system activity history and audit trail</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  fetchActivityLogs();
+                  fetchActivityLogSummary();
+                }}
+                disabled={loadingActivityLogs}
+                className="text-sm font-bold text-cyan-600 hover:text-cyan-700 disabled:opacity-50 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-cyan-50 transition-all border border-cyan-200"
+              >
+                <i className={`fa-solid fa-rotate-right ${loadingActivityLogs ? 'animate-spin' : ''}`}></i>
+                Refresh
+              </button>
+            </div>
+
+            {/* Quick Stats */}
+            {activityLogSummary && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl border border-blue-200">
+                  <p className="text-xs text-gray-600 font-semibold">Moderation</p>
+                  <p className="text-2xl font-black text-blue-600 mt-1">
+                    {activityLogSummary.byCategory?.find((c: any) => c._id === 'moderation')?.count || 0}
+                  </p>
+                </div>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-xl border border-purple-200">
+                  <p className="text-xs text-gray-600 font-semibold">Moderators</p>
+                  <p className="text-2xl font-black text-purple-600 mt-1">
+                    {activityLogSummary.byCategory?.find((c: any) => c._id === 'moderators')?.count || 0}
+                  </p>
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl border border-green-200">
+                  <p className="text-xs text-gray-600 font-semibold">Payments</p>
+                  <p className="text-2xl font-black text-green-600 mt-1">
+                    ${activityLogSummary.financial?.reduce((sum: number, f: any) => sum + (f.totalAmount || 0), 0).toFixed(2) || '0.00'}
+                  </p>
+                </div>
+                <div className="bg-gradient-to-br from-amber-50 to-amber-100 p-4 rounded-xl border border-amber-200">
+                  <p className="text-xs text-gray-600 font-semibold">Users</p>
+                  <p className="text-2xl font-black text-amber-600 mt-1">
+                    {activityLogSummary.byCategory?.find((c: any) => c._id === 'users')?.count || 0}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Filters */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+              <h4 className="text-sm font-bold text-gray-900">Filters</h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <select
+                  value={activityLogFilter.category}
+                  onChange={(e) => {
+                    setActivityLogFilter({ ...activityLogFilter, category: e.target.value, skip: 0 });
+                    fetchActivityLogs({ category: e.target.value, skip: 0 });
+                  }}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 font-medium"
+                >
+                  <option value="">All Categories</option>
+                  <option value="moderation">Moderation</option>
+                  <option value="moderators">Moderators</option>
+                  <option value="payments">Payments</option>
+                  <option value="users">Users</option>
+                  <option value="reports">Reports</option>
+                  <option value="admin">Admin</option>
+                  <option value="system">System</option>
+                </select>
+
+                <select
+                  value={activityLogFilter.status}
+                  onChange={(e) => {
+                    setActivityLogFilter({ ...activityLogFilter, status: e.target.value, skip: 0 });
+                    fetchActivityLogs({ status: e.target.value, skip: 0 });
+                  }}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 font-medium"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="success">Success</option>
+                  <option value="failure">Failure</option>
+                  <option value="pending">Pending</option>
+                </select>
+
+                <input
+                  type="text"
+                  placeholder="Search activities..."
+                  onChange={(e) => {
+                    setActivityLogFilter({ ...activityLogFilter, skip: 0 });
+                    // Implement search with debounce in real app
+                  }}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 font-medium"
+                />
+
+                <button
+                  onClick={() => {
+                    setActivityLogFilter({ category: '', action: '', status: '', limit: 50, skip: 0 });
+                    fetchActivityLogs({ category: '', action: '', status: '', skip: 0 });
+                  }}
+                  className="px-3 py-2 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
+                >
+                  <i className="fa-solid fa-redo mr-1"></i>Reset Filters
+                </button>
+              </div>
+            </div>
+
+            {/* Activity Logs Table */}
+            {loadingActivityLogs ? (
+              <div className="text-center py-12">
+                <div className="inline-block">
+                  <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-cyan-600 animate-spin"></div>
+                </div>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Loading activity logs...</p>
+              </div>
+            ) : activityLogs.length === 0 ? (
+              <div className="text-center py-12 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-lg border border-cyan-200">
+                <i className="fa-solid fa-inbox text-5xl text-cyan-300 mb-3"></i>
+                <p className="text-gray-600 text-lg font-semibold">No activities found</p>
+                <p className="text-gray-500 text-sm mt-1">Try adjusting your filters</p>
+              </div>
             ) : (
-              resolvedItems.map(item => (
-                <div key={item.id} className="bg-white p-4 rounded-2xl border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                        item.status === 'dismissed' ? 'bg-emerald-500' :
-                        item.status === 'warned' ? 'bg-amber-500' :
-                        'bg-red-500'
-                      }`}>
-                        {item.status === 'dismissed' ? '✓' :
-                         item.status === 'warned' ? '⚠' :
-                         '✕'}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-gray-900">{item.action}</h4>
-                        <p className="text-[10px] text-gray-500">{item.message.substring(0, 50)}...</p>
+              <div className="space-y-3">
+                {activityLogs.map((log: any) => {
+                  const categoryColors: any = {
+                    moderation: { bg: 'from-red-50 to-red-100', border: 'border-red-200', icon: 'fa-flag', text: 'text-red-600' },
+                    moderators: { bg: 'from-purple-50 to-purple-100', border: 'border-purple-200', icon: 'fa-users-gear', text: 'text-purple-600' },
+                    payments: { bg: 'from-green-50 to-green-100', border: 'border-green-200', icon: 'fa-credit-card', text: 'text-green-600' },
+                    users: { bg: 'from-blue-50 to-blue-100', border: 'border-blue-200', icon: 'fa-user', text: 'text-blue-600' },
+                    reports: { bg: 'from-orange-50 to-orange-100', border: 'border-orange-200', icon: 'fa-triangle-exclamation', text: 'text-orange-600' },
+                    admin: { bg: 'from-indigo-50 to-indigo-100', border: 'border-indigo-200', icon: 'fa-shield', text: 'text-indigo-600' },
+                    system: { bg: 'from-gray-50 to-gray-100', border: 'border-gray-200', icon: 'fa-gears', text: 'text-gray-600' }
+                  };
+
+                  const colors = categoryColors[log.category] || categoryColors.system;
+                  const statusBadges: any = {
+                    success: 'bg-green-100 text-green-700',
+                    failure: 'bg-red-100 text-red-700',
+                    pending: 'bg-amber-100 text-amber-700'
+                  };
+
+                  return (
+                    <div key={log.id} className={`bg-gradient-to-r ${colors.bg} border-2 ${colors.border} rounded-xl p-4 hover:shadow-md transition-all`}>
+                      <div className="flex items-start gap-4">
+                        {/* Icon */}
+                        <div className={`w-10 h-10 rounded-lg ${colors.bg} flex items-center justify-center flex-shrink-0 border ${colors.border}`}>
+                          <i className={`fa-solid ${colors.icon} ${colors.text} text-lg`}></i>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <h4 className="text-sm font-bold text-gray-900">{log.description}</h4>
+                              <p className="text-xs text-gray-600 mt-1">
+                                <i className="fa-solid fa-user-circle mr-1"></i>
+                                {log.actor?.name || log.actor?.userId || 'System'} • 
+                                <i className="fa-solid fa-tag ml-2 mr-1"></i>
+                                {log.action.replace(/_/g, ' ').toUpperCase()}
+                              </p>
+                              {log.details && (
+                                <p className="text-xs text-gray-600 mt-2">
+                                  <i className="fa-solid fa-file-text mr-1"></i>
+                                  {log.details}
+                                </p>
+                              )}
+                              {log.reason && (
+                                <p className="text-xs text-gray-700 mt-1">
+                                  <i className="fa-solid fa-circle-info mr-1 text-amber-500"></i>
+                                  <span className="font-semibold">Reason:</span> {log.reason}
+                                </p>
+                              )}
+                              {log.financial?.amount && (
+                                <p className="text-xs text-green-700 mt-1 font-bold">
+                                  <i className="fa-solid fa-dollar-sign mr-1"></i>
+                                  ${log.financial.amount.toFixed(2)} {log.financial.currency}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Status & Time */}
+                            <div className="text-right flex-shrink-0">
+                              <span className={`inline-block text-xs px-2.5 py-1 rounded-lg font-bold ${statusBadges[log.status]}`}>
+                                {log.status.charAt(0).toUpperCase() + log.status.slice(1)}
+                              </span>
+                              <p className="text-xs text-gray-500 mt-2">
+                                {formatDate(log.timestamp, true)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded ${
-                      item.status === 'dismissed' ? 'bg-emerald-100 text-emerald-600' :
-                      item.status === 'warned' ? 'bg-amber-100 text-amber-600' :
-                      'bg-red-100 text-red-600'
-                    }`}>
-                      {item.userId}
-                    </span>
-                  </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Pagination */}
+            {activityLogs.length > 0 && (
+              <div className="flex items-center justify-between pt-4">
+                <p className="text-sm text-gray-600">
+                  Showing {activityLogFilter.skip + 1} to {Math.min(activityLogFilter.skip + activityLogFilter.limit, activityLogTotalCount)} of {activityLogTotalCount} activities
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const newSkip = Math.max(0, activityLogFilter.skip - activityLogFilter.limit);
+                      setActivityLogFilter({ ...activityLogFilter, skip: newSkip });
+                      fetchActivityLogs({ skip: newSkip });
+                    }}
+                    disabled={activityLogFilter.skip === 0}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-all"
+                  >
+                    <i className="fa-solid fa-chevron-left"></i>
+                  </button>
+                  <button
+                    onClick={() => {
+                      const newSkip = activityLogFilter.skip + activityLogFilter.limit;
+                      if (newSkip < activityLogTotalCount) {
+                        setActivityLogFilter({ ...activityLogFilter, skip: newSkip });
+                        fetchActivityLogs({ skip: newSkip });
+                      }
+                    }}
+                    disabled={activityLogFilter.skip + activityLogFilter.limit >= activityLogTotalCount}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-all"
+                  >
+                    <i className="fa-solid fa-chevron-right"></i>
+                  </button>
                 </div>
-              ))
+              </div>
             )}
           </div>
         )}
