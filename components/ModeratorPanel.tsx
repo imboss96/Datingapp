@@ -38,7 +38,7 @@ interface ModeratorChat {
 const INITIAL_FLAGS: FlaggedItem[] = [];
 
 const ModeratorPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS' | 'PAYMENTS' | 'REVENUE'>('CHATS');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS' | 'PAYMENTS' | 'REVENUE' | 'SUPPORT'>('CHATS');
   const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
   const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
   const [chats, setChats] = useState<ModeratorChat[]>([]);
@@ -58,6 +58,9 @@ const ModeratorPanel: React.FC = () => {
   const [loadingModerators, setLoadingModerators] = useState(false);
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [moderators, setModerators] = useState<any[]>([]);
+  const [contactMessages, setContactMessages] = useState<any[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messageStats, setMessageStats] = useState<any>(null);
   const [userMap, setUserMap] = useState<Map<string, any>>(new Map());
   const [repliedChats, setRepliedChats] = useState<any[]>([]);
   const [selectedModeratorInPending, setSelectedModeratorInPending] = useState<string | null>(null);
@@ -329,6 +332,31 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
+  // Fetch contact messages
+  const fetchContactMessages = async () => {
+    try {
+      setLoadingMessages(true);
+      const response = await apiClient.get('/support/messages?limit=50');
+      setContactMessages(response.messages || []);
+      console.log('[DEBUG] Fetched contact messages:', response.messages?.length);
+    } catch (error) {
+      console.error('Failed to fetch contact messages:', error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  // Fetch message statistics
+  const fetchMessageStats = async () => {
+    try {
+      const response = await apiClient.get('/support/stats');
+      setMessageStats(response);
+      console.log('[DEBUG] Fetched message stats:', response);
+    } catch (error) {
+      console.error('Failed to fetch message stats:', error);
+    }
+  };
+
   // Fetch chats on component mount
   useEffect(() => {
     // Clear search and selected moderator when switching tabs
@@ -353,6 +381,9 @@ const ModeratorPanel: React.FC = () => {
     } else if (activeTab === 'PAYMENTS') {
       fetchCoinPackages();
       fetchCoinPurchases();
+    } else if (activeTab === 'SUPPORT') {
+      fetchContactMessages();
+      fetchMessageStats();
     }
     
     // Set up auto-refresh based on active tab
@@ -365,6 +396,9 @@ const ModeratorPanel: React.FC = () => {
         fetchStalledChats();
       } else if (activeTab === 'USERS') {
         fetchAllUsers();
+      } else if (activeTab === 'SUPPORT') {
+        fetchContactMessages();
+        fetchMessageStats();
       }
     }, 10000);
 
@@ -1217,6 +1251,17 @@ const ModeratorPanel: React.FC = () => {
             >
               <i className="fa-solid fa-list-check"></i>
               <span>Activity Log</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('SUPPORT')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'SUPPORT' 
+                  ? 'bg-gradient-to-br from-red-600 to-red-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-red-50 hover:text-red-600'
+              }`}
+            >
+              <i className="fa-solid fa-envelope"></i>
+              <span>Contact Messages</span>
             </button>
           </div>
         </div>
@@ -3275,6 +3320,161 @@ const ModeratorPanel: React.FC = () => {
                     <i className="fa-solid fa-chevron-right"></i>
                   </button>
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'SUPPORT' && (
+          <div className="space-y-6">
+            {/* Section Header with Stats */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-red-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-white shadow-lg">
+                  <i className="fa-solid fa-envelope"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Contact Messages</h3>
+                  <p className="text-xs text-gray-500">Messages from users through the contact form</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  fetchContactMessages();
+                  fetchMessageStats();
+                }}
+                disabled={loadingMessages}
+                className="text-sm font-bold text-red-600 hover:text-red-700 disabled:opacity-50 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-red-50 transition-all border border-red-200"
+              >
+                <i className={`fa-solid fa-rotate-right ${loadingMessages ? 'animate-spin' : ''}`}></i>
+                Refresh
+              </button>
+            </div>
+
+            {/* Stats Cards */}
+            {messageStats && (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="bg-gradient-to-br from-red-50 to-red-100 border-2 border-red-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-black text-red-600">{messageStats.new || 0}</p>
+                  <p className="text-xs font-semibold text-gray-600 mt-1">New</p>
+                </div>
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-black text-blue-600">{messageStats.read || 0}</p>
+                  <p className="text-xs font-semibold text-gray-600 mt-1">Read</p>
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-black text-green-600">{messageStats.responded || 0}</p>
+                  <p className="text-xs font-semibold text-gray-600 mt-1">Responded</p>
+                </div>
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-black text-purple-600">{messageStats.resolved || 0}</p>
+                  <p className="text-xs font-semibold text-gray-600 mt-1">Resolved</p>
+                </div>
+                <div className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-black text-orange-600">{messageStats.high_priority || 0}</p>
+                  <p className="text-xs font-semibold text-gray-600 mt-1">High Priority</p>
+                </div>
+              </div>
+            )}
+
+            {/* Messages List */}
+            {loadingMessages ? (
+              <div className="text-center py-12">
+                <div className="inline-block">
+                  <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-red-600 animate-spin"></div>
+                </div>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Loading contact messages...</p>
+              </div>
+            ) : contactMessages.length === 0 ? (
+              <div className="text-center py-12 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
+                <i className="fa-solid fa-inbox text-5xl text-red-300 mb-3"></i>
+                <p className="text-gray-600 text-lg font-semibold">No contact messages</p>
+                <p className="text-gray-500 text-sm mt-1">Contact form submissions will appear here</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {contactMessages.map((msg: any) => (
+                  <div key={msg._id} className="bg-white rounded-lg border-2 border-gray-200 hover:border-red-300 hover:shadow-lg transition-all p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="text-sm font-bold text-gray-900">{msg.name}</h4>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                            msg.status === 'new' ? 'bg-red-100 text-red-700' :
+                            msg.status === 'read' ? 'bg-blue-100 text-blue-700' :
+                            msg.status === 'responded' ? 'bg-green-100 text-green-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {msg.status.charAt(0).toUpperCase() + msg.status.slice(1)}
+                          </span>
+                          {msg.priority === 'high' && (
+                            <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-orange-100 text-orange-700">
+                              <i className="fa-solid fa-triangle-exclamation mr-1"></i>
+                              HIGH PRIORITY
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">{msg.email}</p>
+                      </div>
+                      <p className="text-xs text-gray-400 text-right">
+                        {msg.createdAt ? new Date(msg.createdAt).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
+
+                    <div className="bg-gray-50 p-3 rounded-lg mb-3 border border-gray-200">
+                      <p className="text-xs font-bold text-gray-600 mb-1"><i className="fa-solid fa-heading mr-1"></i>Subject:</p>
+                      <p className="text-sm text-gray-800 font-semibold">{msg.subject}</p>
+                      <p className="text-xs font-bold text-gray-600 mt-2 mb-1"><i className="fa-solid fa-message mr-1"></i>Message:</p>
+                      <p className="text-sm text-gray-700">{msg.message}</p>
+                    </div>
+
+                    {msg.response && (
+                      <div className="bg-green-50 p-3 rounded-lg mb-3 border border-green-200">
+                        <p className="text-xs font-bold text-green-600 mb-1"><i className="fa-solid fa-reply mr-1"></i>Response:</p>
+                        <p className="text-sm text-green-900">{msg.response}</p>
+                        {msg.respondedBy && (
+                          <p className="text-xs text-green-600 mt-2">By: {msg.respondedBy.username || 'Moderator'}</p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      {msg.status !== 'read' && (
+                        <button 
+                          onClick={async () => {
+                            try {
+                              await apiClient.patch(`/support/messages/${msg._id}/read`, {});
+                              fetchContactMessages();
+                            } catch (err) {
+                              console.error('Error marking as read:', err);
+                            }
+                          }}
+                          className="flex-1 text-xs bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition-all"
+                        >
+                          <i className="fa-solid fa-eye mr-1"></i>
+                          Mark as Read
+                        </button>
+                      )}
+                      {msg.status !== 'resolved' && (
+                        <button 
+                          onClick={async () => {
+                            try {
+                              await apiClient.patch(`/support/messages/${msg._id}/resolve`, {});
+                              fetchContactMessages();
+                              fetchMessageStats();
+                            } catch (err) {
+                              console.error('Error resolving:', err);
+                            }
+                          }}
+                          className="flex-1 text-xs bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-3 rounded-lg transition-all"
+                        >
+                          <i className="fa-solid fa-check mr-1"></i>
+                          Mark Resolved
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

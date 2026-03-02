@@ -18,6 +18,9 @@ export const authMiddleware = async (req, res, next) => {
       const user = await User.findOne({ id: req.userId });
       if (user) {
         req.userRole = user.role;
+        // Add computed flags for isModerator and isAdmin based on role
+        user.isModerator = user.role === 'MODERATOR' || user.role === 'ADMIN';
+        user.isAdmin = user.role === 'ADMIN';
         req.userInfo = user;
       } else {
         req.userRole = 'USER';

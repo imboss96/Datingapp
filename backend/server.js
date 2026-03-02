@@ -28,6 +28,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { initCloudinary } from './utils/cloudinary.js';
 import { initWebSocket } from './utils/websocket.js';
 import lipanaRoutes from './routes/lipana.js';
+import supportRoutes from './routes/support.js';
 import CoinPackage from './models/CoinPackage.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -125,6 +126,7 @@ app.use('/api/matches', authMiddleware, matchesRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/transactions', transactionsRoutes);  // Auth middleware applied selectively in transactions.js
 app.use('/api/moderation', authMiddleware, moderationRoutes);  // Moderator-only routes
+app.use('/api/support', supportRoutes);  // Support/Contact routes (public submit, auth for moderator)
 app.use('/api/push', authMiddleware, pushRoutes);
 
 // Health check

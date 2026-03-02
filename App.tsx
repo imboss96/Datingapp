@@ -102,7 +102,7 @@ const AppContent: React.FC<{
     return (
       <>
         <Routes>
-          <Route path="/" element={<LandingPage onOpenLoginModal={() => setShowLoginModal(true)} />} />
+          <Route path="/" element={<LandingPage currentUser={null} onOpenLoginModal={() => setShowLoginModal(true)} />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email-info" element={<VerifyEmailInfoPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />

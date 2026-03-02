@@ -1,7 +1,26 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../services/apiClient';
+import { UserProfile } from '../types';
 import LoginPage from './LoginPage';
+import TermsPage from './TermsPage';
+import PrivacyPage from './PrivacyPage';
+import SafetyPage from './SafetyPage';
+import FeaturedMembersPage from './FeaturedMembersPage';
+
+// Add CSS animation for notification fade-in
+const notificationStyles = `
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateX(-50%) translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  }
+`;
 
 // simple reusable icons for landing page (replaces previous emoji usage)
 const ICON_SVG: Record<string,string> = {
@@ -1273,8 +1292,10 @@ const styles = `
     background: var(--card);
     padding: 2rem;
     border-radius: 12px;
-    max-width: 90%;
-    width: 400px;
+    max-width: 65%;
+    width: auto;
+    max-height: 85vh;
+    overflow-y: auto;
     color: #fff;
   }
   .lp-modal h3 { margin-top: 0; }
@@ -1433,6 +1454,9 @@ const styles = `
     .lp-locations-grid { grid-template-columns: repeat(2, 1fr); }
     .lp-footer-grid { grid-template-columns: 1fr; }
     .lp-footer-bottom { flex-direction: column; text-align: center; }
+    
+    /* Mobile features grid optimization */
+    .lp-features-grid { gap: 1rem; padding: 0 3%; }
   }
 
   @media (max-width: 768px) {
@@ -1464,6 +1488,9 @@ const styles = `
     .lp-cta-main, .lp-cta-ghost { padding: 0.7rem 1.2rem; font-size: 0.85rem; }
     .lp-hero-stats { gap: 1.2rem; justify-content: space-around; }
     .lp-stat-num { font-size: 1.2rem; }
+    
+    /* Extra small phone feature cards */
+    .lp-features-grid { gap: 0.8rem; padding: 0 2%; }
   }
 `;
 
@@ -1537,7 +1564,142 @@ const WHY_CHOOSE_TABS = [
   { label: 'Live Story' },
 ];
 
-function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => void }) {
+// ContactUs Modal Component
+const ContactUsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [formData, setFormData] = useState({ name: '', email: '', subject: '', message: '' });
+  const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log('[ContactForm] Form submitted with data:', formData);
+    setFormStatus('submitting');
+    try {
+      // Submit to backend API
+      console.log('[ContactForm] Calling API endpoint: /support/submit');
+      const response = await apiClient.post('/support/submit', formData);
+      console.log('[ContactForm] API response:', response);
+      if (response.success) {
+        console.log('[ContactForm] Success! Closing modal...');
+        setFormStatus('success');
+        setTimeout(() => {
+          setFormData({ name: '', email: '', subject: '', message: '' });
+          setFormStatus('idle');
+          onClose(); // Close modal after success
+        }, 2000);
+      } else {
+        console.log('[ContactForm] API returned non-success');
+        setFormStatus('error');
+      }
+    } catch (err) {
+      console.error('[ContactForm] Error submitting contact form:', err);
+      setFormStatus('error');
+      setTimeout(() => setFormStatus('idle'), 3000);
+    }
+  };
+
+  return (
+    <div style={{ padding: '2rem', maxWidth: '700px' }}>
+      <style>{`
+        .contact-section { margin-bottom: 2rem; }
+        .contact-section h4 { font-size: 1rem; font-weight: 600; color: var(--petal); margin-bottom: 0.8rem; }
+        .contact-item { margin-bottom: 0.8rem; font-size: 0.9rem; }
+        .contact-item a { color: var(--rose); text-decoration: none; }
+        .contact-item a:hover { text-decoration: underline; }
+        .contact-form { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-size: 0.85rem; margin-bottom: 0.4rem; color: var(--text-muted); }
+        .form-group input, .form-group textarea { width: 100%; padding: 0.6rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 0.4rem; color: #fff; font-family: inherit; }
+        .form-group textarea { resize: vertical; min-height: 100px; }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: var(--rose); background: rgba(232,51,90,0.1); }
+        .submit-btn { background: var(--rose); color: #fff; border: none; padding: 0.7rem 1.5rem; border-radius: 0.4rem; cursor: pointer; font-weight: 500; transition: background 0.3s; }
+        .submit-btn:hover { background: var(--crimson); }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .form-status { padding: 0.8rem; border-radius: 0.4rem; margin-bottom: 1rem; font-size: 0.9rem; }
+        .form-success { background: rgba(76,175,80,0.2); color: #4CAF50; }
+        .form-error { background: rgba(244,67,54,0.2); color: #F44336; }
+        .social-icons { display: flex; gap: 0.8rem; margin-top: 0.8rem; }
+        .social-icons a { display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; height: 2.2rem; background: rgba(232,51,90,0.15); border-radius: 50%; color: var(--petal); text-decoration: none; transition: background 0.3s; }
+        .social-icons a:hover { background: rgba(232,51,90,0.3); }
+      `}</style>
+
+      <h3 style={{ marginBottom: '1.5rem', fontSize: '1.3rem' }}>Get In Touch</h3>
+
+      {/* Email Section */}
+      <div className="contact-section">
+        <h4>📧 Email Support</h4>
+        <div className="contact-item">General: <a href="mailto:support@lunesalove.com">support@lunesalove.com</a></div>
+        <div className="contact-item">Account Issues: <a href="mailto:accounts@lunesalove.com">accounts@lunesalove.com</a></div>
+        <div className="contact-item">Safety & Abuse: <a href="mailto:safety@lunesalove.com">safety@lunesalove.com</a></div>
+        <div className="contact-item">Business/Partners: <a href="mailto:business@lunesalove.com">business@lunesalove.com</a></div>
+      </div>
+
+      {/* Phone Section */}
+      <div className="contact-section">
+        <h4>📞 Phone Support</h4>
+        <div className="contact-item">+1 (555) 123-4567</div>
+        <div className="contact-item" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Available: Mon-Fri, 9 AM - 6 PM EST</div>
+      </div>
+
+      {/* Support Hours */}
+      <div className="contact-section">
+        <h4>🕐 Support Hours</h4>
+        <div className="contact-item">Monday - Friday: 9:00 AM - 6:00 PM (EST)</div>
+        <div className="contact-item">Saturday: 10:00 AM - 4:00 PM (EST)</div>
+        <div className="contact-item">Sunday: Closed</div>
+        <div className="contact-item" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Response time: Usually within 24 hours</div>
+      </div>
+
+      {/* Live Chat & FAQ */}
+      <div className="contact-section">
+        <h4>💬 Quick Links</h4>
+        <div className="contact-item"><a href="#" onClick={e => e.preventDefault()}>💻 Start Live Chat</a> (Available during support hours)</div>
+        <div className="contact-item"><a href="#" onClick={e => e.preventDefault()}>❓ View FAQ</a></div>
+      </div>
+
+      {/* Social Media */}
+      <div className="contact-section">
+        <h4>📱 Follow Us</h4>
+        <div className="social-icons">
+          <a href="https://twitter.com/lunesalove" target="_blank" rel="noopener noreferrer" title="Twitter"><i className="fa-brands fa-twitter" /></a>
+          <a href="https://instagram.com/lunesalove" target="_blank" rel="noopener noreferrer" title="Instagram"><i className="fa-brands fa-instagram" /></a>
+          <a href="https://facebook.com/lunesalove" target="_blank" rel="noopener noreferrer" title="Facebook"><i className="fa-brands fa-facebook" /></a>
+          <a href="https://linkedin.com/company/lunesalove" target="_blank" rel="noopener noreferrer" title="LinkedIn"><i className="fa-brands fa-linkedin" /></a>
+        </div>
+      </div>
+
+      {/* Contact Form */}
+      <form className="contact-form" onSubmit={handleFormSubmit}>
+        <h4>📝 Send Us a Message</h4>
+        {formStatus === 'success' && <div className="form-status form-success">✓ Message sent successfully! We'll respond soon.</div>}
+        {formStatus === 'error' && <div className="form-status form-error">✗ Error sending message. Please try again.</div>}
+        
+        <div className="form-group">
+          <label>Name</label>
+          <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required />
+        </div>
+        <div className="form-group">
+          <label>Email</label>
+          <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
+        </div>
+        <div className="form-group">
+          <label>Subject</label>
+          <input type="text" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} required />
+        </div>
+        <div className="form-group">
+          <label>Message</label>
+          <textarea value={formData.message} onChange={e => setFormData({...formData, message: e.target.value})} required />
+        </div>
+        <button type="submit" className="submit-btn" disabled={formStatus === 'submitting'}>
+          {formStatus === 'submitting' ? 'Sending...' : 'Send Message'}
+        </button>
+      </form>
+
+      <button style={{ marginTop: '1.5rem', background: 'transparent', border: '1px solid var(--border)', color: '#fff', padding: '0.6rem 1.2rem', borderRadius: '0.4rem', cursor: 'pointer' }} onClick={onClose}>Close</button>
+    </div>
+  );
+};
+
+export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentUser: UserProfile | null; onOpenLoginModal?: () => void }) {
   const [activeTab, setActiveTab] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1547,6 +1709,7 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
   const [touchEnd, setTouchEnd] = useState(0);
   const [autoSlideEnabled, setAutoSlideEnabled] = useState(true);
   const [trafficLightState, setTrafficLightState] = useState<'red' | 'amber' | 'green'>('red');
+  const [appNotification, setAppNotification] = useState<{message: string; type: 'ios' | 'android'} | null>(null);
   // modal state for footer links
   // modal payload may be simple text or a full component
   type ModalPayload =
@@ -1554,6 +1717,16 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
     | { component: JSX.Element };
   const [modalInfo, setModalInfo] = useState<ModalPayload | null>(null);
   const navigate = useNavigate();
+
+  // Auto-dismiss notification after 3 seconds
+  useEffect(() => {
+    if (appNotification) {
+      const timer = setTimeout(() => {
+        setAppNotification(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [appNotification]);
 
   // Traffic light animation - 15 second cycle (4s Red, 4s Amber, 4s Green, 3s Amber)
   useEffect(() => {
@@ -1615,21 +1788,32 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
+  // Lock scroll when modal is open
+  useEffect(() => {
+    if (modalInfo) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+    }
+    return () => { document.body.style.overflow = 'auto'; };
+  }, [modalInfo]);
+
   // must define closeModal before it's referenced in FOOTER_MODAL_DATA
   const closeModal = () => setModalInfo(null);
 
   // map footer link texts to modal content
   const FOOTER_MODAL_DATA: Record<string, {title:string; body:string} | {component: JSX.Element}> = {
-    'Top Members': { title: 'Top Members', body: 'Browse profiles of our most active and popular members on LunesaLove.' },
-    'New Members': { title: 'New Members', body: 'Meet the newest singles who have just joined the platform.' },
-    'Online Now': { title: 'Online Now', body: 'See who is currently online and available to chat in real time.' },
-    'Contact Us': { title: 'Contact Us', body: 'Reach out to our support team at support@l unesalove.com or use the live chat widget.' },
+    'Top Members': { component: <FeaturedMembersPage currentUser={currentUser} filterType="top" isModal onClose={closeModal} onOpenLoginModal={onOpenLoginModal} /> },
+    'New Members': { component: <FeaturedMembersPage currentUser={currentUser} filterType="new" isModal onClose={closeModal} onOpenLoginModal={onOpenLoginModal} /> },
+    'Online Now': { component: <FeaturedMembersPage currentUser={currentUser} filterType="online" isModal onClose={closeModal} onOpenLoginModal={onOpenLoginModal} /> },
+    'Contact Us': { component: <ContactUsModal onClose={closeModal} /> },
     'FAQ': { title: 'FAQ', body: 'Find answers to frequently asked questions about accounts, matching, and safety.' },
-    'Privacy Policy': { title: 'Privacy Policy', body: 'Learn how we protect your data and respect your privacy on LunesaLove.' },
-    'Terms of Service': { title: 'Terms of Service', body: 'Read the rules and guidelines that govern use of our platform.' },
-    '10 new members online': { title: 'New Members Online', body: '10 new members are currently browsing profiles on the site.' },
-    '5 new success stories': { title: 'Success Stories', body: 'Five couples have recently shared how they met through LunesaLove.' },
-    '2 verified profiles': { title: 'Verified Profiles', body: 'Two profiles were just verified by our moderation team for authenticity.' },
+    'Privacy Policy': { component: <PrivacyPage onAccept={closeModal} isModal onClose={closeModal} /> },
+    'Terms of Service': { component: <TermsPage onAccept={closeModal} isModal onClose={closeModal} /> },
+    'Safety Tips': { component: <SafetyPage isModal onClose={closeModal} /> },
+    'Photo Verification': { component: <SafetyPage isModal onClose={closeModal} /> },
+    'Report User': { component: <SafetyPage isModal onClose={closeModal} /> },
+    'Block User': { component: <SafetyPage isModal onClose={closeModal} /> },
     'Log In': { component: <LoginPage isModal onClose={closeModal} /> },
     'Sign Up': { component: <LoginPage isModal initialMode="signup" onClose={closeModal} /> },
   };
@@ -1708,22 +1892,6 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
       <div className={`lp${modalInfo ? ' modal-open' : ''}`}>
 
-        {modalInfo && (
-          <div className="lp-modal-backdrop" onClick={closeModal}>
-            <div className="lp-modal" onClick={e => e.stopPropagation()}>
-              {'component' in modalInfo ? (
-                modalInfo.component
-              ) : (
-                <>
-                  <h3>{modalInfo.title}</h3>
-                  <div className="lp-modal-body">{modalInfo.body}</div>
-                  <button className="lp-btn-primary" onClick={closeModal}>Close</button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* NAV */}
         <nav className="lp-nav">
           <div className="lp-logo">
@@ -1756,6 +1924,22 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
             </button>
           </div>
         </nav>
+
+        {/* Menu Backdrop - closes menu when tapped */}
+        {menuOpen && (
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 999,
+              background: 'transparent'
+            }}
+            onClick={() => setMenuOpen(false)}
+          />
+        )}
 
         {/* HERO */}
         <section className="lp-hero">
@@ -1838,7 +2022,226 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
 
         <div className="lp-divider" />
 
-        {/* MEMBERS */}
+        {/* FEATURES SHOWCASE SECTION */}
+        <section className="lp-section lp-section-dark">
+          <div className="lp-section-header centered">
+            <span className="lp-section-tag">Platform Features</span>
+            <h2 className="lp-section-title">Everything You Need to <em>Find Love</em></h2>
+          </div>
+
+          <div className="lp-features-grid" style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+            gap: '1.5rem',
+            marginTop: '3rem'
+          }}>
+            <div style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.2)',
+              backgroundColor: 'rgba(31, 41, 55, 0.5)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              transition: 'transform 0.3s ease, border-color 0.3s ease',
+              cursor: 'pointer'
+            }} onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-5px)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+            }} onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.2)';
+            }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <path d="m21 21-4.35-4.35"></path>
+                  <circle cx="11" cy="8" r="1"></circle>
+                  <path d="M11 11v3"></path>
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#fff' }}>Smart Matching</h3>
+              <p style={{ color: '#aaa', fontSize: '0.95rem' }}>AI-powered algorithm that matches you with compatible singles based on interests, values, and preferences.</p>
+            </div>
+
+            <div style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.2)',
+              backgroundColor: 'rgba(31, 41, 55, 0.5)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              transition: 'transform 0.3s ease, border-color 0.3s ease',
+              cursor: 'pointer'
+            }} onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-5px)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+            }} onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.2)';
+            }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="#1DA1F2" stroke="#1DA1F2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#fff' }}>Verified Profiles</h3>
+              <p style={{ color: '#aaa', fontSize: '0.95rem' }}>All members go through strict photo verification to ensure authenticity and prevent catfishing.</p>
+            </div>
+
+            <div style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.2)',
+              backgroundColor: 'rgba(31, 41, 55, 0.5)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              transition: 'transform 0.3s ease, border-color 0.3s ease',
+              cursor: 'pointer'
+            }} onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-5px)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+            }} onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.2)';
+            }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#fff' }}>Instant Messaging</h3>
+              <p style={{ color: '#aaa', fontSize: '0.95rem' }}>Real-time messaging with photos, emojis, and read receipts to keep conversations flowing smoothly.</p>
+            </div>
+
+            <div style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.2)',
+              backgroundColor: 'rgba(31, 41, 55, 0.5)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              transition: 'transform 0.3s ease, border-color 0.3s ease',
+              cursor: 'pointer'
+            }} onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-5px)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+            }} onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.2)';
+            }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#fff' }}>Video Chat</h3>
+              <p style={{ color: '#aaa', fontSize: '0.95rem' }}>Get to know matches better with secure video calls before meeting in person.</p>
+            </div>
+
+            <div style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.2)',
+              backgroundColor: 'rgba(31, 41, 55, 0.5)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              transition: 'transform 0.3s ease, border-color 0.3s ease',
+              cursor: 'pointer'
+            }} onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-5px)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+            }} onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.2)';
+            }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#fff' }}>Safe & Secure</h3>
+              <p style={{ color: '#aaa', fontSize: '0.95rem' }}>24/7 moderation, encrypted messaging, and blocking features keep you protected.</p>
+            </div>
+
+            <div style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.2)',
+              backgroundColor: 'rgba(31, 41, 55, 0.5)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              transition: 'transform 0.3s ease, border-color 0.3s ease',
+              cursor: 'pointer'
+            }} onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-5px)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+            }} onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.2)';
+            }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#fff' }}>Global Community</h3>
+              <p style={{ color: '#aaa', fontSize: '0.95rem' }}>Connect with singles from over 150 countries and explore matches worldwide.</p>
+            </div>
+
+            <div style={{
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid rgba(236, 72, 153, 0.2)',
+              backgroundColor: 'rgba(31, 41, 55, 0.5)',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'flex-start',
+              transition: 'transform 0.3s ease, border-color 0.3s ease',
+              cursor: 'pointer'
+            }} onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-5px)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.6)';
+            }} onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.borderColor = 'rgba(236, 72, 153, 0.2)';
+            }}>
+              <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="#fbbf24" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 15.09 10.26 24 10.27 17.18 16.7 20.16 24.92 12 18.49 3.84 24.92 6.82 16.7 0 10.27 8.91 10.26 12 2"></polygon>
+                </svg>
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: '#fff' }}>Premium Perks</h3>
+              <p style={{ color: '#aaa', fontSize: '0.95rem' }}>Unlimited likes, see who liked you, advanced filters, and priority visibility.</p>
+            </div>
+          </div>
+        </section>
+
+        <div className="lp-divider" />
         <section className="lp-section lp-section-dark">
           <div className="lp-members-section-wrapper">
             <div className="lp-members-header lp-section-header centered">
@@ -2045,29 +2448,121 @@ function LandingPageContent({ onOpenLoginModal }: { onOpenLoginModal?: () => voi
               </ul>
             </div>
             <div className="lp-footer-col">
-              <h4>Recent Activity</h4>
+              <h4>Safety & Trust</h4>
               <ul>
-                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('10 new members online'); }}>10 new members online</a></li>
-                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('5 new success stories'); }}>5 new success stories</a></li>
-                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('2 verified profiles'); }}>2 verified profiles</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Safety Tips'); }}>Safety Tips</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Photo Verification'); }}>Photo Verification</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Report User'); }}>Report User</a></li>
+                <li><a href="#" onClick={e => { e.preventDefault(); openFooterModal('Block User'); }}>Block User</a></li>
               </ul>
+            </div>
+            <div className="lp-footer-col">
+              <h4>Download Our App</h4>
+              <p style={{ fontSize: '0.9rem', marginBottom: '1rem', color: '#777' }}>Get LunesaLove on the go</p>
+              <div style={{ display: 'flex', flexDirection: 'row', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <a href="#" target="_blank" rel="noopener noreferrer" onClick={(e) => {
+                  e.preventDefault();
+                  setAppNotification({message: 'App Coming Soon! Keep your eye on our newsletter for updates.', type: 'ios'});
+                }} style={{ display: 'inline-block', cursor: 'pointer' }}>
+                  <img 
+                    src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" 
+                    alt="Download on App Store" 
+                    style={{ height: '40px', width: 'auto' }}
+                  />
+                </a>
+                <a href="#" target="_blank" rel="noopener noreferrer" onClick={(e) => {
+                  e.preventDefault();
+                  setAppNotification({message: 'App Coming Soon! Keep your eye on our newsletter for updates.', type: 'android'});
+                }} style={{ display: 'inline-block', cursor: 'pointer' }}>
+                  <img 
+                    src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" 
+                    alt="Get it on Google Play" 
+                    style={{ height: '40px', width: 'auto' }}
+                  />
+                </a>
+              </div>
             </div>
           </div>
 
           <div className="lp-footer-bottom">
             <p className="lp-footer-copy">All Rights Reserved © <a href="#">LunesaLove</a> 2026 · Made with <Icon name="heart" className="lp-footer-heart" /></p>
             <div className="lp-social-links">
-              <a href="#" className="lp-social-link"><i className="fa-brands fa-twitter" /></a>
-              <a href="#" className="lp-social-link"><i className="fa-brands fa-instagram" /></a>
-              <a href="#" className="lp-social-link"><i className="fa-brands fa-facebook-messenger" /></a>
-              <a href="#" className="lp-social-link"><i className="fa-brands fa-dribbble" /></a>
+              <a href="#" className="lp-social-link" title="Follow on Twitter"><i className="fa-brands fa-x-twitter" /></a>
+              <a href="#" className="lp-social-link" title="Follow on Instagram"><i className="fa-brands fa-instagram" /></a>
+              <a href="#" className="lp-social-link" title="Follow on Facebook"><i className="fa-brands fa-facebook" /></a>
+              <a href="#" className="lp-social-link" title="Follow on TikTok"><i className="fa-brands fa-tiktok" /></a>
             </div>
           </div>
         </footer>
 
       </div>
+
+      {/* App Notification Toast */}
+      {appNotification && (
+        <div style={{
+          position: 'fixed',
+          top: '2rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+          color: '#333',
+          padding: '1rem 1.5rem',
+          borderRadius: '8px',
+          boxShadow: '0 4px 20px rgba(236, 72, 153, 0.3)',
+          fontSize: '0.95rem',
+          fontWeight: '500',
+          zIndex: 2001,
+          animation: 'fadeIn 0.3s ease-in-out',
+          border: '2px solid',
+          borderColor: appNotification.type === 'ios' ? '#555' : '#3ddc84',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          maxWidth: '90%'
+        }}>
+          {appNotification.type === 'ios' ? (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="#555">
+              <path d="M18.71 19.71L12.41 13.41C13.89 11.89 14.76 9.90 14.76 7.64C14.76 3.82 11.94 1 8.1 1C4.29 1 1.47 3.82 1.47 7.64C1.47 11.46 4.29 14.28 8.1 14.28C10.36 14.28 12.35 13.41 13.87 11.93L20.17 18.23C20.51 18.57 21.05 18.57 21.39 18.23L18.71 15.55C19.05 15.89 19.05 16.43 18.71 16.77L21.39 19.45C21.05 19.79 20.51 19.79 20.17 19.45L18.71 19.71Z"/>
+            </svg>
+          ) : (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="#3ddc84">
+              <path d="M7 18C5.9 18 5.01 18.9 5.01 20C5.01 21.1 5.9 22 7 22C8.1 22 9 21.1 9 20C9 18.9 8.1 18 7 18ZM1 2V4H3L6.6 11.59L5.25 14.04C5.1 14.32 5 14.65 5 15C5 16.1 5.9 17 7 17H19V15H7.42C7.28 15 7.17 14.89 7.17 14.75L7.2 14.63L8.1 13H15.55C16.3 13 16.96 12.59 17.3 11.97L20.88 5.5C20.95 5.34 21 5.17 21 5C21 4.45 20.55 4 20 4H5.21L4.27 2H1ZM17 18C15.9 18 15.01 18.9 15.01 20C15.01 21.1 15.9 22 17 22C18.1 22 19 21.1 19 20C19 18.9 18.1 18 17 18Z"/>
+            </svg>
+          )}
+          <span>{appNotification.message}</span>
+        </div>
+      )}
+
+      {/* Modal rendered OUTSIDE the blurred div */}
+      {modalInfo && (
+        <div className="lp-modal-backdrop" onClick={closeModal}>
+          <div className="lp-modal" style={{
+            background: 'linear-gradient(135deg, rgba(31, 41, 55, 0.95) 0%, rgba(55, 65, 81, 0.95) 100%)',
+            border: '1px solid rgba(236, 72, 153, 0.2)',
+            boxShadow: '0 20px 60px rgba(236, 72, 153, 0.2)'
+          }} onClick={e => e.stopPropagation()}>
+            {'component' in modalInfo ? (
+              modalInfo.component
+            ) : (
+              <>
+                <h3 style={{ color: '#fff' }}>{modalInfo.title}</h3>
+                <div className="lp-modal-body" style={{ color: '#e5e7eb' }}>{modalInfo.body}</div>
+                <button className="lp-btn-primary" onClick={closeModal}>Close</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
-export default React.memo(LandingPageContent);
+export default React.memo(function LandingPageWithStyles(props) {
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = notificationStyles;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+  return <LandingPageContent {...props} />;
+});
