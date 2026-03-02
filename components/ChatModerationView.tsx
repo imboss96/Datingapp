@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import apiClient from '../services/apiClient';
 import { useWebSocketContext } from '../services/WebSocketProvider';
 import PaymentMethodModal from './PaymentMethodModal';
+import MediaRenderer from './MediaRenderer';
 import '../styles/whatsapp-background.css';
 
 // AlertContext fallback
@@ -84,6 +85,9 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any>(null);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [moderatorCoins, setModeratorCoins] = useState<number>(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -116,6 +120,9 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const unrepliedChatsButtonRef = useRef<HTMLButtonElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const gifPickerRef = useRef<HTMLDivElement>(null);
 
   // WebSocket for real-time updates (moderator registers as separate client)
   const { addMessageHandler } = useWebSocketContext();
@@ -417,6 +424,97 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     return users.get(userId) || { id: userId, username: userId, name: 'Unknown User' };
   };
 
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setReplyText(e.target.value);
+    
+    // Auto-expand textarea like WhatsApp
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const newHeight = Math.min(textareaRef.current.scrollHeight, 160); // max 5 lines at ~32px per line
+      textareaRef.current.style.height = `${newHeight}px`;
+    }
+  };
+
+  // Handle click outside emoji picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
+
+  // Handle click outside GIF picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (gifPickerRef.current && !gifPickerRef.current.contains(event.target as Node)) {
+        setShowGifPicker(false);
+      }
+    };
+
+    if (showGifPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showGifPicker]);
+
+  const handleEmojiSelect = (emoji: string) => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newText = replyText.slice(0, start) + emoji + replyText.slice(end);
+      setReplyText(newText);
+      
+      // Auto-expand textarea
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
+          textareaRef.current.style.height = `${newHeight}px`;
+          // Set cursor position after emoji
+          textareaRef.current.focus();
+          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + emoji.length;
+        }
+      }, 0);
+    }
+    setShowEmojiPicker(false);
+  };
+
+  // Handle GIF selection
+  const handleGifSelect = (gifUrl: string, gifName: string) => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newText = replyText.slice(0, start) + gifUrl + replyText.slice(end);
+      setReplyText(newText);
+      
+      // Auto-expand textarea
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
+          textareaRef.current.style.height = `${newHeight}px`;
+          textareaRef.current.focus();
+          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + gifUrl.length;
+        }
+      }, 0);
+    }
+    setShowGifPicker(false);
+  };
+
   const handleSendReply = async () => {
     if (!replyText.trim() && !selectedMedia) return;
 
@@ -452,6 +550,11 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
         // Clear input and media
         setReplyText('');
         setSelectedMedia(null);
+        
+        // Reset textarea height
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
         
         // Mark current chat as replied on backend
         try {
@@ -1108,11 +1211,11 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                     return (
                       <div
                         key={msg.id}
-                        className={`flex ${isInitiator ? 'justify-start' : 'justify-end'} mb-4`}
+                        className={`flex ${isInitiator ? 'justify-start' : 'justify-end'} mb-2`}
                       >
-                        <div className={`flex flex-col ${isInitiator ? 'items-start' : 'items-end'} max-w-md`}>
+                        <div className={`flex flex-col ${isInitiator ? 'items-start' : 'items-end'} max-w-2xl`}>
                           {/* Sender name label */}
-                          <p className={`text-xs font-bold mb-1 px-2 ${isInitiator ? 'text-green-700' : 'text-indigo-700'}`}>
+                          <p className={`text-2xs font-bold mb-0.5 px-2 ${isInitiator ? 'text-green-700' : 'text-indigo-700'}`} style={{fontSize: '0.625rem'}}>
                             {isInitiator ? `${clientProfile?.name} (Client)` : `${operatorProfile?.name} (Recipient)`}
                           </p>
                           {/* Message bubble */}
@@ -1124,13 +1227,21 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                             }`}>
                               {sender.username?.charAt(0).toUpperCase()}
                             </div>
-                            <div className={`rounded-2xl px-4 py-2 break-words shadow-sm ${
+                            <div className={`rounded-2xl px-3 py-1.5 break-words shadow-sm max-w-xl ${
                               isInitiator 
                                 ? 'bg-green-100 text-gray-900 rounded-bl-none' 
                                 : 'bg-indigo-100 text-gray-900 rounded-br-none'
-                            }`}>
-                              <p className="text-sm font-medium">{msg.text}</p>
-                              <p className={`text-xs mt-1.5 font-semibold ${isInitiator ? 'text-green-700' : 'text-indigo-700'}`}>
+                            }`} style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>
+                              {msg.text && <p className="font-medium" style={{fontSize: '0.625rem', wordBreak: 'break-word'}}>{msg.text}</p>}
+                              
+                              {/* Media Display */}
+                              {msg.media && (
+                                <div className="mt-2">
+                                  <MediaRenderer media={msg.media} isMe={!isInitiator} messageId={msg.id} />
+                                </div>
+                              )}
+                              
+                              <p className={`font-semibold ${isInitiator ? 'text-green-700' : 'text-indigo-700'}`} style={{fontSize: '0.5rem', marginTop: '0.25rem'}}>
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </p>
                             </div>
@@ -1159,8 +1270,16 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                 {selectedMedia && (
                   <div className="text-xs font-semibold px-3 py-1.5 rounded flex items-center justify-between bg-blue-100 text-blue-700">
                     <div className="flex items-center gap-2">
-                      <i className="fa-solid fa-file text-blue-600"></i>
-                      <span>{selectedMedia.filename || 'Media attached'}</span>
+                      {selectedMedia.type === 'image' ? (
+                        <i className="fa-solid fa-image text-blue-600"></i>
+                      ) : selectedMedia.type === 'video' ? (
+                        <i className="fa-solid fa-video text-red-600"></i>
+                      ) : selectedMedia.type === 'audio' ? (
+                        <i className="fa-solid fa-music text-purple-600"></i>
+                      ) : (
+                        <i className="fa-solid fa-file text-blue-600"></i>
+                      )}
+                      <span>{selectedMedia.name || selectedMedia.filename || 'Media attached'}</span>
                     </div>
                     <button
                       onClick={handleRemoveMedia}
@@ -1171,34 +1290,243 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                     </button>
                   </div>
                 )}
-                <div className="flex gap-2 items-center bg-white rounded-full px-4 py-2.5 border border-gray-200 shadow-md">
-                  {/* Attachment Button */}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingMedia || isSendingReply}
-                    className="text-gray-600 hover:text-gray-700 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
-                    title="Attach file"
-                  >
-                    <i className="fa-solid fa-plus-circle"></i>
-                  </button>
+                <div className="flex gap-2 items-end bg-white rounded-lg px-4 py-2.5 border border-gray-200 shadow-md">
+                  {/* Media Attachment Dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowMediaPicker(!showMediaPicker)}
+                      disabled={uploadingMedia || isSendingReply}
+                      className="text-gray-600 hover:text-gray-700 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                      title="Attach file"
+                    >
+                      <i className="fa-solid fa-plus-circle"></i>
+                    </button>
 
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={handleMediaUpload}
-                    accept="image/*,video/*,.pdf,audio/*"
-                    className="hidden"
-                    disabled={uploadingMedia}
-                  />
+                    {/* Media Picker Menu */}
+                    {showMediaPicker && (
+                      <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-2 w-48 z-50">
+                        <button
+                          onClick={() => {
+                            setShowMediaPicker(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.accept = 'image/*';
+                              fileInputRef.current.click();
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors flex items-center gap-3"
+                        >
+                          <i className="fa-solid fa-image text-blue-500 w-5"></i>
+                          <span className="text-sm text-gray-700">Image</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowMediaPicker(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.accept = 'video/*';
+                              fileInputRef.current.click();
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-red-50 transition-colors flex items-center gap-3"
+                        >
+                          <i className="fa-solid fa-video text-red-500 w-5"></i>
+                          <span className="text-sm text-gray-700">Video</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowMediaPicker(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.accept = 'audio/*';
+                              fileInputRef.current.click();
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-purple-50 transition-colors flex items-center gap-3"
+                        >
+                          <i className="fa-solid fa-music text-purple-500 w-5"></i>
+                          <span className="text-sm text-gray-700">Audio</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowMediaPicker(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar';
+                              fileInputRef.current.click();
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                        >
+                          <i className="fa-solid fa-file text-gray-500 w-5"></i>
+                          <span className="text-sm text-gray-700">Document</span>
+                        </button>
+                        <div className="border-t border-gray-200 my-2"></div>
+                        <button
+                          onClick={() => {
+                            setShowMediaPicker(false);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.accept = '*';
+                              fileInputRef.current.click();
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-yellow-50 transition-colors flex items-center gap-3"
+                        >
+                          <i className="fa-solid fa-star text-yellow-500 w-5"></i>
+                          <span className="text-sm text-gray-700">All Files</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleMediaUpload}
+                      accept="image/*,video/*,.pdf,audio/*"
+                      className="hidden"
+                      disabled={uploadingMedia}
+                    />
+                  </div>
                   
-                  <input
-                    type="text"
+                  {/* Emoji Picker Button */}
+                  <div className="relative" ref={emojiPickerRef}>
+                    <button
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      disabled={uploadingMedia || isSendingReply}
+                      className="text-gray-600 hover:text-yellow-500 text-xl transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                      title="Add emoji"
+                    >
+                      😊
+                    </button>
+
+                    {/* Emoji Picker Dropdown */}
+                    {showEmojiPicker && (
+                      <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-64 overflow-y-auto w-80">
+                        {/* Emoji Grid */}
+                        <div className="p-3 grid grid-cols-7 gap-2">
+                          {/* Smileys */}
+                          {['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😌', '😔', '😑', '😐', '😶', '🤤', '😴'].map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleEmojiSelect(emoji)}
+                              className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                          {/* Hearts & Love */}
+                          {['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '♥️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '👋', '🤚', '🖐️', '✋', '🖖', '👌'].map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleEmojiSelect(emoji)}
+                              className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                          {/* Celebrations */}
+                          {['🎉', '🎊', '🎈', '🎁', '🎀', '🎂', '🍰', '🧁', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🎃', '🎄', '⭐', '✨', '🌟', '💫', '⚡', '🔥'].map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleEmojiSelect(emoji)}
+                              className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                          {/* Nature & Animals */}
+                          {['😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'].map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleEmojiSelect(emoji)}
+                              className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                          {/* Hand Gestures */}
+                          {['👍', '👎', '👊', '👏', '🙌', '👐', '🤲', '🤝', '🤜', '🤛', '✊', '✌️', '🤞', '🫰', '🤟', '🤘', '🤙', '🫶', '🫵', '☝️', '👆', '👇', '👈', '👉'].map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => handleEmojiSelect(emoji)}
+                              className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* GIF/Sticker Button */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowGifPicker(!showGifPicker)}
+                      disabled={uploadingMedia || isSendingReply}
+                      className="text-gray-600 hover:text-blue-500 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                      title="Add GIF"
+                    >
+                      <i className="fa-solid fa-image"></i>
+                    </button>
+
+                    {/* GIF Picker Dropdown */}
+                    {showGifPicker && (
+                      <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-64 overflow-y-auto w-64 p-3">
+                        <p className="text-xs font-semibold text-gray-600 mb-3">Popular Gifs & Stickers</p>
+                        <div className="space-y-2">
+                          {[
+                            { name: 'Haha', url: 'https://media.giphy.com/media/xTiTnIgNLz4cYEq9rH/giphy.gif' },
+                            { name: 'Love It', url: 'https://media.giphy.com/media/g9hWWsKc0p7K0/giphy.gif' },
+                            { name: 'Wow', url: 'https://media.giphy.com/media/3o7TKU7wHrGcupPnpwI/giphy.gif' },
+                            { name: 'Perfect', url: 'https://media.giphy.com/media/26uf1EUQzrAMzocKI/giphy.gif' },
+                            { name: 'Thumbs Up', url: 'https://media.giphy.com/media/3ohzdKdb5gEqY8ePFm/giphy.gif' },
+                            { name: 'Dancing', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
+                            { name: 'Cute', url: 'https://media.giphy.com/media/JIX9RW7K6akf6/giphy.gif' },
+                            { name: 'Happy', url: 'https://media.giphy.com/media/W0lzPVRQea5zO/giphy.gif' },
+                          ].map((gif) => (
+                            <button
+                              key={gif.name}
+                              onClick={() => handleGifSelect(gif.url, gif.name)}
+                              className="w-full text-left px-3 py-2 hover:bg-blue-50 rounded transition-colors text-sm text-gray-700"
+                            >
+                              <i className="fa-solid fa-play-circle text-blue-500 w-4 mr-2"></i>
+                              {gif.name}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => {
+                              const gifUrl = prompt('Enter GIF URL:');
+                              if (gifUrl) handleGifSelect(gifUrl, 'Custom GIF');
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-green-50 rounded transition-colors text-sm text-gray-700 border-t border-gray-200 mt-2 pt-3"
+                          >
+                            <i className="fa-solid fa-link text-green-500 w-4 mr-2"></i>
+                            Add Custom GIF URL
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <textarea
+                    ref={textareaRef}
                     value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && !isSendingReply && handleSendReply()}
-                    placeholder="Type a message..."
+                    onChange={handleTextareaChange}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey && !isSendingReply) {
+                        e.preventDefault();
+                        handleSendReply();
+                      }
+                    }}
+                    placeholder="Type a message... (Shift+Enter for new line)"
                     disabled={isSendingReply || uploadingMedia}
-                    className="bg-transparent flex-1 focus:outline-none text-sm text-gray-900 placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="bg-transparent flex-1 focus:outline-none text-sm text-gray-900 placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-hidden"
+                    style={{ lineHeight: '1.5rem', minHeight: '1.5rem', maxHeight: '160px' }}
                   />
                   <button 
                     onClick={handleSendReply}

@@ -742,31 +742,6 @@ const StandaloneModeratorDashboard: React.FC = () => {
                   Edit Profile
                 </button>
               </div>
-                    <p className="text-lg text-gray-900 mt-1">{profileData?.age || 'Not set'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-bold">Location</p>
-                    <p className="text-lg text-gray-900 mt-1">{profileData?.location || 'Not set'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-bold">Role</p>
-                    <p className="text-lg text-gray-900 mt-1">{profileData?.role}</p>
-                  </div>
-                </div>
-                {profileData?.bio && (
-                  <div>
-                    <p className="text-sm text-gray-600 font-bold">Bio</p>
-                    <p className="text-gray-900 mt-1">{profileData.bio}</p>
-                  </div>
-                )}
-                <button
-                  onClick={() => setIsEditingProfile(true)}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2"
-                >
-                  <i className="fa-solid fa-edit"></i>
-                  Edit Profile
-                </button>
-              </div>
             )}
           </div>
         )}

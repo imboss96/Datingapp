@@ -33,6 +33,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [loading, setLoading] = useState(true);
   const [chatId, setChatId] = useState<string | null>(null);
   const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [confirmCall, setConfirmCall] = useState<{ isVideo: boolean } | null>(null);
@@ -59,13 +62,15 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const allUsersRef = useRef<UserProfile[]>([]); // Store sorted users in ref (not state) for memory efficiency
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputFieldRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const audioRecorderRef = useRef(createAudioRecorder());
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const scrollCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const gifPickerRef = useRef<HTMLDivElement>(null);
 
   const isModerator = currentUser.role === UserRole.MODERATOR || currentUser.role === UserRole.ADMIN;
 
@@ -315,12 +320,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
   // Handle keyboard visibility on mobile - scroll to bottom when keyboard shows/hides
   useEffect(() => {
-    const inputElement = inputFieldRef.current;
+    const inputElement = textareaRef.current;
     if (!inputElement) return;
 
     const handleFocus = () => {
       setTimeout(() => {
-        if (scrollRef.current) {
+        // Only scroll if user was already near bottom
+        if (isScrolledNearBottom && scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
       }, 100);
@@ -328,7 +334,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
     const handleBlur = () => {
       setTimeout(() => {
-        if (scrollRef.current) {
+        // Only scroll if user was already near bottom
+        if (isScrolledNearBottom && scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
       }, 100);
@@ -341,7 +348,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       inputElement.removeEventListener('focus', handleFocus);
       inputElement.removeEventListener('blur', handleBlur);
     };
-  }, []);
+  }, [isScrolledNearBottom]);
 
   // Track scroll position to detect if user is scrolled to bottom
   useEffect(() => {
@@ -349,18 +356,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     if (!scrollContainer) return;
 
     const handleScroll = () => {
+      // Immediately detect scroll position
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setIsScrolledNearBottom(isNearBottom);
+
+      // Clear existing timeout
       if (scrollCheckTimeoutRef.current) {
         clearTimeout(scrollCheckTimeoutRef.current);
       }
-
-      scrollCheckTimeoutRef.current = setTimeout(() => {
-        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
-        const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-        setIsScrolledNearBottom(isNearBottom);
-      }, 50);
     };
 
-    scrollContainer.addEventListener('scroll', handleScroll);
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       scrollContainer.removeEventListener('scroll', handleScroll);
       if (scrollCheckTimeoutRef.current) {
@@ -368,6 +375,88 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       }
     };
   }, []);
+
+  // Handle click outside emoji picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
+
+  // Handle click outside GIF picker
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (gifPickerRef.current && !gifPickerRef.current.contains(event.target as Node)) {
+        setShowGifPicker(false);
+      }
+    };
+
+    if (showGifPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showGifPicker]);
+
+  // Handle emoji selection
+  const handleEmojiSelect = (emoji: string) => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newText = inputText.slice(0, start) + emoji + inputText.slice(end);
+      setInputText(newText);
+      
+      // Auto-expand textarea
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
+          textareaRef.current.style.height = `${newHeight}px`;
+          // Set cursor position after emoji
+          textareaRef.current.focus();
+          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + emoji.length;
+        }
+      }, 0);
+    }
+    setShowEmojiPicker(false);
+  };
+
+  // Handle GIF selection
+  const handleGifSelect = (gifUrl: string, gifName: string) => {
+    const gifLink = `[${gifName}](${gifUrl})`;
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newText = inputText.slice(0, start) + gifUrl + inputText.slice(end);
+      setInputText(newText);
+      
+      // Auto-expand textarea
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
+          textareaRef.current.style.height = `${newHeight}px`;
+          textareaRef.current.focus();
+          textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + gifUrl.length;
+        }
+      }, 0);
+    }
+    setShowGifPicker(false);
+  };
 
   const emitTypingStatus = async (isTyping: boolean) => {
     if (!chatId) return;
@@ -594,11 +683,24 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   }, [chatId]);
 
   useEffect(() => {
-    // Only auto-scroll if user is already scrolled near bottom
-    if (isScrolledNearBottom && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, isOtherUserTyping, isScrolledNearBottom]);
+    // Auto-scroll only if user is at bottom
+    // Check scroll position fresh to avoid stale state issues
+    if (!scrollRef.current) return;
+
+    const autoScrollTimeout = setTimeout(() => {
+      if (!scrollRef.current) return;
+      
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      
+      // Only scroll if user is at bottom
+      if (isNearBottom) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }, 100);
+
+    return () => clearTimeout(autoScrollTimeout);
+  }, [messages, isOtherUserTyping]);
 
   // Initial scroll to bottom when chat loads
   useEffect(() => {
@@ -607,9 +709,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       setTimeout(() => {
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-          setIsScrolledNearBottom(true);
+          // Set this after scrolling, giving time for scroll detection to work
+          setTimeout(() => setIsScrolledNearBottom(true), 100);
         }
-      }, 100);
+      }, 50);
     }
   }, [loading]);
 
@@ -758,6 +861,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
     try {
       setInputText('');
+      // Reset textarea height
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
       if (!mediaOverride) {
         setSelectedMedia(null);
       }
@@ -1253,13 +1360,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           // Chat Messages
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto p-3 md:px-16 md:py-8 space-y-4 md:space-y-6 w-full chat-messages relative whatsapp-chat-background min-h-0"
+            className="flex-1 overflow-y-auto p-2 md:px-4 md:py-4 space-y-2 w-full chat-messages relative whatsapp-chat-background min-h-0"
             style={{
               paddingBottom: `calc(80px + env(safe-area-inset-bottom, 16px))`,
             }}
 >
             {/* Content Layer */}
-            <div className="relative z-10 w-full md:max-w-2xl md:mx-auto space-y-3 md:space-y-4 px-2 md:px-4">
+            <div className="relative z-10 w-full space-y-2 px-2">
               {messages.map((msg) => {
                 const isMe = msg.senderId === currentUser.id;
                 const isEditing = editingMessageId === msg.id;
@@ -1268,58 +1375,62 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                   <div 
                     id={`msg-${msg.id}`}
                     key={msg.id} 
-                    className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                    className={`flex ${isMe ? 'justify-end' : 'justify-start'} mb-2`}
                   >
-                    <div className={`flex items-center gap-2 w-full group ${isMe ? 'justify-end' : 'justify-start'}`}>
-                      {isMe && (
-                        <div className="opacity-0 group-hover:opacity-100 flex gap-2 transition-opacity order-first mr-2">
-                          <button
-                            onClick={() => handleEditMessage(msg.id, msg.text)}
-                            className="p-2 text-gray-400 hover:text-blue-500 text-sm transition-colors"
-                            title="Edit message"
-                          >
-                            <i className="fa-solid fa-pen-nib"></i>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMessage(msg.id)}
-                            className="p-2 text-gray-400 hover:text-red-500 text-sm transition-colors"
-                            title="Delete message"
-                          >
-                            <i className="fa-solid fa-trash"></i>
-                          </button>
-                        </div>
+                    <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                      {/* Sender name label */}
+                      {!isMe && (
+                        <p className="text-2xs font-bold mb-0.5 px-2 text-blue-700" style={{fontSize: '0.625rem'}}>
+                          {chatUser?.name || 'User'}
+                        </p>
                       )}
+                      <div className={`flex items-center gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        {isMe && (
+                          <div className="opacity-0 group-hover:opacity-100 flex gap-2 transition-opacity order-first mr-2">
+                            <button
+                              onClick={() => handleEditMessage(msg.id, msg.text)}
+                              className="p-2 text-gray-400 hover:text-blue-500 text-sm transition-colors"
+                              title="Edit message"
+                            >
+                              <i className="fa-solid fa-pen-nib"></i>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMessage(msg.id)}
+                              className="p-2 text-gray-400 hover:text-red-500 text-sm transition-colors"
+                              title="Delete message"
+                            >
+                              <i className="fa-solid fa-trash"></i>
+                            </button>
+                          </div>
+                        )}
 
-                     <div className={`rounded-2xl px-4 py-2.5 text-sm shadow-md relative break-words max-w-[65%] md:max-w-[55%] ${
+                     <div className={`rounded-2xl px-4 py-2.5 text-sm shadow-md relative break-words max-w-xl ${
                         isMe ? 'bg-green-100 text-gray-900 rounded-br-none' : `bg-white text-gray-800 rounded-bl-none border ${!msg.isRead ? 'border-2 border-blue-300 bg-blue-50' : 'border border-gray-300'}`
                         } ${msg.isFlagged ? 'border-2 border-amber-400 bg-amber-50 text-amber-900' : ''} ${
-                        isEditing ? 'ring-2 ring-blue-400 border-transparent w-full shadow-lg' : ''
-                      }`}>
+                        isEditing ? 'ring-2 ring-blue-400 border-transparent shadow-lg p-2' : ''
+                      }`} style={{ wordWrap: 'break-word', overflowWrap: 'break-word' }}>
                         {isEditing ? (
-                          <div className="flex flex-col gap-3 min-w-[280px]">
-                            <div className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
-                              <i className="fa-solid fa-pen-to-square"></i> Edit message
-                            </div>
+                          <div className="flex flex-col gap-1">
                             <textarea
-                              className="w-full bg-white text-gray-800 p-3 rounded-xl border border-blue-100 focus:outline-none text-sm resize-none"
+                              className="w-full bg-transparent text-gray-800 rounded text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 px-1 py-0.5"
                               value={editText}
                               onChange={(e) => setEditText(e.target.value)}
-                              rows={3}
+                              rows={2}
                               autoFocus
                             />
-                            <div className="flex justify-end gap-3">
+                            <div className="flex justify-end gap-2 mt-1">
                               <button
                                 onClick={() => {
                                   setEditingMessageId(null);
                                   setEditText('');
                                 }}
-                                className="text-[10px] font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest"
+                                className="text-[9px] font-semibold text-gray-500 hover:text-gray-700 transition-colors"
                               >
                                 Cancel
                               </button>
                               <button
                                 onClick={() => handleEditMessage(msg.id, msg.text)}
-                                className="bg-blue-600 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-transform"
+                                className="text-[9px] font-semibold text-blue-600 hover:text-blue-800 transition-colors"
                               >
                                 Save
                               </button>
@@ -1327,7 +1438,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                           </div>
                         ) : (
                           <div>
-                           {msg.text && <p className="leading-relaxed font-normal text-sm whitespace-pre-wrap break-words m-0">{msg.text}</p>}
+                           {msg.text && <p className="leading-relaxed font-normal text-sm whitespace-pre-wrap break-words m-0" style={{ wordBreak: 'break-word' }}>{msg.text}</p>}
 
                             {msg.media && (
                               <div className="mt-2">
@@ -1380,6 +1491,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                       )}
                     </div>
                   </div>
+                </div>
                 );
               })}
 
@@ -1407,47 +1519,295 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         {id && (
         <div
           ref={inputContainerRef}
-           className="absolute bottom-0 left-0 right-0 z-20 md:px-16"
+           className="absolute bottom-0 left-0 right-0 z-20 md:px-4"
            style={{
            padding: 'calc(8px + env(safe-area-inset-bottom, 0px)) 8px 8px 8px',
           }}
         >
-          <div className="flex items-center gap-2 md:gap-3 w-full">
-            {/* Attachment Button */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingMedia || isRecordingAudio}
-              className="text-gray-600 hover:text-gray-700 text-lg md:text-xl transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
-              title="Attach file"
-            >
-              <i className="fa-solid fa-plus-circle"></i>
-            </button>
+          {/* Media Preview */}
+          {selectedMedia && (
+            <div className="mb-2 rounded-lg overflow-hidden bg-gray-50 border border-gray-200 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {selectedMedia.type === 'image' ? (
+                    <>
+                      <i className="fa-solid fa-image text-blue-500 flex-shrink-0"></i>
+                      <span className="text-xs text-gray-600 truncate">{selectedMedia.name}</span>
+                    </>
+                  ) : selectedMedia.type === 'video' ? (
+                    <>
+                      <i className="fa-solid fa-video text-red-500 flex-shrink-0"></i>
+                      <span className="text-xs text-gray-600 truncate">{selectedMedia.name}</span>
+                    </>
+                  ) : selectedMedia.type === 'audio' ? (
+                    <>
+                      <i className="fa-solid fa-music text-purple-500 flex-shrink-0"></i>
+                      <span className="text-xs text-gray-600 truncate">{selectedMedia.name}</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-file text-gray-500 flex-shrink-0"></i>
+                      <span className="text-xs text-gray-600 truncate">{selectedMedia.name}</span>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={handleRemoveMedia}
+                  className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                  title="Remove media"
+                >
+                  <i className="fa-solid fa-times"></i>
+                </button>
+              </div>
+            </div>
+          )}
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              onChange={handleMediaUpload}
-              accept="image/*,video/*,.pdf,audio/*"
-              className="hidden"
-              disabled={uploadingMedia}
-            />
+          <div className="flex items-end gap-2 md:gap-3 w-full">
+            {/* Media Attachment Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowMediaPicker(!showMediaPicker)}
+                disabled={uploadingMedia || isRecordingAudio}
+                className="text-gray-600 hover:text-gray-700 text-lg md:text-xl transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                title="Attach file"
+              >
+                <i className="fa-solid fa-plus-circle"></i>
+              </button>
+
+              {/* Media Picker Menu */}
+              {showMediaPicker && (
+                <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-2 w-48 z-50">
+                  <button
+                    onClick={() => {
+                      setShowMediaPicker(false);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = 'image/*';
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors flex items-center gap-3"
+                  >
+                    <i className="fa-solid fa-image text-blue-500 w-5"></i>
+                    <span className="text-sm text-gray-700">Image</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMediaPicker(false);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = 'video/*';
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-red-50 transition-colors flex items-center gap-3"
+                  >
+                    <i className="fa-solid fa-video text-red-500 w-5"></i>
+                    <span className="text-sm text-gray-700">Video</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMediaPicker(false);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = 'audio/*';
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-purple-50 transition-colors flex items-center gap-3"
+                  >
+                    <i className="fa-solid fa-music text-purple-500 w-5"></i>
+                    <span className="text-sm text-gray-700">Audio</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowMediaPicker(false);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar';
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                  >
+                    <i className="fa-solid fa-file text-gray-500 w-5"></i>
+                    <span className="text-sm text-gray-700">Document</span>
+                  </button>
+                  <div className="border-t border-gray-200 my-2"></div>
+                  <button
+                    onClick={() => {
+                      setShowMediaPicker(false);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = '*';
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-yellow-50 transition-colors flex items-center gap-3"
+                  >
+                    <i className="fa-solid fa-star text-yellow-500 w-5"></i>
+                    <span className="text-sm text-gray-700">All Files</span>
+                  </button>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleMediaUpload}
+                accept="image/*,video/*,.pdf,audio/*"
+                className="hidden"
+                disabled={uploadingMedia}
+              />
+            </div>
 
             {/* Text Input */}
-             <div className="flex-1 flex items-center bg-white rounded-full px-4 md:px-5 py-2.5 md:py-3 gap-2 border border-gray-200 shadow-md">
-              <input
-                ref={inputFieldRef}
-                type="text"
-                placeholder={isRecordingAudio ? "Recording..." : "Type a message..."}
-                className="bg-transparent flex-1 focus:outline-none text-sm md:text-base text-gray-900 placeholder:text-gray-500"
+             <div className="flex-1 flex items-end bg-white rounded-lg px-4 md:px-5 py-2.5 md:py-3 gap-2 border border-gray-200 shadow-md">
+              {/* Emoji Picker Button */}
+              <div className="relative" ref={emojiPickerRef}>
+                <button
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  disabled={uploadingMedia || isRecordingAudio}
+                  className="text-gray-600 hover:text-yellow-500 text-xl transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                  title="Add emoji"
+                >
+                  😊
+                </button>
+
+                {/* Emoji Picker Dropdown */}
+                {showEmojiPicker && (
+                  <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-64 overflow-y-auto w-80">
+                    {/* Emoji Grid */}
+                    <div className="p-3 grid grid-cols-7 gap-2">
+                      {/* Smileys */}
+                      {['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😌', '😔', '😑', '😐', '😶', '🤤', '😴'].map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleEmojiSelect(emoji)}
+                          className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                      {/* Hearts & Love */}
+                      {['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '♥️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '👋', '🤚', '🖐️', '✋', '🖖', '👌'].map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleEmojiSelect(emoji)}
+                          className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                      {/* Celebrations */}
+                      {['🎉', '🎊', '🎈', '🎁', '🎀', '🎂', '🍰', '🧁', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🎃', '🎄', '⭐', '✨', '🌟', '💫', '⚡', '🔥'].map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleEmojiSelect(emoji)}
+                          className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                      {/* Nature & Animals */}
+                      {['😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'].map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleEmojiSelect(emoji)}
+                          className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="border-t border-gray-200 p-3 grid grid-cols-7 gap-2">
+                      {/* Hand Gestures */}
+                      {['👍', '👎', '👊', '👏', '🙌', '👐', '🤲', '🤝', '🤜', '🤛', '✊', '✌️', '🤞', '🫰', '🤟', '🤘', '🤙', '🫶', '🫵', '☝️', '👆', '👇', '👈', '👉'].map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={() => handleEmojiSelect(emoji)}
+                          className="text-2xl hover:bg-gray-100 rounded p-1 transition-colors"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* GIF/Sticker Button */}
+              <div className="relative" ref={gifPickerRef}>
+                <button
+                  onClick={() => setShowGifPicker(!showGifPicker)}
+                  disabled={uploadingMedia || isRecordingAudio}
+                  className="text-gray-600 hover:text-blue-500 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                  title="Add GIF"
+                >
+                  <i className="fa-solid fa-image"></i>
+                </button>
+
+                {/* GIF Picker Dropdown */}
+                {showGifPicker && (
+                  <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-64 overflow-y-auto w-64 p-3">
+                    <p className="text-xs font-semibold text-gray-600 mb-3">Popular Gifs & Stickers</p>
+                    <div className="space-y-2">
+                      {[
+                        { name: 'Haha', url: 'https://media.giphy.com/media/xTiTnIgNLz4cYEq9rH/giphy.gif' },
+                        { name: 'Love It', url: 'https://media.giphy.com/media/g9hWWsKc0p7K0/giphy.gif' },
+                        { name: 'Wow', url: 'https://media.giphy.com/media/3o7TKU7wHrGcupPnpwI/giphy.gif' },
+                        { name: 'Perfect', url: 'https://media.giphy.com/media/26uf1EUQzrAMzocKI/giphy.gif' },
+                        { name: 'Thumbs Up', url: 'https://media.giphy.com/media/3ohzdKdb5gEqY8ePFm/giphy.gif' },
+                        { name: 'Dancing', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
+                        { name: 'Cute', url: 'https://media.giphy.com/media/JIX9RW7K6akf6/giphy.gif' },
+                        { name: 'Happy', url: 'https://media.giphy.com/media/W0lzPVRQea5zO/giphy.gif' },
+                      ].map((gif) => (
+                        <button
+                          key={gif.name}
+                          onClick={() => handleGifSelect(gif.url, gif.name)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 rounded transition-colors text-sm text-gray-700"
+                        >
+                          <i className="fa-solid fa-play-circle text-blue-500 w-4 mr-2"></i>
+                          {gif.name}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => {
+                          const gifUrl = prompt('Enter GIF URL:');
+                          if (gifUrl) handleGifSelect(gifUrl, 'Custom GIF');
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-green-50 rounded transition-colors text-sm text-gray-700 border-t border-gray-200 mt-2 pt-3"
+                      >
+                        <i className="fa-solid fa-link text-green-500 w-4 mr-2"></i>
+                        Add Custom GIF URL
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <textarea
+                ref={textareaRef}
+                placeholder={isRecordingAudio ? "Recording..." : "Type a message... (Shift+Enter for new line)"}
+                className="bg-transparent flex-1 focus:outline-none text-sm md:text-base text-gray-900 placeholder:text-gray-500 resize-none overflow-hidden"
+                style={{ lineHeight: '1.5rem', minHeight: '1.5rem', maxHeight: '160px' }}
                 value={inputText}
                 onChange={(e) => {
                   setInputText(e.target.value);
+                  // Auto-expand textarea like WhatsApp
+                  if (textareaRef.current) {
+                    textareaRef.current.style.height = 'auto';
+                    const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
+                    textareaRef.current.style.height = `${newHeight}px`;
+                  }
                   if (e.target.value.trim().length > 0) {
                     emitTypingStatus(true);
                   }
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !isRecordingAudio) {
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && !isRecordingAudio) {
+                    e.preventDefault();
                     handleSend();
                   }
                 }}

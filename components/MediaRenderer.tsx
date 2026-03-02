@@ -112,7 +112,25 @@ const MediaRenderer: React.FC<MediaRendererProps> = ({ media, isMe, messageId })
     );
   }
 
-  return null;
+  // Handle unknown/unsupported file types
+  return (
+    <div className={`rounded-2xl overflow-hidden shadow-lg ${isMe ? 'max-w-xs' : 'max-w-md'}`}>
+      <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-4 cursor-pointer hover:from-purple-600 hover:to-purple-700 transition-all"
+           onClick={() => window.open(media.url, '_blank')}>
+        <div className="flex items-center gap-3">
+          <i className="fa-solid fa-file-circle-exclamation text-white text-2xl"></i>
+          <div className="flex-1 text-white">
+            <p className="text-sm font-semibold truncate">{media.name}</p>
+            <p className="text-xs opacity-80">
+              {media.size ? `${(media.size / 1024 / 1024).toFixed(1)} MB` : 'Unknown size'}
+            </p>
+            <p className="text-xs opacity-70 mt-1">Unsupported file type - click to download</p>
+          </div>
+          <i className="fa-solid fa-download text-white text-lg"></i>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default MediaRenderer;
