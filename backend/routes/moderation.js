@@ -484,6 +484,65 @@ router.get('/unreplied-chats', modOnlyMiddleware, async (req, res) => {
   }
 });
 
+// PUT /moderation/moderator-profile - Update moderator's own profile
+router.put('/moderator-profile', modOnlyMiddleware, async (req, res) => {
+  try {
+    const moderatorId = req.userId;
+    const { name, email, age, location, bio, phone } = req.body;
+
+    console.log('[DEBUG moderation] Updating moderator profile:', { moderatorId, name, email, age, location, phone });
+
+    const user = await User.findById(moderatorId);
+    if (!user) {
+      return res.status(404).json({ error: 'Moderator not found' });
+    }
+
+    // Only moderators can update their own profile
+    if (user.id !== moderatorId && req.userRole !== 'ADMIN') {
+      return res.status(403).json({ error: 'You can only update your own profile' });
+    }
+
+    // Update fields
+    if (name) user.name = name;
+    if (email) user.email = email;
+    if (age) user.age = parseInt(age) || user.age;
+    if (location) user.location = location;
+    if (bio !== undefined) user.bio = bio;
+    if (phone) user.phone = phone;
+
+    // Update timestamp
+    user.updatedAt = new Date();
+
+    await user.save();
+
+    console.log('[DEBUG moderation] Moderator profile updated successfully:', { moderatorId, name, email });
+
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        name: user.name,
+        age: user.age,
+        bio: user.bio,
+        location: user.location,
+        phone: user.phone,
+        role: user.role,
+        accountType: user.accountType
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to update moderator profile:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to update profile',
+      message: error.message 
+    });
+  }
+});
+
 // Mark chat as replied (when moderator sends a response)
 router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
   try {

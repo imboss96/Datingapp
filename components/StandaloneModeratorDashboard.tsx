@@ -15,6 +15,7 @@ interface User {
   age?: number;
   location?: string;
   bio?: string;
+  phone?: string;
   interests?: string[];
   images?: string[];
   accountType: 'APP' | 'STANDALONE';
@@ -185,13 +186,25 @@ const StandaloneModeratorDashboard: React.FC = () => {
         return;
       }
 
-      const response = await apiClient.put(`/users/${user.id}`, profileChanges);
+      // Validate required fields
+      if (!profileChanges.name && !profileData?.name) {
+        setProfileError('Full name is required');
+        setUploadingProfile(false);
+        return;
+      }
+
+      // Make request to the new moderator profile endpoint
+      const response = await apiClient.put('/moderation/moderator-profile', profileChanges);
       
-      setProfileData(response);
-      setProfileSuccess('Profile updated successfully!');
-      setIsEditingProfile(false);
-      setProfileChanges({});
-      setTimeout(() => setProfileSuccess(''), 3000);
+      if (response.success) {
+        setProfileData(response.user);
+        setProfileSuccess('Profile updated successfully!');
+        setIsEditingProfile(false);
+        setProfileChanges({});
+        setTimeout(() => setProfileSuccess(''), 4000);
+      } else {
+        setProfileError(response.error || 'Failed to update profile');
+      }
     } catch (error: any) {
       setProfileError(error.message || 'Failed to update profile');
       console.error('Error updating profile:', error);
@@ -487,115 +500,248 @@ const StandaloneModeratorDashboard: React.FC = () => {
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
-          <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl shadow-xl p-8 border border-white/20">
             {profileSuccess && (
-              <div className="mb-6 bg-green-50 border border-green-200 text-green-600 p-4 rounded-lg flex items-center gap-2">
+              <div className="mb-6 bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 p-4 rounded-lg flex items-center gap-2 animate-in fade-in">
                 <i className="fa-solid fa-check-circle"></i>
-                {profileSuccess}
+                <span>{profileSuccess}</span>
               </div>
             )}
             {profileError && (
-              <div className="mb-6 bg-red-50 border border-red-200 text-red-600 p-4 rounded-lg flex items-center gap-2">
+              <div className="mb-6 bg-red-500/20 border border-red-400/50 text-red-300 p-4 rounded-lg flex items-center gap-2 animate-in fade-in">
                 <i className="fa-solid fa-exclamation-circle"></i>
-                {profileError}
+                <span>{profileError}</span>
               </div>
             )}
 
             {isEditingProfile ? (
-              <div className="space-y-6">
-                <h3 className="text-2xl font-bold text-gray-900">Edit Profile</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-8">
+                <div className="flex items-center justify-between mb-6">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Name</label>
-                    <input
-                      type="text"
-                      value={profileChanges.name || profileData?.name || ''}
-                      onChange={(e) => handleProfileChange('name', e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    <h3 className="text-2xl font-bold text-white">Edit Profile</h3>
+                    <p className="text-gray-400 text-sm mt-1">Update your personal and contact information</p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Username</label>
-                    <input
-                      type="text"
-                      value={profileChanges.username || profileData?.username || ''}
-                      onChange={(e) => handleProfileChange('username', e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                </div>
+
+                {/* Personal Information Section */}
+                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-user text-blue-300"></i>
+                    Personal Information
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-white mb-2">Full Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={profileChanges.name || profileData?.name || ''}
+                        onChange={(e) => handleProfileChange('name', e.target.value)}
+                        placeholder="Enter your full name"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-white mb-2">Age</label>
+                      <input
+                        type="number"
+                        min="18"
+                        max="120"
+                        value={profileChanges.age || profileData?.age || ''}
+                        onChange={(e) => handleProfileChange('age', e.target.value ? parseInt(e.target.value) : '')}
+                        placeholder="Enter your age"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Age</label>
-                    <input
-                      type="number"
-                      value={profileChanges.age || profileData?.age || ''}
-                      onChange={(e) => handleProfileChange('age', parseInt(e.target.value))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                </div>
+
+                {/* Contact Information Section */}
+                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-envelope text-purple-300"></i>
+                    Contact Information
+                  </h4>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-white mb-2">Email Address</label>
+                      <input
+                        type="email"
+                        value={profileChanges.email || profileData?.email || ''}
+                        onChange={(e) => handleProfileChange('email', e.target.value)}
+                        placeholder="Enter your email address"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Your email address will be used for account recovery and notifications</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-white mb-2">Phone Number</label>
+                      <input
+                        type="tel"
+                        value={profileChanges.phone || profileData?.phone || ''}
+                        onChange={(e) => handleProfileChange('phone', e.target.value)}
+                        placeholder="Enter your phone number"
+                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Location</label>
+                </div>
+
+                {/* Location & Bio Section */}
+                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-location-dot text-emerald-300"></i>
+                    Location & Description
+                  </h4>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-white mb-2">Location</label>
                     <input
                       type="text"
                       value={profileChanges.location || profileData?.location || ''}
                       onChange={(e) => handleProfileChange('location', e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="City, Country"
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-white mb-2">Bio</label>
+                    <textarea
+                      value={profileChanges.bio || profileData?.bio || ''}
+                      onChange={(e) => handleProfileChange('bio', e.target.value)}
+                      placeholder="Write a short bio about yourself... (max 500 characters)"
+                      maxLength={500}
+                      rows={4}
+                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all resize-none"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      {(profileChanges.bio || profileData?.bio || '').length}/500 characters
+                    </p>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Bio</label>
-                  <textarea
-                    value={profileChanges.bio || profileData?.bio || ''}
-                    onChange={(e) => handleProfileChange('bio', e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 h-24 resize-none"
-                  />
-                </div>
-
-                <div className="flex gap-4">
+                {/* Form Actions */}
+                <div className="flex gap-3 pt-4">
                   <button
                     onClick={handleSaveProfile}
                     disabled={uploadingProfile}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all disabled:opacity-50"
+                    className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-6 rounded-lg transition-all disabled:opacity-50 shadow-lg hover:shadow-blue-500/50 flex items-center justify-center gap-2"
                   >
                     {uploadingProfile ? (
                       <>
-                        <i className="fa-solid fa-spinner animate-spin mr-2"></i>
+                        <i className="fa-solid fa-spinner animate-spin"></i>
                         Saving...
                       </>
                     ) : (
                       <>
-                        <i className="fa-solid fa-save mr-2"></i>
+                        <i className="fa-solid fa-check"></i>
                         Save Changes
                       </>
                     )}
                   </button>
                   <button
                     onClick={handleCancelProfile}
-                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-900 font-bold py-3 px-6 rounded-lg transition-all"
+                    className="flex-1 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 text-white font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2"
                   >
+                    <i className="fa-solid fa-times"></i>
                     Cancel
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="flex items-center justify-between mb-6">
                   <div>
-                    <p className="text-sm text-gray-600 font-bold">Full Name</p>
-                    <p className="text-lg text-gray-900 mt-1">{profileData?.name}</p>
+                    <h3 className="text-2xl font-bold text-white">Profile Information</h3>
+                    <p className="text-gray-400 text-sm mt-1">View and manage your profile details</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-bold">Username</p>
-                    <p className="text-lg text-gray-900 mt-1">@{profileData?.username}</p>
+                </div>
+
+                {/* Personal Information Display */}
+                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-user text-blue-300"></i>
+                    Personal Information
+                  </h4>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm text-gray-400 font-semibold">Full Name</p>
+                      <p className="text-lg text-white mt-2 font-medium">{profileData?.name || 'Not set'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400 font-semibold">Age</p>
+                      <p className="text-lg text-white mt-2 font-medium">{profileData?.age ? `${profileData.age} years old` : 'Not set'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-bold">Email</p>
-                    <p className="text-lg text-gray-900 mt-1">{profileData?.email}</p>
+                </div>
+
+                {/* Contact Information Display */}
+                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-envelope text-purple-300"></i>
+                    Contact Information
+                  </h4>
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm text-gray-400 font-semibold">Email Address</p>
+                      <p className="text-lg text-white mt-2 font-medium break-all">{profileData?.email || 'Not set'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400 font-semibold">Phone Number</p>
+                      <p className="text-lg text-white mt-2 font-medium">{profileData?.phone || 'Not set'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-bold">Age</p>
+                </div>
+
+                {/* Location & Bio Display */}
+                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-location-dot text-emerald-300"></i>
+                    Location & Bio
+                  </h4>
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-sm text-gray-400 font-semibold">Location</p>
+                      <p className="text-lg text-white mt-2 font-medium">{profileData?.location || 'Not set'}</p>
+                    </div>
+                    {profileData?.bio && (
+                      <div>
+                        <p className="text-sm text-gray-400 font-semibold">Bio</p>
+                        <p className="text-gray-300 mt-2 leading-relaxed">{profileData.bio}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Account Information Display */}
+                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
+                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-shield text-amber-300"></i>
+                    Account Information
+                  </h4>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm text-gray-400 font-semibold">Username</p>
+                      <p className="text-lg text-white mt-2 font-medium">@{profileData?.username || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-400 font-semibold">Role</p>
+                      <div className="mt-2">
+                        <span className="inline-block px-4 py-1 bg-purple-500/30 border border-purple-400/50 text-purple-200 rounded-full text-sm font-bold">
+                          {profileData?.role || 'Member'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsEditingProfile(true)}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-blue-500/50"
+                >
+                  <i className="fa-solid fa-edit"></i>
+                  Edit Profile
+                </button>
+              </div>
                     <p className="text-lg text-gray-900 mt-1">{profileData?.age || 'Not set'}</p>
                   </div>
                   <div>
