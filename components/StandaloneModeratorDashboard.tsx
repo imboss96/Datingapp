@@ -707,7 +707,7 @@ const StandaloneModeratorDashboard: React.FC = () => {
                       </div>
                       <button
                         onClick={() => handleStartModeration(chat)}
-                        className="ml-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-lg transition-all flex items-center gap-2 flex-shrink-0"
+                        className="ml-4 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-bold py-2 px-6 rounded-lg transition-all flex items-center gap-2 flex-shrink-0 shadow-lg hover:shadow-emerald-500/50"
                       >
                         <i className="fa-solid fa-play"></i>
                         Moderate
@@ -724,20 +724,20 @@ const StandaloneModeratorDashboard: React.FC = () => {
         {activeTab === 'activity' && (
           <div className="space-y-6">
             {/* Section Header */}
-            <div className="flex items-center justify-between pb-3 border-b-2 border-amber-200">
+            <div className="flex items-center justify-between pb-4 border-b border-white/20">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shadow-lg">
-                  <i className="fa-solid fa-history"></i>
+                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-500/30 to-amber-600/30 flex items-center justify-center text-amber-300 shadow-lg">
+                  <i className="fa-solid fa-history text-lg"></i>
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Activity Log</h3>
-                  <p className="text-xs text-gray-500">Your recent moderation actions and activities</p>
+                  <h3 className="text-xl font-bold text-white">Activity Log</h3>
+                  <p className="text-sm text-gray-400">Your recent moderation actions and activities</p>
                 </div>
               </div>
               <button
                 onClick={() => fetchAllStats()}
                 disabled={statsLoading}
-                className="text-sm font-bold text-amber-600 hover:text-amber-700 disabled:opacity-50 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-amber-50 transition-all border border-amber-200"
+                className="text-sm font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-50 flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500/50 transition-all"
               >
                 <i className={`fa-solid fa-rotate-right ${statsLoading ? 'animate-spin' : ''}`}></i>
                 Refresh
@@ -746,41 +746,47 @@ const StandaloneModeratorDashboard: React.FC = () => {
 
             {/* Moderation Stats Summary */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+              <div className="bg-gradient-to-br from-red-500/20 to-red-600/20 rounded-2xl p-6 border border-red-400/30 hover:border-red-400/50 transition-all">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-600 font-bold">Warnings Issued</p>
-                    <p className="text-2xl font-black text-red-600 mt-1">{moderationStats.warningsIssued || 0}</p>
+                    <p className="text-xs text-gray-400 font-semibold">Warnings Issued</p>
+                    <p className="text-3xl font-black text-red-300 mt-2">{moderationStats.warningsIssued || 0}</p>
                   </div>
-                  <i className="fa-solid fa-triangle-exclamation text-red-600 text-2xl opacity-20"></i>
+                  <div className="w-14 h-14 rounded-lg bg-red-500/30 flex items-center justify-center">
+                    <i className="fa-solid fa-triangle-exclamation text-red-300 text-xl"></i>
+                  </div>
                 </div>
               </div>
 
-              <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+              <div className="bg-gradient-to-br from-orange-500/20 to-orange-600/20 rounded-2xl p-6 border border-orange-400/30 hover:border-orange-400/50 transition-all">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-600 font-bold">Bans Issued</p>
-                    <p className="text-2xl font-black text-orange-600 mt-1">{moderationStats.bansIssued || 0}</p>
+                    <p className="text-xs text-gray-400 font-semibold">Bans Issued</p>
+                    <p className="text-3xl font-black text-orange-300 mt-2">{moderationStats.bansIssued || 0}</p>
                   </div>
-                  <i className="fa-solid fa-ban text-orange-600 text-2xl opacity-20"></i>
+                  <div className="w-14 h-14 rounded-lg bg-orange-500/30 flex items-center justify-center">
+                    <i className="fa-solid fa-ban text-orange-300 text-xl"></i>
+                  </div>
                 </div>
               </div>
 
-              <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-200">
+              <div className="bg-gradient-to-br from-indigo-500/20 to-indigo-600/20 rounded-2xl p-6 border border-indigo-400/30 hover:border-indigo-400/50 transition-all">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-600 font-bold">Reports Submitted</p>
-                    <p className="text-2xl font-black text-indigo-600 mt-1">{moderationStats.totalReports || 0}</p>
+                    <p className="text-xs text-gray-400 font-semibold">Reports Submitted</p>
+                    <p className="text-3xl font-black text-indigo-300 mt-2">{moderationStats.totalReports || 0}</p>
                   </div>
-                  <i className="fa-solid fa-flag text-indigo-600 text-2xl opacity-20"></i>
+                  <div className="w-14 h-14 rounded-lg bg-indigo-500/30 flex items-center justify-center">
+                    <i className="fa-solid fa-flag text-indigo-300 text-xl"></i>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Recent Activity Section */}
-            <div className="bg-white rounded-xl p-6 border border-gray-200">
-              <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <i className="fa-solid fa-list text-amber-600"></i>
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+              <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <i className="fa-solid fa-list text-amber-300"></i>
                 Recent Moderated Chats
               </h4>
 
@@ -789,8 +795,8 @@ const StandaloneModeratorDashboard: React.FC = () => {
                   <i className="fa-solid fa-spinner animate-spin text-gray-400 text-2xl"></i>
                 </div>
               ) : repliedChats.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <i className="fa-solid fa-inbox text-3xl mb-2 text-gray-300"></i>
+                <div className="text-center py-8 text-gray-400">
+                  <i className="fa-solid fa-inbox text-3xl mb-2 text-white/20"></i>
                   <p>No moderation activity yet</p>
                 </div>
               ) : (
@@ -798,25 +804,25 @@ const StandaloneModeratorDashboard: React.FC = () => {
                   {repliedChats.slice(0, 10).map((chat, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200 hover:border-amber-300 transition-all"
+                      className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-lg hover:border-amber-400/50 hover:bg-white/10 transition-all"
                     >
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/30 flex items-center justify-center text-amber-300 flex-shrink-0">
                           <i className="fa-solid fa-check text-xs"></i>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-bold text-gray-900 text-sm">Chat {chat.id.substring(0, 8)}</p>
-                          <p className="text-xs text-gray-600">{new Date(chat.lastUpdated).toLocaleString()}</p>
+                          <p className="font-bold text-white text-sm">Chat {chat.id.substring(0, 8)}</p>
+                          <p className="text-xs text-gray-400">{new Date(chat.lastUpdated).toLocaleString()}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                         {chat.flaggedCount > 0 && (
-                          <span className="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-bold">
+                          <span className="bg-red-500/30 text-red-300 px-2 py-1 rounded text-xs font-bold border border-red-400/50">
                             <i className="fa-solid fa-flag mr-1"></i>
                             {chat.flaggedCount}
                           </span>
                         )}
-                        <span className="bg-green-100 text-green-600 px-2 py-1 rounded text-xs font-bold">
+                        <span className="bg-emerald-500/30 text-emerald-300 px-2 py-1 rounded text-xs font-bold border border-emerald-400/50">
                           <i className="fa-solid fa-check-circle mr-1"></i>
                           Done
                         </span>
