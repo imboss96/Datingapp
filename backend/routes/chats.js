@@ -97,24 +97,48 @@ router.get('/', async (req, res) => {
         chatsByParticipantsKey[key] = chat;
         chatsToKeep.push(chat);
       } else {
-        // Keep the one with later lastUpdated
-        if (chat.lastUpdated > chatsByParticipantsKey[key].lastUpdated) {
-          const oldChat = chatsByParticipantsKey[key];
-          chatsToDelete.push(oldChat.id);
-          chatsToKeep[chatsToKeep.indexOf(oldChat)] = chat;
+        // Found duplicate - consolidate messages
+        const existing = chatsByParticipantsKey[key];
+        if (chat.lastUpdated > existing.lastUpdated) {
+          // Current chat is newer - swap
+          const idx = chatsToKeep.indexOf(existing);
+          if (idx !== -1) chatsToKeep[idx] = chat;
+          chatsToDelete.push({ newer: chat, older: existing });
           chatsByParticipantsKey[key] = chat;
         } else {
-          chatsToDelete.push(chat.id);
+          // Existing is newer
+          chatsToDelete.push({ newer: existing, older: chat });
         }
       }
     }
 
-    // Hard delete duplicate old chats (keep latest only)
+    // PERMANENT CONSOLIDATION: Merge messages from duplicates and hard-delete old chats
     if (chatsToDelete.length > 0) {
-      console.log('[INFO] Deleting', chatsToDelete.length, 'duplicate chats, keeping latest only');
-      for (const chatId of chatsToDelete) {
-        await Chat.deleteOne({ id: chatId });
-        console.log('[DEBUG] Deleted duplicate chat:', chatId);
+      console.log('[INFO] ✓ Found', chatsToDelete.length, 'duplicate chat pairs to consolidate');
+      for (const { newer, older } of chatsToDelete) {
+        try {
+          // Merge messages: only add messages from older that don't exist in newer
+          if (older.messages && older.messages.length > 0 && newer.messages) {
+            const newMsgIds = new Set(newer.messages.map(m => m.id || m._id?.toString()));
+            const toMerge = older.messages.filter(m => !newMsgIds.has(m.id || m._id?.toString()));
+            if (toMerge.length > 0) {
+              newer.messages.push(...toMerge);
+              newer.messages.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+              await newer.save();
+              console.log('[INFO] Merged', toMerge.length, 'messages from duplicate chat');
+            }
+          }
+          // Ensure participantsKey is set
+          if (!newer.participantsKey) {
+            newer.participantsKey = makeParticipantsKey(newer.participants);
+            await newer.save();
+          }
+          // HARD DELETE the duplicate
+          await Chat.deleteOne({ id: older.id });
+          console.log('[INFO] ✓ Consolidated:', older.id, '→', newer.id);
+        } catch (consolidateErr) {
+          console.error('[ERROR] Consolidation failed:', consolidateErr.message);
+        }
       }
     }
     

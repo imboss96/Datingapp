@@ -65,34 +65,53 @@ const generateParticipantKey = (participants: string[]): string => {
 };
 
 const deduplicateAndSort = (chatsData: ChatData[]): ChatData[] => {
-  const seen: Record<string, ChatData> = {};
-  const result: ChatData[] = [];
+  if (!chatsData || chatsData.length === 0) return [];
+
+  // PERMANENT: WhatsApp-style deduplication - one entry per unique user pair
+  const chatsByParticipant: Record<string, ChatData> = {};
+  let duplicatesFound = 0;
 
   for (const chat of chatsData) {
-    // Use consistent key generation with normalized participants
-    const key = generateParticipantKey(chat.participants);
+    if (!chat.id || !Array.isArray(chat.participants)) continue;
+
+    // Generate stable key matching backend: normalize and sort participant IDs
+    const normalized = chat.participants
+      .filter((p: string) => p && typeof p === 'string')
+      .map((p: string) => p.trim().toLowerCase())
+      .sort();
+    const key = normalized.join('_');
     
-    if (!seen[key]) {
-      seen[key] = chat;
-      result.push(chat);
+    if (!key) continue;
+
+    if (!chatsByParticipant[key]) {
+      chatsByParticipant[key] = chat;
     } else {
-      // Always replace with the newest chat (by timestamp)
-      const existing = seen[key];
-      const shouldReplace = (chat.lastUpdated || 0) > (existing.lastUpdated || 0);
+      // Keep the most recently updated chat, discard the stale one
+      const existing = chatsByParticipant[key];
+      const incomingTime = chat.lastUpdated || 0;
+      const existingTime = existing.lastUpdated || 0;
       
-      if (shouldReplace) {
-        // Replace in result array
-        const idx = result.indexOf(existing);
-        if (idx !== -1) result[idx] = chat;
-        seen[key] = chat;
+      if (incomingTime > existingTime) {
+        chatsByParticipant[key] = chat;
       }
+      duplicatesFound++;
     }
   }
 
-  // Sort: unread first, then by timestamp
+  if (duplicatesFound > 0) {
+    console.warn(
+      `[ChatList] Deduplication: ${duplicatesFound} duplicate(s) found. ` +
+      `Consolidated from ${chatsData.length} → ${Object.keys(chatsByParticipant).length} chats.`
+    );
+  }
+
+  // Convert to array and sort: unread first, then by recency
+  const result = Object.values(chatsByParticipant);
   return result.sort((a, b) => {
-    const unreadDiff = (b.unreadCount ?? 0) - (a.unreadCount ?? 0);
-    return unreadDiff !== 0 ? unreadDiff : (b.lastUpdated ?? 0) - (a.lastUpdated ?? 0);
+    const unreadA = a.unreadCount ?? 0;
+    const unreadB = b.unreadCount ?? 0;
+    if (unreadA !== unreadB) return unreadB - unreadA;
+    return (b.lastUpdated || 0) - (a.lastUpdated || 0);
   });
 };
 

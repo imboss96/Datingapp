@@ -1525,7 +1525,7 @@ const styles = `
   }
 `;
 
-const tabContent: Record<number, { icon: JSX.Element; title: string; desc: string }> = {
+const tabContent: Record<number, { icon: React.ReactElement; title: string; desc: string }> = {
   0: { icon: <Icon name="search" />, title: 'Smart Partner Search', desc: 'Use advanced filters to find exactly who you are looking for — by location, interests, age, and more. Our intelligent search surfaces the most compatible people first.' },
   1: { icon: <Icon name="percent" />, title: '94% Compatibility Match', desc: 'Our matching algorithm analyzes your preferences, behavior, and profile to surface people you will genuinely connect with. Real compatibility, not just looks.' },
   2: { icon: <Icon name="couple" />, title: 'Find Your Partner', desc: 'Browse verified profiles, send likes, and start conversations with people who match your energy. Your next great love story starts with a single message.' },
@@ -1748,7 +1748,7 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
   // modal payload may be simple text or a full component
   type ModalPayload =
     | { title: string; body: string }
-    | { component: JSX.Element };
+    | { component: React.ReactElement };
   const [modalInfo, setModalInfo] = useState<ModalPayload | null>(null);
   const navigate = useNavigate();
 
@@ -1876,7 +1876,7 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
   const closeModal = () => setModalInfo(null);
 
   // map footer link texts to modal content
-  const FOOTER_MODAL_DATA: Record<string, {title:string; body:string} | {component: JSX.Element}> = {
+  const FOOTER_MODAL_DATA: Record<string, {title:string; body:string} | {component: React.ReactElement}> = {
     'Top Members': { component: <FeaturedMembersPage currentUser={currentUser} filterType="top" isModal onClose={closeModal} onOpenLoginModal={onOpenLoginModal} /> },
     'New Members': { component: <FeaturedMembersPage currentUser={currentUser} filterType="new" isModal onClose={closeModal} onOpenLoginModal={onOpenLoginModal} /> },
     'Online Now': { component: <FeaturedMembersPage currentUser={currentUser} filterType="online" isModal onClose={closeModal} onOpenLoginModal={onOpenLoginModal} /> },
@@ -2668,14 +2668,18 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
   );
 }
 
-export default React.memo(function LandingPageWithStyles(props) {
+const LandingPageWithStyles: React.FC<{ currentUser: UserProfile | null; onOpenLoginModal?: () => void }> = (props) => {
   // Fetch dynamic landing page settings from admin panel
   const { settings: landingSettings } = useLandingPageSettings();
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = notificationStyles;
     document.head.appendChild(style);
-    return () => document.head.removeChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
   }, []);
   return <LandingPageContent {...props} />;
-});
+};
+
+export default React.memo(LandingPageWithStyles);
