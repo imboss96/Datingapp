@@ -31,8 +31,9 @@ export default defineConfig(({ mode }) => {
         react(),
         VitePWA({
           registerType: 'autoUpdate',
+          injectRegister: 'auto',
           devOptions: {
-            enabled: false, // Set to true to enable PWA in dev
+            enabled: false,
           },
           manifest: {
             name: 'lunesa - Dating Platform',
@@ -46,6 +47,32 @@ export default defineConfig(({ mode }) => {
             scope: '/',
             start_url: '/',
             categories: ['social'],
+            icons: [
+              {
+                src: '/src/assets/images/logo/logo.png',
+                sizes: '192x192',
+                type: 'image/png',
+                purpose: 'any'
+              },
+              {
+                src: '/src/assets/images/logo/logo.png',
+                sizes: '512x512',
+                type: 'image/png',
+                purpose: 'any'
+              },
+              {
+                src: '/src/assets/images/logo/logo.png',
+                sizes: '192x192',
+                type: 'image/png',
+                purpose: 'maskable'
+              },
+              {
+                src: '/src/assets/images/logo/logo.png',
+                sizes: '512x512',
+                type: 'image/png',
+                purpose: 'maskable'
+              }
+            ],
             screenshots: [
               {
                 src: '/images/screenshot-narrow.png',
@@ -65,10 +92,10 @@ export default defineConfig(({ mode }) => {
                 name: 'Open Chats',
                 short_name: 'Chats',
                 description: 'View your conversations',
-                url: '/matches',
+                url: '/#/chats',
                 icons: [
                   {
-                    src: '/pwa-logo-96.png',
+                    src: '/src/assets/images/logo/logo.png',
                     sizes: '96x96',
                     type: 'image/png'
                   }
@@ -78,10 +105,23 @@ export default defineConfig(({ mode }) => {
                 name: 'View Matches',
                 short_name: 'Matches',
                 description: 'Browse your matches',
-                url: '/matches',
+                url: '/#/matches',
                 icons: [
                   {
-                    src: '/pwa-logo-96.png',
+                    src: '/src/assets/images/logo/logo.png',
+                    sizes: '96x96',
+                    type: 'image/png'
+                  }
+                ]
+              },
+              {
+                name: 'Discover Singles',
+                short_name: 'Discover',
+                description: 'Swipe and discover people',
+                url: '/#/',
+                icons: [
+                  {
+                    src: '/src/assets/images/logo/logo.png',
                     sizes: '96x96',
                     type: 'image/png'
                   }

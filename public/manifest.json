@@ -2,7 +2,7 @@
   "name": "lunesa - Dating Platform",
   "short_name": "lunesa",
   "description": "A high-end dating PWA with AI-powered swiping, chat moderation, live video calls, and premium features.",
-  "start_url": "/",
+  "start_url": "/#/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["fullscreen", "standalone", "minimal-ui"],
