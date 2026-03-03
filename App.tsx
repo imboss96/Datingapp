@@ -22,6 +22,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import TermsPage from './components/TermsPage';
 import PrivacyPage from './components/PrivacyPage';
 import CookiePolicyPage from './components/CookiePolicyPage';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { WebSocketProvider } from './services/WebSocketProvider';
 import { AlertProvider } from './services/AlertContext';
 import { NotificationProvider } from './services/NotificationContext';
@@ -366,6 +367,9 @@ const AppContent: React.FC<{
             onClose={() => setShowProfileSettings(false)}
           />
         )}
+
+        {/* PWA Install Prompt */}
+        <PWAInstallPrompt />
       </div>
     </div>
   );

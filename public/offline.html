@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - lunesa</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #000000 0%, #1a1a1a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .offline-container {
+            text-align: center;
+            max-width: 400px;
+            animation: slideUp 0.5s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .offline-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #ff006e 0%, #00d9ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            font-size: 16px;
+            color: #aaa;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .info-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .info-box strong {
+            color: #00d9ff;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 12px 30px;
+            background: linear-gradient(135deg, #ff006e 0%, #00d9ff 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-size: 16px;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 217, 255, 0.3);
+        }
+
+        .button:active {
+            transform: translateY(0);
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            background: #ff0055;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">📡</div>
+        <h1>You're Offline</h1>
+        <p>Looks like your device lost its internet connection. lunesa needs internet to load the app.</p>
+
+        <div class="info-box">
+            <strong><span class="status-indicator"></span>Connection Status</strong>
+            <p style="margin: 0;">Waiting for connection...</p>
+        </div>
+
+        <div class="info-box">
+            <strong>✨ What you can do</strong>
+            <p style="margin: 0; color: #ccc; font-size: 14px;">
+                • Check your WiFi or mobile data connection<br>
+                • Refresh this page when online<br>
+                • Some features work with cached data
+            </p>
+        </div>
+
+        <button class="button" onclick="tryAgain()">Try Again</button>
+    </div>
+
+    <script>
+        // Check if connection is restored
+        window.addEventListener('online', () => {
+            console.log('✅ Connection restored!');
+            window.location.reload();
+        });
+
+        function tryAgain() {
+            window.location.reload();
+        }
+
+        // Also check periodically
+        setInterval(() => {
+            fetch('/ping', { method: 'HEAD' })
+                .then(() => {
+                    console.log('✅ Connection detected!');
+                    window.location.reload();
+                })
+                .catch(() => {
+                    console.log('Still offline...');
+                });
+        }, 5000);
+    </script>
+</body>
+</html>

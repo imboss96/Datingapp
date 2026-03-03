@@ -1,28 +1,16 @@
 {
   "name": "lunesa - Dating Platform",
   "short_name": "lunesa",
-  "description": "A high-end dating PWA with AI-powered swiping, chat moderation, and premium features.",
+  "description": "A high-end dating PWA with AI-powered swiping, chat moderation, live video calls, and premium features.",
   "start_url": "/",
   "scope": "/",
-  "display": "fullscreen",
-  "display_override": ["fullscreen", "standalone"],
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
   "orientation": "portrait-primary",
   "theme_color": "#000000",
   "background_color": "#000000",
-  "icons": [
-    {
-      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AwZCwQtM0z3WQAAAB1pVFh0Q29tbWVudAAAAAAAvK6ymQAAAQdJREFUeNrtwQEBAAAAgiD/r25IQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB8GX4AAQABJ0lEQVQYV2NgYGBgYAAAAA==",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5AwZCwQtM0z3WQAAAB1pVFh0Q29tbWVudAAAAAAAvK6ymQAAAQdJREFUeNrtwQEBAAAAgiD/r25IQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB8GX4AAQABJ0lEQVQYV2NgYGBgYAAAAA==",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    }
-  ],
+  "prefer_related_applications": false,
+  "categories": ["social", "dating"],
   "screenshots": [
     {
       "src": "/images/screenshot-narrow.png",
@@ -37,18 +25,69 @@
       "type": "image/png"
     }
   ],
-  "categories": ["social"],
+  "icons": [
+    {
+      "src": "/src/assets/images/logo/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/src/assets/images/logo/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/src/assets/images/logo/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/src/assets/images/logo/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
   "shortcuts": [
+    {
+      "name": "Open Matches",
+      "short_name": "Matches",
+      "description": "View your matches and connections",
+      "url": "/#/matches",
+      "icons": [
+        {
+          "src": "/src/assets/images/logo/logo.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
     {
       "name": "Open Chats",
       "short_name": "Chats",
       "description": "View your conversations",
-      "url": "/chats",
+      "url": "/#/chats",
       "icons": [
         {
-          "src": "/logo/favicon.svg",
+          "src": "/src/assets/images/logo/logo.png",
           "sizes": "96x96",
-          "type": "image/svg+xml"
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Discover Singles",
+      "short_name": "Discover",
+      "description": "Swipe and discover people",
+      "url": "/#/",
+      "icons": [
+        {
+          "src": "/src/assets/images/logo/logo.png",
+          "sizes": "96x96",
+          "type": "image/png"
         }
       ]
     }
