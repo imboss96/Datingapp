@@ -210,6 +210,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [maxDistance,      setMaxDistance]      = useState<number>(DISTANCE_RANGES.THOUSAND_KM);
   const [showDistanceFilter, setShowDistanceFilter] = useState(false);
   const [imgLoaded,        setImgLoaded]        = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const cardRef            = useRef<HTMLDivElement>(null);
@@ -397,9 +398,10 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
   }, [currentIndex, filteredProfiles]);
 
-  // Reset image loaded state on profile change
+  // Reset image loaded state and image index on profile change
   useEffect(() => {
     setImgLoaded(false);
+    setCurrentImageIndex(0); // Reset to first image when changing profiles
     // if the profile has no image, consider it loaded so skeleton hides
     const profile = filteredProfiles[currentIndex];
     if (profile && (!profile.images || profile.images.length === 0)) {
@@ -434,6 +436,39 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       }
     }
   }, [currentBatch, maxDistance, fetchProfileBatch]);
+
+  // ── Image Carousel Navigation ──────────────────────────────────────────────
+
+  const goToNextImage = useCallback(() => {
+    const profile = filteredProfiles[currentIndex];
+    if (profile?.images && currentImageIndex < profile.images.length - 1) {
+      setCurrentImageIndex(currentImageIndex + 1);
+      setImgLoaded(false);
+      console.log('[SwiperScreen] Next image:', currentImageIndex + 1);
+    }
+  }, [currentIndex, currentImageIndex, filteredProfiles]);
+
+  const goToPrevImage = useCallback(() => {
+    if (currentImageIndex > 0) {
+      setCurrentImageIndex(currentImageIndex - 1);
+      setImgLoaded(false);
+      console.log('[SwiperScreen] Previous image:', currentImageIndex - 1);
+    }
+  }, [currentImageIndex]);
+
+  // Keyboard navigation for image carousel
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') {
+        goToNextImage();
+      } else if (e.key === 'ArrowLeft') {
+        goToPrevImage();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goToNextImage, goToPrevImage]);
 
   // ── Swipe actions ──────────────────────────────────────────────────────
 
@@ -780,9 +815,46 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               {/* Skeleton while image loads */}
               {!imgLoaded && <ProfileImageSkeleton />}
 
-              {profile.images?.[0] ? (
+              {/* Image progress indicator bars */}
+              {profile.images && profile.images.length > 1 && (
+                <div className="absolute top-0 left-0 right-0 flex gap-1 px-3 pt-3 z-20 pointer-events-none">
+                  {profile.images.map((_, idx) => (
+                    <div 
+                      key={idx}
+                      className="h-1 flex-1 rounded-full transition-all bg-white/40"
+                      style={{
+                        backgroundColor: idx === currentImageIndex ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.4)',
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Left tap zone */}
+              {profile.images && profile.images.length > 1 && (
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goToPrevImage();
+                  }}
+                  className="absolute left-0 top-0 bottom-0 w-20 z-10 cursor-pointer hover:bg-black/10 transition-colors"
+                />
+              )}
+
+              {/* Right tap zone */}
+              {profile.images && profile.images.length > 1 && (
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goToNextImage();
+                  }}
+                  className="absolute right-0 top-0 bottom-0 w-20 z-10 cursor-pointer hover:bg-black/10 transition-colors"
+                />
+              )}
+
+              {profile.images?.[currentImageIndex] ? (
                 (() => {
-                  const imageUrl = validateImageUrl(profile.images[0]);
+                  const imageUrl = validateImageUrl(profile.images[currentImageIndex]);
                   if (!imageUrl) {
                     return (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
@@ -796,10 +868,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   }
                   return (
                     <img
+                      key={`${profile.id}-${currentImageIndex}`}
                       src={imageUrl}
-                      alt={profile.name}
+                      alt={`${profile.name} - photo ${currentImageIndex + 1}`}
                       onLoad={() => {
-                        console.log('[SwiperScreen] Image loaded for profile:', profile.id);
+                        console.log('[SwiperScreen] Image loaded for profile:', profile.id, 'index:', currentImageIndex);
                         setImgLoaded(true);
                       }}
                       onError={() => {
