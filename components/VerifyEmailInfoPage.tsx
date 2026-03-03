@@ -69,7 +69,7 @@ const VerifyEmailInfoPage: React.FC = () => {
 
     const elapsed = Date.now() - startTime;
     if (elapsed < 15 * 60 * 1000) {
-      setError('Please wait 15 minutes before resending the verification email.');
+      setError('Please resend the verification email if you need a new code.');
       return;
     }
 
@@ -338,7 +338,7 @@ const VerifyEmailInfoPage: React.FC = () => {
             lineHeight: 1.6,
             fontFamily: "'Trebuchet MS', sans-serif",
           }}>
-            Can't find it? Check your <strong style={{ color: 'rgba(255,255,255,0.75)' }}>spam or junk folder</strong>. The link expires in <strong style={{ color: 'rgba(255,255,255,0.75)' }}>15 minutes</strong>.
+            Can't find it? Check your <strong style={{ color: 'rgba(255,255,255,0.75)' }}>spam or junk folder</strong>. The link never expires - you can verify anytime.
           </p>
         </div>
 

@@ -229,7 +229,7 @@ export const sendEmailVerificationEmail = async (email, verificationToken) => {
         USER_NAME: userName,
         USER_EMAIL: email,
         VERIFICATION_LINK: verificationUrl,
-        EXPIRY_TIME: '15 minutes'
+        EXPIRY_TIME: 'No expiry - verify anytime'
       }
     };
 

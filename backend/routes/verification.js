@@ -60,24 +60,9 @@ router.post('/send-otp', async (req, res) => {
       });
     }
 
-    // Check for recent OTP attempts (rate limiting)
-    const recentOtp = await EmailVerification.findOne({
-      email: normEmail,
-      verified: false,
-      createdAt: { $gte: new Date(Date.now() - 60 * 1000) } // Last 60 seconds
-    });
-
-    if (recentOtp) {
-      return res.status(429).json({ 
-        error: 'Too many requests. Try again later.',
-        code: 'RATE_LIMITED',
-        retryAfter: 60
-      });
-    }
-
     // Generate OTP
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // Expires in 10 minutes
+    const expiresAt = null; // No expiry - users can verify anytime
 
     // Save OTP to database
     const verification = await EmailVerification.create({
@@ -110,7 +95,7 @@ router.post('/send-otp', async (req, res) => {
                   </div>
                 </div>
                 <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">
-                  This code will expire in 10 minutes. If you didn't sign up, please ignore this email.
+                  This code doesn't expire. You can use it anytime. If you didn't sign up, please ignore this email.
                 </p>
                 <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
                 <p style="color: #6b7280; font-size: 12px;">
@@ -119,7 +104,7 @@ router.post('/send-otp', async (req, res) => {
               </div>
             </div>
           `,
-          text: `Your verification code is: ${otp}. This code expires in 10 minutes.`
+          text: `Your verification code is: ${otp}. You can use it anytime to verify your email.`
         });
       } else {
         // In development/testing, log the OTP to console
@@ -176,14 +161,7 @@ router.post('/verify-otp', async (req, res) => {
       });
     }
 
-    // Check if OTP has expired
-    if (verification.expiresAt < new Date()) {
-      await EmailVerification.deleteOne({ _id: verification._id });
-      return res.status(400).json({ 
-        error: 'OTP has expired',
-        code: 'OTP_EXPIRED'
-      });
-    }
+    // OTP never expires - no expiry check needed
 
     // Check if max attempts exceeded
     if (verification.attempts >= verification.maxAttempts) {
@@ -260,7 +238,7 @@ router.post('/resend-otp', async (req, res) => {
 
     // Send new OTP using the send-otp endpoint logic
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = null; // No expiry - users can verify anytime
 
     const verification = await EmailVerification.create({
       email: normEmail,
@@ -292,7 +270,7 @@ router.post('/resend-otp', async (req, res) => {
                   </div>
                 </div>
                 <p style="color: #6b7280; font-size: 14px;">
-                  This code will expire in 10 minutes.
+                  This code doesn't expire. You can use it anytime.
                 </p>
               </div>
             </div>

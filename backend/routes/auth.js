@@ -54,9 +54,6 @@ router.post('/verify-email', async (req, res) => {
     if (user.emailVerified) {
       return res.status(400).json({ error: 'Email already verified' });
     }
-    if (user.verificationTokenExpiry && user.verificationTokenExpiry < Date.now()) {
-      return res.status(400).json({ error: 'Verification token expired' });
-    }
 
     user.emailVerified = true;
     user.verificationToken = undefined;
@@ -90,9 +87,9 @@ router.post('/register', async (req, res) => {
       if (!existingUser.emailVerified) {
         // Resend verification email
         try {
-          // Generate new token and expiry
+          // Generate new token (no expiry - users can verify anytime)
           existingUser.verificationToken = crypto.randomBytes(32).toString('hex');
-          existingUser.verificationTokenExpiry = Date.now() + 15 * 60 * 1000;
+          existingUser.verificationTokenExpiry = null;
           await existingUser.save();
           const { sendEmailVerificationEmail } = await import('../utils/email.js');
           await sendEmailVerificationEmail(existingUser.email, existingUser.verificationToken);
@@ -108,9 +105,8 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = uuidv4();
 
-    // Generate email verification token
+    // Generate email verification token (no expiry - users can verify anytime)
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutes
 
     const user = new User({
       id: userId,
@@ -125,7 +121,7 @@ router.post('/register', async (req, res) => {
       role: 'USER',
       emailVerified: false,
       verificationToken,
-      verificationTokenExpiry,
+      verificationTokenExpiry: null,
     });
 
     await user.save();
