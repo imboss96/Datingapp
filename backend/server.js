@@ -115,6 +115,14 @@ mongoose.connect(MONGODB_URI, {
   process.exit(1);
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// TikTok Domain Verification - serves verification token for OAuth setup
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/.well-known/tiktok-developers-site-verification', (req, res) => {
+  // TikTok verification token
+  res.type('text/plain').send('qNMmg3VWbuHzUpTSyKV4CTNdeXSkNUpK');
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/moderation-auth', moderationAuthRoutes);  // Standalone moderation auth
