@@ -139,6 +139,14 @@ class APIClient {
     return data;
   }
 
+  async facebookSignIn(facebookToken: string, email: string, name: string, profilePicture?: string) {
+    const data = await this.request('/auth/facebook', {
+      method: 'POST',
+      body: JSON.stringify({ facebookToken, email, name, profilePicture }),
+    });
+    return data;
+  }
+
   async logout() {
     return this.request('/auth/logout', {
       method: 'POST',

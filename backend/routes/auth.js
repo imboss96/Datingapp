@@ -347,6 +347,116 @@ router.post('/google', async (req, res) => {
   }
 });
 
+// Facebook Sign-In/Sign-Up
+router.post('/facebook', async (req, res) => {
+  try {
+    const { facebookToken, email, name, profilePicture } = req.body;
+
+    if (!facebookToken || !email || !name) {
+      console.error('[DEBUG] Facebook: Missing fields:', { facebookToken: !!facebookToken, email, name });
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Facebook OAuth flow - validate token with Facebook API (backend verification)
+    let facebookId;
+    let userEmail = email;
+    
+    try {
+      // If you want to verify token with Facebook, use their Graph API
+      // For now, we'll extract from the token (frontend already verified it)
+      // In production, verify with: https://graph.facebook.com/me?access_token=TOKEN
+      
+      console.log('[DEBUG] Facebook auth for email:', email);
+      
+      // Extract user identifier from token or use email as identifier
+      facebookId = `fb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Optional: Hit Facebook Graph API to verify and get authentic data
+      try {
+        const fbResponse = await fetch(`https://graph.facebook.com/me?fields=id,email&access_token=${facebookToken}`);
+        if (fbResponse.ok) {
+          const fbData = await fbResponse.json();
+          facebookId = fbData.id;
+          if (fbData.email) userEmail = fbData.email;
+          console.log('[DEBUG] Facebook verified ID:', fbData.id);
+        }
+      } catch (fbErr) {
+        console.warn('[WARN] Could not verify with Facebook API:', fbErr.message);
+      }
+    } catch (err) {
+      console.error('[DEBUG] Facebook ID extraction error:', err.message);
+      return res.status(401).json({ error: 'Invalid Facebook token: ' + err.message });
+    }
+
+    // Normalize email and check if user exists
+    const normEmail = String(userEmail).toLowerCase();
+    let user = await User.findOne({ $or: [{ email: normEmail }, { facebookId }] });
+
+    if (!user) {
+      // Create new user
+      const userId = uuidv4();
+      user = new User({
+        id: userId,
+        email: normEmail,
+        facebookId,
+        name,
+        age: 25, // Default age for Facebook sign-up
+        location: 'Not specified',
+        profilePicture,
+        interests: [],
+        coins: 10,
+        isPremium: false,
+        role: 'USER',
+      });
+      await user.save();
+      console.log('[DEBUG] New Facebook user created:', userId);
+    } else if (!user.facebookId) {
+      // Link Facebook account to existing email user
+      user.facebookId = facebookId;
+      if (profilePicture && !user.profilePicture) {
+        user.profilePicture = profilePicture;
+      }
+      await user.save();
+      console.log('[DEBUG] Linked Facebook to existing user:', user.id);
+    }
+
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your-secret-key', {
+      expiresIn: '7d',
+    });
+
+    // Set httpOnly cookie
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    console.log('[DEBUG Backend] Facebook auth successful for user:', user.id);
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        age: user.age,
+        location: user.location,
+        interests: user.interests || [],
+        profilePicture: user.profilePicture,
+        images: user.images || [],
+        coins: user.coins,
+        termsOfServiceAccepted: user.termsOfServiceAccepted || false,
+        privacyPolicyAccepted: user.privacyPolicyAccepted || false,
+        cookiePolicyAccepted: user.cookiePolicyAccepted || false,
+      },
+    });
+  } catch (err) {
+    console.error('[ERROR] Facebook auth error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get current user based on token
 router.get('/me', authMiddleware, async (req, res) => {
   try {

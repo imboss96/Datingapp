@@ -140,3 +140,14 @@ export interface BlockedUser {
   reason?: string;
   blockedAt: number;
 }
+
+// Facebook SDK Type Declarations
+declare global {
+  interface Window {
+    FB?: {
+      init: (config: any) => void;
+      login: (callback: (response: any) => void, options?: any) => void;
+      api: (path: string, params: any, callback: (response: any) => void) => void;
+    };
+  }
+}

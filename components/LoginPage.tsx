@@ -225,6 +225,89 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
     setError('Google authentication failed. Please try again.');
   };
 
+  // ─── Facebook Authentication ────
+  const handleFacebookLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // Ensure Facebook SDK is loaded
+      if (!window.FB) {
+        throw new Error('Facebook SDK not loaded');
+      }
+
+      // Initialize Facebook SDK (must be done once)
+      window.FB.init({
+        appId: import.meta.env.VITE_FACEBOOK_APP_ID || 'YOUR_FACEBOOK_APP_ID',
+        xfbml: true,
+        version: 'v18.0'
+      });
+
+      // Login with Facebook
+      window.FB.login(async (response: any) => {
+        if (response.authResponse) {
+          console.log('[DEBUG LoginPage] Facebook login success');
+          
+          // Get user info from Facebook
+          window.FB.api('/me', { fields: 'id,name,email,picture' }, async (userInfo: any) => {
+            try {
+              console.log('[DEBUG LoginPage] Facebook user info:', userInfo);
+              
+              const facebookToken = response.authResponse.accessToken;
+              const email = userInfo.email || `fb_${userInfo.id}@lunesa.local`;
+              const name = userInfo.name || 'Facebook User';
+              const profilePicture = userInfo.picture?.data?.url;
+
+              // Call backend Facebook auth endpoint
+              const authResponse = await apiClient.facebookSignIn(
+                facebookToken,
+                email,
+                name,
+                profilePicture
+              );
+              console.log('[DEBUG LoginPage] Facebook auth response:', authResponse);
+
+              // Fetch authoritative user after auth
+              const me = await apiClient.getCurrentUser();
+              const user: UserProfile = {
+                id: me.id,
+                name: me.name,
+                username: me.username || '',
+                age: me.age || 25,
+                bio: me.bio || 'Welcome to lunesa!',
+                images: me.images || [],
+                isPremium: me.isPremium || false,
+                role: (me.role as UserRole) || UserRole.USER,
+                location: me.location || 'Not specified',
+                interests: me.interests || [],
+                coins: me.coins || 10,
+                verification: { status: VerificationStatus.UNVERIFIED },
+                blockedUsers: [],
+                reportedUsers: [],
+                termsOfServiceAccepted: me.termsOfServiceAccepted || false,
+                privacyPolicyAccepted: me.privacyPolicyAccepted || false,
+                cookiePolicyAccepted: me.cookiePolicyAccepted || false,
+              };
+
+              onLoginSuccess?.(user, false);
+            } catch (err: any) {
+              console.error('[ERROR LoginPage] Facebook user info fetch error:', err);
+              setError(err.message || 'Failed to fetch Facebook profile');
+              setLoading(false);
+            }
+          });
+        } else {
+          console.log('[DEBUG LoginPage] Facebook login cancelled');
+          setError('Facebook login cancelled');
+          setLoading(false);
+        }
+      }, { scope: 'public_profile,email' });
+    } catch (err: any) {
+      console.error('[ERROR LoginPage] Facebook login error:', err);
+      setError(err.message || 'Facebook authentication failed');
+      setLoading(false);
+    }
+  };
+
   const content = (
     <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8">
       <div className="mb-8 text-center">
@@ -262,15 +345,28 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
         </div>
       )}
 
-      {/* Google Sign In/Up Button */}
-      <div className="mb-6">
-        <GoogleLogin
-          onSuccess={handleGoogleSuccess}
-          onError={handleGoogleError}
-          theme="outline"
-          size="large"
-          text="signin_with"
-        />
+      {/* Google & Facebook Sign In/Up Buttons */}
+      <div className="space-y-3 mb-6">
+        <div className="w-full">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={handleGoogleError}
+            theme="outline"
+            size="large"
+            text="signin_with"
+          />
+        </div>
+        
+        <button
+          onClick={handleFacebookLogin}
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-all duration-200 text-sm"
+        >
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+          </svg>
+          Sign in with Facebook
+        </button>
       </div>
 
       <div className="relative mb-6">

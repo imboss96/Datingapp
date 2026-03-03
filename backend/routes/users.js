@@ -120,7 +120,7 @@ router.get('/', async (req, res) => {
       }
     }
 
-    const projection = '-passwordHash -email -googleId';
+    const projection = '-passwordHash -email -googleId -facebookId';
 
     // FIX 2: If geo is provided, try $geoNear but fall back gracefully if it fails
     // (e.g. no 2dsphere index) instead of returning an empty array silently.
@@ -137,7 +137,7 @@ router.get('/', async (req, res) => {
 
         const pipeline = [
           near,
-          { $project: { passwordHash: 0, email: 0, googleId: 0 } },
+          { $project: { passwordHash: 0, email: 0, googleId: 0, facebookId: 0 } },
           { $skip: Number(skip) },
           { $limit: Math.min(Number(limit), 200) }
         ];
