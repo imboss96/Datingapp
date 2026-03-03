@@ -23,7 +23,7 @@ interface Heart {
 // ═══ Constants ═════════════════════════════════════════════════════════════════
 
 const BATCH_SIZE        = 100;
-const PRELOAD_THRESHOLD = 10; // load next batch when this many profiles remain
+const PRELOAD_THRESHOLD = 20; // load next batch EARLY when this many profiles remain - background loading
 
 // ═══ Helpers (outside component – never recreated) ═══════════════════════════
 
@@ -388,7 +388,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
   }, [currentIndex, filteredProfiles]);
 
-  // ── Load more when approaching end ──────────────────────────────────────
+  // ── Load more in background when approaching end ──────────────────────────────────
+  // This loads profiles silently without interrupting the swipe experience
 
   const loadMoreIfNeeded = useCallback(async (upcomingIndex: number) => {
     if (
@@ -396,13 +397,22 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       !isLoadingMoreRef.current
     ) {
       setIsLoadingMore(true);
-      const nextBatch = currentBatch + 1;
-      const more = await fetchProfileBatch(nextBatch, maxDistance);
-      if (more.length > 0) {
-        setProfiles(prev => [...prev, ...more]);
-        setCurrentBatch(nextBatch);
+      try {
+        const nextBatch = currentBatch + 1;
+        const more = await fetchProfileBatch(nextBatch, maxDistance);
+        if (more.length > 0) {
+          setProfiles(prev => [...prev, ...more]);
+          setCurrentBatch(nextBatch);
+          console.log('[SwiperScreen] Loaded next batch in background:', more.length, 'profiles');
+        } else {
+          console.log('[SwiperScreen] No more profiles to load');
+        }
+      } catch (err) {
+        console.error('[SwiperScreen] Background batch load failed:', err);
+        // Silent fail - don't interrupt swiping if background load fails
+      } finally {
+        setIsLoadingMore(false);
       }
-      setIsLoadingMore(false);
     }
   }, [currentBatch, maxDistance, fetchProfileBatch]);
 
@@ -590,12 +600,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  if (currentIndex >= filteredProfiles.length && isLoadingMore) return (
-    <div className="flex flex-col items-center justify-center h-full p-8">
-      <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
-      <p className="mt-4 text-gray-500 font-medium">Loading more profiles...</p>
-    </div>
-  );
+  // Don't show full-screen loading state - let user keep swiping while we load in background
+  // Just show a subtle indicator at the top instead
 
   if (currentIndex >= filteredProfiles.length) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
@@ -631,6 +637,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   return (
     <>
+      {/* Background loading indicator - subtle progress bar at top */}
+      {isLoadingMore && (
+        <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-500 via-purple-500 to-blue-500 animate-pulse z-50" />
+      )}
+
       {/* Desktop search bar */}
       <div className="hidden md:flex w-full justify-center p-4 bg-transparent z-40">
         <div className="w-full max-w-4xl flex items-center gap-2">
@@ -764,15 +775,18 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   }
                   return (
                     <img
-                      key={profile.id}
                       src={imageUrl}
                       alt={profile.name}
-                      onLoad={() => setImgLoaded(true)}
+                      onLoad={() => {
+                        console.log('[SwiperScreen] Image loaded for profile:', profile.id);
+                        setImgLoaded(true);
+                      }}
                       onError={() => {
                         console.warn('[SwiperScreen] Failed to load image for profile:', profile.id, 'URL:', imageUrl);
-                        setImgLoaded(true); // show skeleton fallback
+                        setImgLoaded(true); // show skeleton fallback anyway
                       }}
-                      className={`w-full h-full object-cover select-none transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                      className={`w-full h-full object-cover select-none transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-75'}`}
+                      style={{ visibility: imgLoaded ? 'visible' : 'visible' }}
                     />
                   );
                 })()
