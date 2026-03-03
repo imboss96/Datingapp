@@ -87,14 +87,6 @@ export default defineConfig(({ mode }) => {
                   }
                 ]
               }
-            ],
-            screenshots: [
-              {
-                src: '/images/screenshot-narrow.png',
-                sizes: '540x720',
-                form_factor: 'narrow',
-                type: 'image/png'
-              }
             ]
           },
           workbox: {
