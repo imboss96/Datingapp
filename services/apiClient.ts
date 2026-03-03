@@ -1,4 +1,17 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Use relative API path to leverage Vite proxy during dev, absolute URL in production
+const getAPIBaseURL = (): string => {
+  const configUrl = import.meta.env.VITE_API_URL;
+  
+  // In development, use relative path to use Vite proxy
+  if (import.meta.env.DEV && configUrl?.includes('localhost')) {
+    return '/api';
+  }
+  
+  // In production or if configured, use the full URL
+  return configUrl || '/api';
+};
+
+const API_BASE_URL = getAPIBaseURL();
 
 class APIClient {
   constructor() {

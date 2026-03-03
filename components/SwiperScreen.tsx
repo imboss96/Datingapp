@@ -4,8 +4,10 @@ import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
 import { calculateDistance, DISTANCE_RANGES, getDistanceRangeLabel } from '../services/distanceUtils';
+import { storeLike, storeSuperLike, storePass } from '../services/likeService';
 import MatchModal from './MatchModal';
 import UserProfileModal from './UserProfileModal';
+import SearchSuggestions from './SearchSuggestions';
 
 // ═══ Types ═══════════════════════════════════════════════════════════════════
 
@@ -199,6 +201,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [hearts,           setHearts]           = useState<Heart[]>([]);
   const [tapCount,         setTapCount]         = useState(0);
   const [lastTapTime,      setLastTapTime]      = useState(0);
+  const [retrying,         setRetrying]         = useState(false);
   const [showMatchModal,   setShowMatchModal]   = useState(false);
   const [matchedUser,      setMatchedUser]      = useState<UserProfile | null>(null);
   const [interestMatch,    setInterestMatch]    = useState(0);
@@ -207,6 +210,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [query,            setQuery]            = useState('');
   const [searchOpen,       setSearchOpen]       = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   const [maxDistance,      setMaxDistance]      = useState<number>(DISTANCE_RANGES.THOUSAND_KM);
   const [showDistanceFilter, setShowDistanceFilter] = useState(false);
   const [imgLoaded,        setImgLoaded]        = useState(false);
@@ -332,32 +336,53 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       setCurrentBatch(0);
       matchScoreCache.current = {};
 
-      let initial;
-      try {
-        initial = await fetchProfileBatch(0, maxDistance);
-        console.log('[SwiperScreen] initial fetch returned', initial.length, 'profiles');
-      } catch (err: any) {
-        console.error('[SwiperScreen] Initial batch error:', err);
-        setError(err.message || 'Failed to load profiles');
-        setLoading(false);
-        return;
+      let initial: UserProfile[] = [];
+      let retryCount = 0;
+      const maxRetries = 2;
+
+      // Retry logic for failed fetches
+      while (retryCount <= maxRetries && initial.length === 0 && !cancelled) {
+        try {
+          initial = await fetchProfileBatch(0, maxDistance);
+          console.log('[SwiperScreen] initial fetch returned', initial.length, 'profiles');
+          if (initial.length > 0) break; // Success, exit retry loop
+        } catch (err: any) {
+          console.error(`[SwiperScreen] Initial batch error (attempt ${retryCount + 1}/${maxRetries + 1}):`, err);
+          retryCount++;
+          if (retryCount <= maxRetries) {
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
+          }
+        }
       }
 
-      // if first batch empty and we have coords, attempt a raw fallback without coords
-      if (initial.length === 0 && currentUser.coordinates) {
+      // If first batch empty and we have coords, attempt a raw fallback without coords
+      if (initial.length === 0 && currentUser.coordinates && !cancelled) {
         console.warn('[SwiperScreen] Initial fetch empty, performing raw fallback without coordinates');
         try {
           const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, 0, true);
           const others = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
-          // ignore distance filtering for raw fallback
           initial = others.sort((a, b) => getMatchScore(b) - getMatchScore(a));
         } catch (err) {
           console.error('[SwiperScreen] Raw fallback failed:', err);
         }
       }
 
+      // One more fallback: try without any filters at all
+      if (initial.length === 0 && !cancelled) {
+        console.warn('[SwiperScreen] All filtered attempts failed, trying unfiltered fallback');
+        try {
+          const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, 0, false);
+          initial = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
+        } catch (err) {
+          console.error('[SwiperScreen] Unfiltered fallback failed:', err);
+        }
+      }
+
       if (!cancelled) {
-        if (initial.length === 0) setError('No profiles available to swipe');
+        if (initial.length === 0) {
+          setError('No profiles available to swipe. Try refreshing in 30 seconds.');
+        }
         setProfiles(initial);
         setLoading(false);
       }
@@ -368,26 +393,35 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   // ── Preload next image ──────────────────────────────────────────────────
 
-  const filteredProfiles = useMemo(() => {
-    if (!query.trim()) return profiles;
-    const q = query.trim().toLowerCase();
-    return profiles.filter(p =>
-      p.username?.toLowerCase().includes(q) || p.name?.toLowerCase().includes(q)
-    );
-  }, [profiles, query]);
+  // Show search results when search is opened and query is entered
+  useEffect(() => {
+    if (searchOpen && query.trim()) {
+      setShowSearchResults(true);
+    } else {
+      setShowSearchResults(false);
+    }
+  }, [searchOpen, query]);
 
-  // Reset index when query changes
-  useEffect(() => { setCurrentIndex(0); }, [query]);
+  // Handle profile selection from search
+  const handleSelectFromSearch = useCallback((profile: UserProfile) => {
+    const profileIndex = profiles.findIndex(p => p.id === profile.id);
+    if (profileIndex !== -1) {
+      setCurrentIndex(profileIndex);
+      setSearchOpen(false);
+      setQuery('');
+      setShowSearchResults(false);
+    }
+  }, [profiles]);
 
   // Debug: log when index changes and what profile is being shown
   useEffect(() => {
-    const prof = filteredProfiles[currentIndex];
+    const prof = profiles[currentIndex];
     console.log('[SwiperScreen] currentIndex set to', currentIndex, 'profile id', prof?.id, 'username', prof?.username);
-  }, [currentIndex, filteredProfiles]);
+  }, [currentIndex, profiles]);
 
   // Preload next profile image
   useEffect(() => {
-    const next = filteredProfiles[currentIndex + 1];
+    const next = profiles[currentIndex + 1];
     if (next?.images?.[0]) {
       const imageUrl = validateImageUrl(next.images[0]);
       if (imageUrl) {
@@ -396,18 +430,18 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         });
       }
     }
-  }, [currentIndex, filteredProfiles]);
+  }, [currentIndex, profiles]);
 
   // Reset image loaded state and image index on profile change
   useEffect(() => {
     setImgLoaded(false);
     setCurrentImageIndex(0); // Reset to first image when changing profiles
     // if the profile has no image, consider it loaded so skeleton hides
-    const profile = filteredProfiles[currentIndex];
+    const profile = profiles[currentIndex];
     if (profile && (!profile.images || profile.images.length === 0)) {
       setImgLoaded(true);
     }
-  }, [currentIndex, filteredProfiles]);
+  }, [currentIndex, profiles]);
 
   // ── Load more in background when approaching end ──────────────────────────────────
   // This loads profiles silently without interrupting the swipe experience
@@ -440,13 +474,13 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   // ── Image Carousel Navigation ──────────────────────────────────────────────
 
   const goToNextImage = useCallback(() => {
-    const profile = filteredProfiles[currentIndex];
+    const profile = profiles[currentIndex];
     if (profile?.images && currentImageIndex < profile.images.length - 1) {
       setCurrentImageIndex(currentImageIndex + 1);
       setImgLoaded(false);
       console.log('[SwiperScreen] Next image:', currentImageIndex + 1);
     }
-  }, [currentIndex, currentImageIndex, filteredProfiles]);
+  }, [currentIndex, currentImageIndex, profiles]);
 
   const goToPrevImage = useCallback(() => {
     if (currentImageIndex > 0) {
@@ -478,49 +512,84 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   }, [loadMoreIfNeeded]);
 
   const handleLike = useCallback(async () => {
-    const profile = filteredProfiles[currentIndex];
+    const profile = profiles[currentIndex];
     if (!profile?.id) return;
     try {
-      const res = await apiClient.recordSwipe(currentUser.id, profile.id, 'like');
+      const res = await storeLike(currentUser.id, profile.id);
       if (res.matched && res.matchedUser) {
-        setMatchedUser(res.matchedUser);
-        setInterestMatch(res.interestMatch);
+        setMatchedUser(res.matchedUser as any);
+        setInterestMatch(res.interestMatch || 0);
         setShowMatchModal(true);
+        showAlert('It\'s a Match! 🎉', `You and ${res.matchedUser.name} liked each other!`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[SwiperScreen] Failed to record like:', err);
+      showAlert('Error', err.message || 'Failed to save like');
     }
     advance(currentIndex + 1);
-  }, [filteredProfiles, currentIndex, currentUser.id, advance]);
+  }, [profiles, currentIndex, currentUser.id, advance, showAlert]);
 
   const handlePass = useCallback(async () => {
-    const profile = filteredProfiles[currentIndex];
+    const profile = profiles[currentIndex];
     if (profile?.id) {
       try {
-        await apiClient.recordSwipe(currentUser.id, profile.id, 'pass');
-      } catch (err) {
+        await storePass(currentUser.id, profile.id);
+      } catch (err: any) {
         console.error('[SwiperScreen] Failed to record pass:', err);
+        // Silent fail for pass action - non-critical
       }
     }
     advance(currentIndex + 1);
-  }, [filteredProfiles, currentIndex, currentUser.id, advance]);
+  }, [profiles, currentIndex, currentUser.id, advance]);
 
   const handleSuperLike = useCallback(async () => {
     if (!currentUser.isPremium && currentUser.coins < 1) {
       showAlert('Out of Coins', 'Top up in your profile to keep swiping.');
       return;
     }
-    const profile = filteredProfiles[currentIndex];
+    const profile = profiles[currentIndex];
     if (profile?.id) {
       try {
-        await apiClient.recordSwipe(currentUser.id, profile.id, 'superlike');
-      } catch (err) {
+        const res = await storeSuperLike(currentUser.id, profile.id);
+        if (res.matched && res.matchedUser) {
+          setMatchedUser(res.matchedUser as any);
+          setInterestMatch(res.interestMatch || 0);
+          setShowMatchModal(true);
+          showAlert('Super Like Match! 🌟', `${res.matchedUser.name} loved your super like!`);
+        }
+      } catch (err: any) {
         console.error('[SwiperScreen] Failed to record super like:', err);
+        showAlert('Error', err.message || 'Failed to save super like');
       }
     }
     if (!currentUser.isPremium) onDeductCoin();
     advance(currentIndex + 1);
-  }, [filteredProfiles, currentIndex, currentUser, onDeductCoin, showAlert, advance]);
+  }, [profiles, currentIndex, currentUser, onDeductCoin, showAlert, advance]);
+
+  // Handle retry on fetch error
+  const handleRetry = useCallback(async () => {
+    setRetrying(true);
+    setError(null);
+    setProfiles([]);
+    setCurrentIndex(0);
+    setCurrentBatch(0);
+    matchScoreCache.current = {};
+    
+    let initial: UserProfile[] = [];
+    try {
+      initial = await fetchProfileBatch(0, maxDistance);
+      if (initial.length > 0) {
+        setProfiles(initial);
+      } else {
+        setError('Still no profiles. Please try again later.');
+      }
+    } catch (err: any) {
+      console.error('[SwiperScreen] Retry failed:', err);
+      setError(err.message || 'Failed to fetch profiles. Please check your connection.');
+    } finally {
+      setRetrying(false);
+    }
+  }, [maxDistance, fetchProfileBatch]);
 
   const handleRewind = useCallback(() => {
     if (currentIndex === 0) return;
@@ -602,18 +671,34 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   );
 
   if (error) return (
-    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+    <div className="flex flex-col items-center justify-center h-screen p-8 text-center bg-white md:bg-gray-50 pb-24 md:pb-8">
       <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-exclamation-circle text-4xl text-red-500" />
       </div>
       <h2 className="text-2xl font-bold text-gray-800">Oops!</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">{error}</p>
-      <button
-        onClick={() => window.location.reload()}
-        className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
-      >
-        Retry
-      </button>
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={handleRetry}
+          disabled={retrying}
+          className="px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform disabled:opacity-50"
+        >
+          {retrying ? (
+            <>
+              <i className="fa-solid fa-spinner animate-spin mr-2" />
+              Retrying...
+            </>
+          ) : (
+            'Retry'
+          )}
+        </button>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-10 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-full font-bold transition-colors"
+        >
+          Full Reload
+        </button>
+      </div>
     </div>
   );
 
@@ -633,7 +718,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  if (profiles.length > 0 && filteredProfiles.length === 0) return (
+  if (profiles.length > 0 && profiles.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-gray-100 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-magnifying-glass text-4xl text-gray-400" />
@@ -657,7 +742,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   // Don't show full-screen loading state - let user keep swiping while we load in background
   // Just show a subtle indicator at the top instead
 
-  if (currentIndex >= filteredProfiles.length) return (
+  if (currentIndex >= profiles.length) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-location-dot text-4xl text-red-500" />
@@ -683,7 +768,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   // ── Current profile ────────────────────────────────────────────────────
 
-  const profile    = filteredProfiles[currentIndex];
+  const profile    = profiles[currentIndex];
   const matchScore = getMatchScore(profile);
   const distance   = getDistance(profile);
 
@@ -722,7 +807,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         }
       `}</style>
 
-      <div className="h-full flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-gradient-to-b from-white to-gray-50 md:bg-gradient-to-b md:from-gray-50 md:to-gray-100 pt-2 md:pt-8">
+      <div className="h-screen flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-gradient-to-b from-white to-gray-50 md:bg-gradient-to-b md:from-gray-50 md:to-gray-100 pt-2 md:pt-8 pb-24 md:pb-8">
         <div className="w-full flex-1 md:h-full max-w-[420px] md:max-w-[540px] md:max-h-[750px] flex flex-col relative group">
 
           {/* ── Top overlay controls ── */}
@@ -735,9 +820,14 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   onChange={e => setQuery(e.target.value)}
                   placeholder="Search username or name"
                   className="flex-1 px-3 py-2 rounded-full border border-gray-200 bg-white/90 text-sm"
+                  onFocus={() => setShowSearchResults(true)}
                 />
                 <button
-                  onClick={() => setSearchOpen(false)}
+                  onClick={() => {
+                    setSearchOpen(false);
+                    setQuery('');
+                    setShowSearchResults(false);
+                  }}
                   className="ml-2 px-3 py-2 bg-white rounded-full border"
                 >
                   <i className="fa-solid fa-xmark" />
@@ -919,44 +1009,44 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               )}
 
               {/* Profile info overlay */}
-              <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
-                <div className="flex items-center gap-3 mb-1">
-                  <h3 className="text-3xl font-extrabold tracking-tight">
+              <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 text-white">
+                <div className="flex items-center gap-2 md:gap-3 mb-1 flex-wrap">
+                  <h3 className="text-2xl md:text-3xl font-extrabold tracking-tight">
                     {profile.username || profile.name}, {profile.age}
                   </h3>
                   {profile.isPremium && (
-                    <span className="premium-gradient px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest text-white shadow-lg">
+                    <span className="premium-gradient px-2.5 py-0.5 md:px-3 md:py-1 rounded-lg text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white shadow-lg flex-shrink-0">
                       Premium
                     </span>
                   )}
                 </div>
 
                 {/* Match score + distance */}
-                <div className="mb-3 flex items-center gap-2 flex-wrap">
-                  <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1.5">
+                <div className="mb-2 md:mb-3 flex items-center gap-1.5 md:gap-2 flex-wrap">
+                  <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-[8px] md:text-[10px] font-black flex items-center gap-1">
                     <i className="fa-solid fa-heart text-red-400" />
                     <span>{matchScore}% Match</span>
                   </div>
                   {distance !== null && (
-                    <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-3 py-1.5 rounded-full text-[10px] font-black flex items-center gap-1.5">
+                    <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-[8px] md:text-[10px] font-black flex items-center gap-1">
                       <i className="fa-solid fa-location-dot text-blue-300" />
                       <span>{distance < 1 ? '<1 km' : `${Math.round(distance)} km`}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 text-sm text-gray-300 mb-4">
-                  <i className="fa-solid fa-location-arrow text-[10px]" />
-                  <span className="font-medium">{profile.location}</span>
+                <div className="flex items-center gap-1 md:gap-2 text-xs md:text-sm text-gray-300 mb-3 md:mb-4">
+                  <i className="fa-solid fa-location-arrow text-[9px] md:text-[10px]" />
+                  <span className="font-medium truncate">{profile.location}</span>
                 </div>
 
-                <p className="text-sm line-clamp-3 text-gray-100 mb-6 leading-relaxed">{profile.bio}</p>
+                <p className="text-xs md:text-sm line-clamp-2 md:line-clamp-3 text-gray-100 mb-4 md:mb-6 leading-relaxed">{profile.bio}</p>
 
-                <div className="flex flex-wrap gap-2.5 mb-6">
-                  {profile.interests.map(interest => (
+                <div className="flex flex-wrap gap-1.5 md:gap-2.5 mb-4 md:mb-6">
+                  {profile.interests.slice(0, 5).map(interest => (
                     <span
                       key={interest}
-                      className={`px-4 py-1.5 rounded-full text-[11px] font-semibold ${
+                      className={`px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[9px] md:text-[11px] font-semibold ${
                         currentUser.interests.includes(interest)
                           ? 'bg-green-500/30 ring-1 ring-green-400/50'
                           : 'bg-white/10 ring-1 ring-white/20'
@@ -967,7 +1057,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   ))}
                 </div>
 
-                <div className="flex gap-3">
+                <div className="hidden md:flex gap-3">
                   <button
                     onClick={() => setShowProfileModal(true)}
                     className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
@@ -988,7 +1078,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
           </div>
 
           {/* ── Action Controls ── */}
-          <div className="flex justify-center gap-4 md:gap-8 mt-6 md:mt-10 pb-2 md:pb-8">
+          <div className="flex justify-center gap-2 md:gap-8 mt-4 md:mt-10 pb-4 md:pb-8 px-1 md:px-0">
             <ActionButton
               onClick={handleRewind}
               icon="fa-rotate-left"
@@ -1048,6 +1138,19 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
           onMessage={handleMatchMessage}
         />
       )}
+
+      {/* Search Suggestions Modal */}
+      <SearchSuggestions
+        query={query}
+        profiles={profiles}
+        onSelectProfile={handleSelectFromSearch}
+        onClose={() => {
+          setSearchOpen(false);
+          setQuery('');
+          setShowSearchResults(false);
+        }}
+        isOpen={showSearchResults}
+      />
     </>
   );
 };
