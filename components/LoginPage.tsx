@@ -316,13 +316,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
       const clientKey = import.meta.env.VITE_TIKTOK_CLIENT_KEY || 'YOUR_TIKTOK_CLIENT_KEY';
       const redirectUri = `${window.location.origin}/auth/tiktok/callback`;
       const scope = 'user.info.basic';
+      const state = Math.random().toString(36).substring(7);
       
-      // Redirect to TikTok OAuth authorization
-      const tiktokAuthUrl = `https://www.tiktok.com/v1/oauth/authorize/?client_key=${clientKey}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}`;
+      // Store state for CSRF protection
+      sessionStorage.setItem('tiktok_state', state);
       
-      // Store the redirect URL for after auth
-      sessionStorage.setItem('tiktok_redirect_pending', 'true');
+      // Build TikTok OAuth URL with proper query parameters
+      const params = new URLSearchParams({
+        client_key: clientKey,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        scope: scope,
+        state: state
+      });
       
+      const tiktokAuthUrl = `https://www.tiktok.com/v1/oauth/authorize?${params.toString()}`;
+      
+      console.log('[DEBUG LoginPage] Redirecting to TikTok:', tiktokAuthUrl);
       window.location.href = tiktokAuthUrl;
     } catch (err: any) {
       console.error('[ERROR LoginPage] TikTok login error:', err);
@@ -332,67 +342,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
   };
 
   // Handle TikTok OAuth callback (when component mounts and URL has code parameter)
+  // Handle OAuth callback errors
   React.useEffect(() => {
-    const handleTiktokCallback = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      
-      if (code && sessionStorage.getItem('tiktok_redirect_pending')) {
-        sessionStorage.removeItem('tiktok_redirect_pending');
-        console.log('[DEBUG LoginPage] TikTok callback received with code');
-        
-        try {
-          setLoading(true);
-          
-          // Exchange code for token (backend handles this)
-          const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/tiktok/callback`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ code })
-          });
-          
-          if (!response.ok) {
-            throw new Error('TikTok authentication failed');
-          }
-          
-          const authData = await response.json();
-          console.log('[DEBUG LoginPage] TikTok auth response:', authData);
-          
-          // Get user profile
-          const me = await apiClient.getCurrentUser();
-          const user: UserProfile = {
-            id: me.id,
-            name: me.name,
-            username: me.username || '',
-            age: me.age || 25,
-            bio: me.bio || 'Welcome to lunesa!',
-            images: me.images || [],
-            isPremium: me.isPremium || false,
-            role: (me.role as UserRole) || UserRole.USER,
-            location: me.location || 'Not specified',
-            interests: me.interests || [],
-            coins: me.coins || 10,
-            verification: { status: VerificationStatus.UNVERIFIED },
-            blockedUsers: [],
-            reportedUsers: [],
-            termsOfServiceAccepted: me.termsOfServiceAccepted || false,
-            privacyPolicyAccepted: me.privacyPolicyAccepted || false,
-            cookiePolicyAccepted: me.cookiePolicyAccepted || false,
-          };
-          
-          // Clean up URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-          onLoginSuccess?.(user, false);
-        } catch (err: any) {
-          console.error('[ERROR LoginPage] TikTok callback error:', err);
-          setError(err.message || 'Failed to authenticate with TikTok');
-          setLoading(false);
-        }
-      }
-    };
+    const params = new URLSearchParams(window.location.search);
+    const error = params.get('error');
     
-    handleTiktokCallback();
+    if (error) {
+      console.error('[ERROR LoginPage] OAuth error:', error);
+      setError(`Authentication failed: ${error}`);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   const content = (
