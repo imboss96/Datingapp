@@ -969,8 +969,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                         console.warn('[SwiperScreen] Failed to load image for profile:', profile.id, 'URL:', imageUrl);
                         setImgLoaded(true); // show skeleton fallback anyway
                       }}
-                      className={`w-full h-full object-cover select-none transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-75'}`}
-                      style={{ visibility: imgLoaded ? 'visible' : 'visible' }}
+                      className="w-full h-full object-cover select-none"
+                      style={{ visibility: 'visible' }}
                     />
                   );
                 })()
