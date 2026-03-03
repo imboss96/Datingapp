@@ -18,6 +18,156 @@ interface ProfileDiscoveryProps {
   onProfileSelect: (profile: UserProfile) => void;
 }
 
+// Card component for individual profile
+const DiscoveryCard: React.FC<{
+  profile: UserProfile;
+  onSelect: () => void;
+}> = ({ profile, onSelect }) => {
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  const images = profile.images || [];
+  const currentImage = images[currentImageIndex];
+
+  const goToNextImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (currentImageIndex < images.length - 1) {
+      setCurrentImageIndex(currentImageIndex + 1);
+      setImgLoaded(false);
+    }
+  };
+
+  const goToPrevImage = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (currentImageIndex > 0) {
+      setCurrentImageIndex(currentImageIndex - 1);
+      setImgLoaded(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onSelect}
+      className="bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer h-full flex flex-col"
+    >
+      {/* Image section with carousel and counter */}
+      <div className="relative bg-gray-900 overflow-hidden aspect-square group">
+        {/* Progress bars for multiple images */}
+        {images.length > 1 && (
+          <div className="absolute top-2 left-2 right-2 flex gap-1 z-20 pointer-events-none">
+            {images.map((_, idx) => (
+              <div
+                key={idx}
+                className="h-0.5 flex-1 rounded-full transition-all"
+                style={{
+                  backgroundColor: idx === currentImageIndex ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.4)',
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Image counter badge */}
+        {images.length > 1 && (
+          <div className="absolute top-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm z-20">
+            {currentImageIndex + 1}/{images.length}
+          </div>
+        )}
+
+        {/* Left tap zone */}
+        {images.length > 1 && (
+          <div
+            onClick={goToPrevImage}
+            className="absolute left-0 top-0 bottom-0 w-1/4 z-10 hover:bg-black/10 transition-colors"
+          />
+        )}
+
+        {/* Right tap zone */}
+        {images.length > 1 && (
+          <div
+            onClick={goToNextImage}
+            className="absolute right-0 top-0 bottom-0 w-1/4 z-10 hover:bg-black/10 transition-colors"
+          />
+        )}
+
+        {/* Image display */}
+        {currentImage ? (
+          <img
+            key={`${profile.id}-${currentImageIndex}`}
+            src={currentImage}
+            alt={`${profile.name} - photo ${currentImageIndex + 1}`}
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setImgLoaded(true)}
+            className={`w-full h-full object-cover transition-opacity duration-300 ${
+              imgLoaded ? 'opacity-100' : 'opacity-75'
+            }`}
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-500 to-blue-500">
+            <span className="text-5xl mb-2">👤</span>
+            <span className="text-white font-bold">{profile.age}</span>
+          </div>
+        )}
+
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60" />
+
+        {/* Verification badge */}
+        {profile.verification?.status === 'VERIFIED' && (
+          <div className="absolute top-3 left-3 bg-emerald-500 text-white rounded-full p-1.5 z-20 shadow-lg">
+            <i className="fa-solid fa-shield-check text-sm"></i>
+          </div>
+        )}
+
+        {/* Profile info overlay */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 z-10 text-white">
+          <h3 className="text-xl font-black mb-1">
+            {profile.username || profile.name}, {profile.age}
+          </h3>
+          <div className="flex items-center gap-1.5 text-sm font-semibold mb-3">
+            <i className="fa-solid fa-location-dot text-red-400"></i>
+            <span>{profile.location}</span>
+          </div>
+
+          {/* Interests preview */}
+          <div className="flex flex-wrap gap-1.5">
+            {profile.interests.slice(0, 3).map((interest) => (
+              <span
+                key={interest}
+                className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold backdrop-blur-sm"
+              >
+                {interest}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="p-4 flex gap-2 mt-auto">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+          className="flex-1 py-2.5 bg-white text-gray-800 rounded-xl font-bold text-sm border-2 border-gray-200 hover:border-gray-400 transition-all"
+        >
+          Profile
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
+          className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg"
+        >
+          Message
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
   currentUser,
   allProfiles,
@@ -263,55 +413,13 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
       </div>
 
       {/* Filtered Profiles Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        {filteredProfiles.slice(0, 12).map((profile) => (
-          <div
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 auto-rows-max">
+        {filteredProfiles.slice(0, 20).map((profile) => (
+          <DiscoveryCard
             key={profile.id}
-            onClick={() => onProfileSelect(profile)}
-            className="bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition cursor-pointer"
-          >
-            <div className="relative h-32 bg-gradient-to-br from-purple-500 to-blue-500 overflow-hidden flex items-center justify-center">
-              {profile.images && profile.images[0] ? (
-                <img
-                  src={profile.images[0]}
-                  alt={profile.name}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center w-full h-full">
-                  <span className="text-2xl mb-1">👤</span>
-                  <span className="text-xs text-white/80 font-semibold">{profile.age}</span>
-                </div>
-              )}
-              {profile.verification.status === 'VERIFIED' && (
-                <div className="absolute top-2 right-2 bg-emerald-500 text-white rounded-full p-1">
-                  <i className="fa-solid fa-check text-xs"></i>
-                </div>
-              )}
-            </div>
-            <div className="p-3">
-              <h3 className="font-bold text-sm text-gray-900 truncate">
-                {profile.username || profile.name}, {profile.age}
-              </h3>
-              <p className="text-xs text-gray-500 truncate mb-2">
-                <i className="fa-solid fa-location-dot mr-1"></i>
-                {profile.location}
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {profile.interests.slice(0, 2).map((interest) => (
-                  <span
-                    key={interest}
-                    className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-bold"
-                  >
-                    {interest}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
+            profile={profile}
+            onSelect={() => onProfileSelect(profile)}
+          />
         ))}
       </div>
 
