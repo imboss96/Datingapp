@@ -159,6 +159,11 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
   try {
+    console.log('[DEBUG] Login route - req.body type:', typeof req.body);
+    console.log('[DEBUG] Login route - req.body:', req.body);
+    console.log('[DEBUG] Login route - raw body:', req.rawBody);
+    console.log('[DEBUG] Login route - headers:', req.headers);
+    
     const { email, password } = req.body;
 
     if (!email || !password) {

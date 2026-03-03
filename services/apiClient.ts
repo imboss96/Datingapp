@@ -12,39 +12,48 @@ class APIClient {
   }
 
   private async request(endpoint: string, options: RequestInit = {}) {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      credentials: 'include',
-      headers: {
-        ...this.getHeaders(),
-        ...(options.headers || {}),
-      },
-    });
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        credentials: 'include',
+        headers: {
+          ...this.getHeaders(),
+          ...(options.headers || {}),
+        },
+      });
 
-    if (!response.ok) {
-      let errorData: any = { error: `API Error: ${response.statusText}` };
-      let errorMessage = `API Error: ${response.statusText}`;
-      try {
-        errorData = await response.json();
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch (parseErr) {
-        // couldn't parse error JSON, use the statusText
+      if (!response.ok) {
+        let errorData: any = { error: `API Error: ${response.statusText}` };
+        let errorMessage = `API Error: ${response.statusText}`;
+        try {
+          errorData = await response.json();
+          errorMessage = errorData.error?.message || errorData.error || errorData.message || errorMessage;
+        } catch (parseErr) {
+          // couldn't parse error JSON, use the statusText
+        }
+        const err = new Error(errorMessage);
+        (err as any).status = response.status;
+        // Preserve all error data from backend for proper error handling
+        (err as any).code = errorData.code;
+        (err as any).reason = errorData.reason;
+        (err as any).message = errorMessage;
+        (err as any).suspendedAt = errorData.suspendedAt;
+        (err as any).bannedAt = errorData.bannedAt;
+        (err as any).supportMessage = errorData.supportMessage;
+        (err as any).contactEmail = errorData.contactEmail;
+        (err as any).showSuspensionPage = errorData.showSuspensionPage;
+        throw err;
       }
-      const err = new Error(errorMessage);
-      (err as any).status = response.status;
-      // Preserve all error data from backend for proper error handling
-      (err as any).code = errorData.code;
-      (err as any).reason = errorData.reason;
-      (err as any).message = errorMessage;
-      (err as any).suspendedAt = errorData.suspendedAt;
-      (err as any).bannedAt = errorData.bannedAt;
-      (err as any).supportMessage = errorData.supportMessage;
-      (err as any).contactEmail = errorData.contactEmail;
-      (err as any).showSuspensionPage = errorData.showSuspensionPage;
-      throw err;
-    }
 
-    return response.json();
+      return response.json();
+    } catch (error) {
+      console.error('[ERROR apiClient.request]', {
+        endpoint,
+        error: error instanceof Error ? error.message : String(error),
+        status: (error as any)?.status
+      });
+      throw error;
+    }
   }
 
   async get(endpoint: string) {

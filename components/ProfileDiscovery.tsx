@@ -270,12 +270,22 @@ const ProfileDiscovery: React.FC<ProfileDiscoveryProps> = ({
             onClick={() => onProfileSelect(profile)}
             className="bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-lg transition cursor-pointer"
           >
-            <div className="relative h-32 bg-gray-200 overflow-hidden">
-              <img
-                src={profile.images[0] || 'https://via.placeholder.com/200x300?text=No+Photo'}
-                alt={profile.name}
-                className="w-full h-full object-cover"
-              />
+            <div className="relative h-32 bg-gradient-to-br from-purple-500 to-blue-500 overflow-hidden flex items-center justify-center">
+              {profile.images && profile.images[0] ? (
+                <img
+                  src={profile.images[0]}
+                  alt={profile.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center w-full h-full">
+                  <span className="text-2xl mb-1">👤</span>
+                  <span className="text-xs text-white/80 font-semibold">{profile.age}</span>
+                </div>
+              )}
               {profile.verification.status === 'VERIFIED' && (
                 <div className="absolute top-2 right-2 bg-emerald-500 text-white rounded-full p-1">
                   <i className="fa-solid fa-check text-xs"></i>

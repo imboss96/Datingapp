@@ -7,6 +7,7 @@ import TermsPage from './TermsPage';
 import PrivacyPage from './PrivacyPage';
 import SafetyPage from './SafetyPage';
 import FeaturedMembersPage from './FeaturedMembersPage';
+import { useLandingPageSettings } from '../hooks/useLandingPageSettings';
 
 // Add CSS animation for notification fade-in
 const notificationStyles = `
@@ -211,12 +212,12 @@ const styles = `
     font-weight: 500;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
-    box-shadow: 0 4px 20px rgba(192,22,44,0.4);
+    box-shadow: 0 4px 20px var(--primary-color-alpha-light-shadow, rgba(192,22,44,0.4));
     transition: all 0.3s;
     white-space: nowrap;
     min-width: 6rem;
   }
-  .lp-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(192,22,44,0.6); }
+  .lp-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px var(--primary-color-alpha-medium-shadow, rgba(192,22,44,0.6)); }
 
   /* HERO */
   .lp-hero {
@@ -232,6 +233,47 @@ const styles = `
     gap: 2rem;
   }
 
+  .lp-hero-video-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    z-index: 0;
+  }
+
+  .lp-hero-video-iframe {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    transform: translate(-50%, -50%);
+    border: none;
+    pointer-events: none;
+  }
+
+  .lp-hero-video-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, rgba(30,5,9,0.85), rgba(17,2,5,0.9));
+    z-index: 1;
+  }
+
+  .lp-hero-content {
+    position: relative;
+    z-index: 2;
+  }
+
+  .lp-hero-profiles {
+    position: relative;
+    z-index: 2;
+  }
+
   @media (min-width: 1024px) {
     .lp-hero {
       display: grid;
@@ -244,23 +286,12 @@ const styles = `
     }
   }
 
-  .lp-hero::before {
-    content: '';
-    position: absolute;
-    top: -20%;
-    right: -5%;
-    width: 65vw;
-    height: 110vh;
-    background: radial-gradient(ellipse, rgba(192,22,44,0.18) 0%, rgba(232,51,90,0.06) 50%, transparent 70%);
-    pointer-events: none;
-  }
-
   .lp-hero-badge {
     display: none;
     align-items: center;
     gap: 0.6rem;
-    background: linear-gradient(135deg, rgba(255, 71, 87, 0.18), rgba(255, 107, 122, 0.12));
-    border: 1.5px solid rgba(255, 107, 122, 0.35);
+    background: linear-gradient(135deg, var(--primary-color-alpha-light-2, rgba(255, 71, 87, 0.18)), var(--primary-color-alpha-light-3, rgba(255, 107, 122, 0.12)));
+    border: 1.5px solid var(--primary-color-alpha-border, rgba(255, 107, 122, 0.35));
     padding: 0.55rem 1.3rem;
     border-radius: 50px;
     font-size: 0.8rem;
@@ -270,7 +301,7 @@ const styles = `
     margin-bottom: 2rem;
     width: fit-content;
     font-weight: 600;
-    box-shadow: 0 4px 15px rgba(255, 71, 87, 0.15);
+    box-shadow: 0 4px 15px var(--primary-color-alpha-shadow, rgba(255, 71, 87, 0.15));
   }
 
   @media (min-width: 1024px) {
@@ -290,13 +321,13 @@ const styles = `
 
   .lp-hero h1 em {
     font-style: italic;
-    background: linear-gradient(135deg, #FF6B7A 0%, #FFB3C1 50%, #FFD4DB 100%);
+    background: linear-gradient(135deg, var(--primary-color, #FF6B7A) 0%, var(--primary-color-light, #FFB3C1) 50%, var(--primary-color-lighter, #FFD4DB) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
     display: inline-block;
-    text-shadow: 0 4px 20px rgba(255, 71, 87, 0.2);
-    filter: drop-shadow(0 4px 20px rgba(255, 71, 87, 0.15));
+    text-shadow: 0 4px 20px var(--primary-color-alpha-light, rgba(255, 71, 87, 0.2));
+    filter: drop-shadow(0 4px 20px var(--primary-color-alpha-light-faded, rgba(255, 71, 87, 0.15)));
   }
 
   .lp-hero p {
@@ -318,7 +349,7 @@ const styles = `
 
   .lp-cta-main {
     padding: 0.95rem 2.4rem;
-    background: linear-gradient(135deg, #FF4757, #FF6B7A);
+    background: var(--primary-color, #FF4757);
     color: #fff;
     border: none;
     border-radius: 50px;
@@ -326,7 +357,7 @@ const styles = `
     font-weight: 600;
     cursor: pointer;
     font-family: 'DM Sans', sans-serif;
-    box-shadow: 0 10px 35px rgba(255, 71, 87, 0.5);
+    box-shadow: 0 10px 35px var(--primary-color-alpha-shadow, rgba(255, 71, 87, 0.5));
     transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
     text-decoration: none;
     display: inline-block;
@@ -336,8 +367,8 @@ const styles = `
   }
   .lp-cta-main:hover { 
     transform: translateY(-4px); 
-    box-shadow: 0 18px 45px rgba(255, 71, 87, 0.7);
-    background: linear-gradient(135deg, #FF5A66, #FF7D8A);
+    box-shadow: 0 18px 45px var(--primary-color-alpha-shadow-dark, rgba(255, 71, 87, 0.7));
+    background: var(--secondary-color, #FF7D8A);
   }
   .lp-cta-main:active { transform: translateY(-1px); }
 
@@ -1700,6 +1731,9 @@ const ContactUsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 };
 
 export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentUser: UserProfile | null; onOpenLoginModal?: () => void }) {
+  // Fetch admin-configured landing page settings
+  const { settings: landingSettings } = useLandingPageSettings();
+  
   const [activeTab, setActiveTab] = useState(0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1717,6 +1751,31 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
     | { component: JSX.Element };
   const [modalInfo, setModalInfo] = useState<ModalPayload | null>(null);
   const navigate = useNavigate();
+
+  // Apply admin colors to CSS variables
+  useEffect(() => {
+    if (landingSettings?.primaryColor) {
+      const primaryColor = landingSettings.primaryColor;
+      document.documentElement.style.setProperty('--primary-color', primaryColor);
+      
+      // Derive lighter versions for gradients (simplified - uses same color for now)
+      document.documentElement.style.setProperty('--primary-color-light', primaryColor);
+      document.documentElement.style.setProperty('--primary-color-lighter', primaryColor);
+      document.documentElement.style.setProperty('--primary-color-alpha-light', `${primaryColor}29`); // 16% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-light-2', `${primaryColor}2D`); // 18% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-light-3', `${primaryColor}1F`); // 12% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-med', `${primaryColor}0F`); // 6% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-border', `${primaryColor}59`); // 35% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-shadow', `${primaryColor}26`); // 15% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-shadow-dark', `${primaryColor}B3`); // 70% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-light-shadow', `${primaryColor}66`); // 40% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-medium-shadow', `${primaryColor}99`); // 60% alpha
+      document.documentElement.style.setProperty('--primary-color-alpha-light-faded', `${primaryColor}26`); // 15% alpha
+    }
+    if (landingSettings?.secondaryColor) {
+      document.documentElement.style.setProperty('--secondary-color', landingSettings.secondaryColor);
+    }
+  }, [landingSettings]);
 
   // Auto-dismiss notification after 3 seconds
   useEffect(() => {
@@ -1756,6 +1815,21 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
   useEffect(() => {
     const fetchProfiles = async () => {
       try {
+        // First try to use admin-configured member images
+        if (landingSettings?.memberImages && landingSettings.memberImages.length > 0) {
+          const profiles = landingSettings.memberImages.slice(0, 6).map((img: any, idx: number) => ({
+            id: img.imageUrl + idx,
+            src: img.imageUrl,
+            name: img.name || img.title || 'Member',
+            age: parseInt(img.description || '25') || 25,
+            isOnline: idx % 2 === 0,
+          }));
+          setSliderImages(profiles);
+          setLoading(false);
+          return;
+        }
+        
+        // Fallback to random users from API
         const response = await apiClient.get('/users/random?limit=6');
         if (response.data && Array.isArray(response.data)) {
           const profiles = response.data.map((user: any) => ({
@@ -1771,14 +1845,14 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
         }
       } catch (err) {
         // Use fallback on error
-        console.log('Using fallback profiles');
+        console.log('Using fallback profiles', err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchProfiles();
-  }, []);
+  }, [landingSettings]);
 
   useEffect(() => {
     const onResize = () => {
@@ -1943,20 +2017,57 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
 
         {/* HERO */}
         <section className="lp-hero">
+          {/* VIDEO BACKGROUND */}
+          {landingSettings.heroVideoUrl && (
+            (() => {
+              // Extract video ID from various YouTube URL formats
+              let videoId = landingSettings.heroVideoUrl;
+              
+              // If it's a full URL, extract the video ID
+              if (landingSettings.heroVideoUrl.includes('youtube.com/embed/')) {
+                videoId = landingSettings.heroVideoUrl.split('/embed/')[1]?.split('?')[0] || '';
+              } else if (landingSettings.heroVideoUrl.includes('youtube.com/watch?v=')) {
+                videoId = landingSettings.heroVideoUrl.split('v=')[1]?.split('&')[0] || '';
+              } else if (landingSettings.heroVideoUrl.includes('youtu.be/')) {
+                videoId = landingSettings.heroVideoUrl.split('youtu.be/')[1]?.split('?')[0] || '';
+              }
+              
+              const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&playlist=${videoId}`;
+              
+              return (
+                <div className="lp-hero-video-container">
+                  <iframe
+                    className="lp-hero-video-iframe"
+                    src={embedUrl}
+                    allow="autoplay; encrypted-media"
+                    allowFullScreen
+                    style={{
+                      opacity: landingSettings.heroVideoOpacity || 0.5,
+                    }}
+                  />
+                  <div
+                    className="lp-hero-video-overlay"
+                    style={{
+                      opacity: landingSettings.heroVideoTransparency || 0.3,
+                      background: `linear-gradient(135deg, rgba(30,5,9,${(landingSettings.heroVideoTransparency || 0.3) * 0.85}), rgba(17,2,5,${(landingSettings.heroVideoTransparency || 0.3) * 0.9}))`,
+                    }}
+                  />
+                </div>
+              );
+            })()
+          )}
+
           {/* LEFT SIDE - CONTENT */}
           <div className="lp-hero-content">
             <div className="lp-hero-badge"><Icon name="heart" className="lp-hero-badge-icon" /> 2,000,000+ Members Worldwide</div>
             <h1 style={{ fontSize: 'clamp(2rem, 5vw, 4.5rem)', margin: '0 0 1.2rem 0' }}>
-              Find Your<br />
-              <em>Forever</em><br />
-              Starts Here
+              {landingSettings.heroTitle || 'Find Your Forever Starts Here'}
             </h1>
             <p style={{ marginBottom: '1.8rem' }}>
-              Still looking for your significant other? LunesaLove is the place for you.
-              Join now to meet single men and women worldwide who are serious about love.
+              {landingSettings.heroSubtitle || 'Still looking for your significant other? LunesaLove is the place for you. Join now to meet single men and women worldwide who are serious about love.'}
             </p>
             <div className="lp-hero-cta">
-              <a href="#" className="lp-cta-main" onClick={handleAuth}>Registration Now</a>
+              <a href="#" className="lp-cta-main" onClick={handleAuth}>{landingSettings.heroCtaText || 'Registration Now'}</a>
               <a href="#" className="lp-cta-ghost" onClick={handleAuth}>Log In</a>
             </div>
             <div className="lp-hero-stats">
@@ -2031,7 +2142,7 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
 
           <div className="lp-features-grid" style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+            gridTemplateColumns: 'repeat(7, 1fr)',
             gap: '1.5rem',
             marginTop: '3rem'
           }}>
@@ -2288,21 +2399,21 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
           </div>
 
           <div className="lp-locations-grid">
-            {LOCATIONS.map((loc, idx) => (
+            {(landingSettings.meetImages?.length > 0 ? landingSettings.meetImages : LOCATIONS).map((loc, idx) => (
               <div key={idx} className="lp-location-card">
                 <img
-                  src={loc.image}
-                  alt={loc.name}
+                  src={loc.imageUrl || loc.image}
+                  alt={loc.caption || loc.name}
                   loading="lazy"
                   onError={(e) => {
                     const el = e.target as HTMLImageElement;
                     el.style.display = 'none';
                     const svg = ICON_SVG[loc.icon] || ICON_SVG.globe;
-                    el.parentElement!.innerHTML = `<div class="lp-location-placeholder">${svg}</div><div class="lp-location-overlay"><div class="lp-location-name">${loc.name}</div></div>`;
+                    el.parentElement!.innerHTML = `<div class="lp-location-placeholder">${svg}</div><div class="lp-location-overlay"><div class="lp-location-name">${loc.caption || loc.name}</div></div>`;
                   }}
                 />
                 <div className="lp-location-overlay">
-                  <div className="lp-location-name">{loc.name}</div>
+                  <div className="lp-location-name">{loc.caption || loc.name}</div>
                 </div>
               </div>
             ))}
@@ -2349,11 +2460,11 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
           </div>
 
           <div className="lp-stories-grid">
-            {STORIES.map((story, idx) => (
+            {(landingSettings.storyImages?.length > 0 ? landingSettings.storyImages : STORIES).map((story, idx) => (
               <div key={idx} className="lp-story-card">
                 <div className="lp-story-thumb">
                   <img
-                    src={story.image}
+                    src={story.imageUrl || story.image}
                     alt={story.title}
                     loading="lazy"
                     onError={(e) => {
@@ -2365,7 +2476,7 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
                   />
                 </div>
                 <div className="lp-story-body">
-                  <span className="lp-story-cat">{story.category}</span>
+                  <span className="lp-story-cat">{story.category || 'Love Stories'}</span>
                   <div className="lp-story-title">{story.title}</div>
                 </div>
               </div>
@@ -2558,6 +2669,8 @@ export function LandingPageContent({ currentUser, onOpenLoginModal }: { currentU
 }
 
 export default React.memo(function LandingPageWithStyles(props) {
+  // Fetch dynamic landing page settings from admin panel
+  const { settings: landingSettings } = useLandingPageSettings();
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = notificationStyles;

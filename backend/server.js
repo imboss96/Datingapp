@@ -29,6 +29,8 @@ import { initCloudinary } from './utils/cloudinary.js';
 import { initWebSocket } from './utils/websocket.js';
 import lipanaRoutes from './routes/lipana.js';
 import supportRoutes from './routes/support.js';
+import landingPageSettingsRoutes from './routes/landingPageSettings.js';
+import LandingPageSettings from './models/LandingPageSettings.js';
 import CoinPackage from './models/CoinPackage.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -120,18 +122,51 @@ app.use('/api/verification', verificationRoutes);  // Email verification
 app.use('/api/email-verification', emailVerificationRoutes);
 app.use('/api/users', usersRoutes);  // Auth middleware applied selectively in users.js
 app.use('/api/public', publicRoutes);  // Public endpoints (no auth required)
+// Public landing page settings endpoint (no auth required)
+app.get('/api/public/landing-page-settings', async (req, res) => {
+  try {
+    let settings = await LandingPageSettings.findOne({ id: 'default' });
+    if (!settings) {
+      settings = new LandingPageSettings({
+        id: 'default',
+        bannerImages: [],
+        aboutImages: [],
+        memberImages: [],
+        workImages: [],
+        meetImages: [],
+        storyImages: [],
+        footerImages: []
+      });
+      await settings.save();
+    }
+    res.json(settings);
+  } catch (error) {
+    console.error('[ERROR] Failed to get landing page settings:', error);
+    res.status(500).json({ error: 'Failed to get landing page settings' });
+  }
+});
 app.use('/api/chats', authMiddleware, chatsRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
 app.use('/api/matches', authMiddleware, matchesRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/transactions', transactionsRoutes);  // Auth middleware applied selectively in transactions.js
 app.use('/api/moderation', authMiddleware, moderationRoutes);  // Moderator-only routes
+app.use('/api/admin', authMiddleware, landingPageSettingsRoutes);  // Admin-only routes
 app.use('/api/support', supportRoutes);  // Support/Contact routes (public submit, auth for moderator)
 app.use('/api/push', authMiddleware, pushRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Backend running', timestamp: new Date().toISOString() });
+});
+
+// Serve static files from dist folder (frontend build)
+const distPath = path.join(__dirname, '../dist');
+app.use(express.static(distPath));
+
+// SPA catch-all: serve index.html for any non-API route
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 // 404 handler - for undefined routes

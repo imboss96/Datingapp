@@ -602,14 +602,22 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-location-dot text-4xl text-red-500" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-800">You've seen everyone!</h2>
-      <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">Come back later for new people in your area.</p>
-      <button
-        onClick={() => { setQuery(''); setCurrentIndex(0); setCurrentBatch(0); setProfiles([]); }}
-        className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
-      >
-        Refresh Discovery
-      </button>
+      <h2 className="text-2xl font-bold text-gray-800">No more new profiles</h2>
+      <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">You've reviewed everyone in your area. Refresh to see profiles again!</p>
+      <div className="flex gap-3 flex-col sm:flex-row mt-6 w-full sm:w-auto">
+        <button
+          onClick={() => { setQuery(''); setCurrentIndex(0); setCurrentBatch(0); setProfiles([]); }}
+          className="px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform flex-1 sm:flex-auto"
+        >
+          Refresh Discovery
+        </button>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-10 py-3 border-2 border-red-500 text-red-500 rounded-full font-bold hover:bg-red-50 active:scale-95 transition-transform flex-1 sm:flex-auto"
+        >
+          Reload App
+        </button>
+      </div>
     </div>
   );
 
@@ -745,10 +753,12 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   const imageUrl = validateImageUrl(profile.images[0]);
                   if (!imageUrl) {
                     return (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-300">
-                        <span className="text-gray-600 text-xl font-bold uppercase">
-                          {profile.username || profile.name || "No Image"}
-                        </span>
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
+                        <div className="text-6xl mb-4">👤</div>
+                        <h2 className="text-3xl font-bold text-white text-center mb-2">{profile.name}</h2>
+                        <p className="text-xl text-white/80 font-semibold mb-4">{profile.age}</p>
+                        <p className="text-sm text-white/60 text-center max-w-xs mb-6">{profile.location}</p>
+                        <div className="w-20 h-1 bg-white/30 rounded-full"></div>
                       </div>
                     );
                   }
@@ -767,10 +777,12 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   );
                 })()
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gray-300">
-                  <span className="text-gray-600 text-xl font-bold uppercase">
-                    {profile.username || profile.name || "No Image"}
-                  </span>
+                <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
+                  <div className="text-6xl mb-4">👤</div>
+                  <h2 className="text-3xl font-bold text-white text-center mb-2">{profile.name}</h2>
+                  <p className="text-xl text-white/80 font-semibold mb-4">{profile.age}</p>
+                  <p className="text-sm text-white/60 text-center max-w-xs mb-6">{profile.location}</p>
+                  <div className="w-20 h-1 bg-white/30 rounded-full"></div>
                 </div>
               )}
 

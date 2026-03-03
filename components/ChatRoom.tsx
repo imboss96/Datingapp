@@ -1657,13 +1657,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             </div>
 
             {/* Text Input */}
-             <div className="flex-1 flex items-end bg-white rounded-lg px-4 md:px-5 py-2.5 md:py-3 gap-2 border border-gray-200 shadow-md">
+            <div className="flex-1 flex items-center bg-white rounded-full px-4 md:px-5 py-0 gap-3 border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
               {/* Emoji Picker Button */}
               <div className="relative" ref={emojiPickerRef}>
                 <button
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                   disabled={uploadingMedia || isRecordingAudio}
-                  className="text-gray-600 hover:text-yellow-500 text-xl transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                  className="text-gray-500 hover:text-yellow-500 text-lg md:text-xl transition-colors active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 p-0 h-6 leading-6"
                   title="Add emoji"
                 >
                   😊
@@ -1737,110 +1737,105 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 )}
               </div>
 
-              {/* GIF/Sticker Button */}
-              <div className="relative" ref={gifPickerRef}>
-                <button
-                  onClick={() => setShowGifPicker(!showGifPicker)}
-                  disabled={uploadingMedia || isRecordingAudio}
-                  className="text-gray-600 hover:text-blue-500 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
-                  title="Add GIF"
-                >
-                  <i className="fa-solid fa-image"></i>
-                </button>
+              {isRecordingAudio ? (
+                <>
+                  {/* Recording UI - WhatsApp Style */}
+                  <button
+                    onClick={handleDiscardAudio}
+                    className="text-red-500 hover:text-red-600 flex-shrink-0 p-0 h-6 leading-6 flex items-center justify-center text-lg"
+                    title="Discard recording"
+                  >
+                    <i className="fa-solid fa-trash"></i>
+                  </button>
 
-                {/* GIF Picker Dropdown */}
-                {showGifPicker && (
-                  <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-64 overflow-y-auto w-64 p-3">
-                    <p className="text-xs font-semibold text-gray-600 mb-3">Popular Gifs & Stickers</p>
-                    <div className="space-y-2">
-                      {[
-                        { name: 'Haha', url: 'https://media.giphy.com/media/xTiTnIgNLz4cYEq9rH/giphy.gif' },
-                        { name: 'Love It', url: 'https://media.giphy.com/media/g9hWWsKc0p7K0/giphy.gif' },
-                        { name: 'Wow', url: 'https://media.giphy.com/media/3o7TKU7wHrGcupPnpwI/giphy.gif' },
-                        { name: 'Perfect', url: 'https://media.giphy.com/media/26uf1EUQzrAMzocKI/giphy.gif' },
-                        { name: 'Thumbs Up', url: 'https://media.giphy.com/media/3ohzdKdb5gEqY8ePFm/giphy.gif' },
-                        { name: 'Dancing', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
-                        { name: 'Cute', url: 'https://media.giphy.com/media/JIX9RW7K6akf6/giphy.gif' },
-                        { name: 'Happy', url: 'https://media.giphy.com/media/W0lzPVRQea5zO/giphy.gif' },
-                      ].map((gif) => (
-                        <button
-                          key={gif.name}
-                          onClick={() => handleGifSelect(gif.url, gif.name)}
-                          className="w-full text-left px-3 py-2 hover:bg-blue-50 rounded transition-colors text-sm text-gray-700"
-                        >
-                          <i className="fa-solid fa-play-circle text-blue-500 w-4 mr-2"></i>
-                          {gif.name}
-                        </button>
+                  {/* Recording Duration and Waveform */}
+                  <div className="flex-1 flex items-center gap-3">
+                    <div className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                      {Math.floor(recordingDuration / 60)}:{String(recordingDuration % 60).padStart(2, '0')}
+                    </div>
+                    {/* Animated Waveform */}
+                    <div className="flex-1 flex items-center gap-1 h-6 justify-center">
+                      {[...Array(20)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 bg-red-400 rounded-full opacity-70"
+                          style={{
+                            height: '6px',
+                            animation: `waveform 0.6s ease-in-out infinite`,
+                            animationDelay: `${i * 0.04}s`,
+                          }}
+                        />
                       ))}
-                      <button
-                        onClick={() => {
-                          const gifUrl = prompt('Enter GIF URL:');
-                          if (gifUrl) handleGifSelect(gifUrl, 'Custom GIF');
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-green-50 rounded transition-colors text-sm text-gray-700 border-t border-gray-200 mt-2 pt-3"
-                      >
-                        <i className="fa-solid fa-link text-green-500 w-4 mr-2"></i>
-                        Add Custom GIF URL
-                      </button>
                     </div>
                   </div>
-                )}
-              </div>
 
-              <textarea
-                ref={textareaRef}
-                placeholder={isRecordingAudio ? "Recording..." : "Type a message... (Shift+Enter for new line)"}
-                className="bg-transparent flex-1 focus:outline-none text-sm md:text-base text-gray-900 placeholder:text-gray-500 resize-none overflow-hidden"
-                style={{ lineHeight: '1.5rem', minHeight: '1.5rem', maxHeight: '160px' }}
-                value={inputText}
-                onChange={(e) => {
-                  setInputText(e.target.value);
-                  // Auto-expand textarea like WhatsApp
-                  if (textareaRef.current) {
-                    textareaRef.current.style.height = 'auto';
-                    const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
-                    textareaRef.current.style.height = `${newHeight}px`;
-                  }
-                  if (e.target.value.trim().length > 0) {
-                    emitTypingStatus(true);
-                  }
-                }}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !isRecordingAudio) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                disabled={uploadingMedia || isRecordingAudio}
-              />
+                  {/* Stop Recording Button */}
+                  <button
+                    onClick={handleStopAudioRecording}
+                    className="text-red-500 hover:text-red-600 animate-pulse flex-shrink-0 p-0 rounded-full h-6 leading-6 flex items-center justify-center text-lg"
+                    title="Stop recording"
+                  >
+                    <i className="fa-solid fa-circle"></i>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <textarea
+                    ref={textareaRef}
+                    placeholder={recordedAudio ? "Audio recorded" : "Type a message..."}
+                    className="bg-transparent flex-1 focus:outline-none text-sm md:text-base text-gray-900 placeholder:text-gray-400 resize-none overflow-hidden font-medium m-0 border-0"
+                    style={{ lineHeight: '1.5rem', minHeight: '1.5rem', maxHeight: '160px', fontFamily: 'inherit', padding: '0.375rem 0', margin: 0, border: 'none', verticalAlign: 'middle' }}
+                    value={inputText}
+                    onChange={(e) => {
+                      setInputText(e.target.value);
+                      // Auto-expand textarea like WhatsApp
+                      if (textareaRef.current) {
+                        textareaRef.current.style.height = 'auto';
+                        const newHeight = Math.min(textareaRef.current.scrollHeight, 160);
+                        textareaRef.current.style.height = `${newHeight}px`;
+                      }
+                      if (e.target.value.trim().length > 0) {
+                        emitTypingStatus(true);
+                      }
+                    }}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && !isRecordingAudio) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    disabled={uploadingMedia || isRecordingAudio}
+                  />
 
-              {/* Microphone/Send Button */}
-              <button
-                onClick={() => {
-                  if (recordedAudio) {
-                    handleSendAudioMessage();
-                  } else if (inputText.trim() || selectedMedia) {
-                    handleSend();
-                  } else if (isRecordingAudio) {
-                    handleStopAudioRecording();
-                  } else {
-                    handleStartAudioRecording();
-                  }
-                }}
-                className={`text-lg md:text-xl transition-colors active:scale-75 flex-shrink-0 ${
-                  (inputText.trim() || selectedMedia || recordedAudio)
-                    ? 'text-green-500 hover:text-green-600'
-                    : isRecordingAudio
-                    ? 'text-red-500 animate-pulse hover:text-red-600'
-                    : 'text-gray-600 hover:text-gray-700'
-                }`}
-                disabled={!chatId || uploadingMedia}
-                title={recordedAudio ? 'Send audio' : inputText.trim() || selectedMedia ? 'Send message' : 'Record audio'}
-              >
-                <i className={`fa-solid ${
-                  recordedAudio ? 'fa-check' : (inputText.trim() || selectedMedia) ? 'fa-paper-plane' : 'fa-microphone'
-                }`}></i>
-              </button>
+                  {/* Microphone/Send Button */}
+                  <button
+                    onClick={() => {
+                      if (recordedAudio) {
+                        handleSendAudioMessage();
+                      } else if (inputText.trim() || selectedMedia) {
+                        handleSend();
+                      } else if (isRecordingAudio) {
+                        handleStopAudioRecording();
+                      } else {
+                        handleStartAudioRecording();
+                      }
+                    }}
+                    className={`text-lg md:text-xl transition-all active:scale-90 flex-shrink-0 p-0 rounded-full h-6 leading-6 flex items-center justify-center ${
+                      (inputText.trim() || selectedMedia || recordedAudio)
+                        ? 'text-green-500 hover:text-green-600 hover:bg-green-50'
+                        : isRecordingAudio
+                        ? 'text-red-500 animate-pulse hover:text-red-600 hover:bg-red-50'
+                        : 'text-gray-500 hover:text-gray-600 hover:bg-gray-100'
+                    }`}
+                    disabled={!chatId || uploadingMedia}
+                    title={recordedAudio ? 'Send audio' : inputText.trim() || selectedMedia ? 'Send message' : 'Record audio'}
+                  >
+                    <i className={`fa-solid ${
+                      recordedAudio ? 'fa-paper-plane' : (inputText.trim() || selectedMedia) ? 'fa-paper-plane' : 'fa-microphone'
+                    }`}></i>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1870,6 +1865,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           />
         )}
       </div>
+
+      <style>{`
+        @keyframes waveform {
+          0%, 100% { height: 6px; }
+          50% { height: 16px; }
+        }
+      `}</style>
     </>
   );
 };

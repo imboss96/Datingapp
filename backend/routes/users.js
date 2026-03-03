@@ -105,13 +105,14 @@ router.get('/', async (req, res) => {
       if (arr.length) q.interests = { $in: arr };
     }
 
-    // FIX 1: Only exclude swiped users (not matched), and cap at last 500
-    // so that accounts that have swiped everyone don't get a permanently empty feed.
+    // FIX 1: Only exclude swiped users (not matched), and cap at last 5000 swipes
+    // Increased from 500 to 5000 to prevent running out of profiles too quickly
+    // With 20,000+ profiles, 5000 exclusion = only 25% of pool excluded
     // Also removed 'matches' from exclusion — matched users can still appear in discovery.
     if (excludeSeen === 'true' && req.userId) {
       const current = await User.findOne({ id: req.userId }).select('swipes');
       if (current && current.swipes && current.swipes.length > 0) {
-        const recentSwipes = current.swipes.slice(-500); // only last 500 swipes
+        const recentSwipes = current.swipes.slice(-5000); // increased from 500 to 5000 swipes
         const excluded = new Set([req.userId, ...recentSwipes]);
         q.id = { $nin: Array.from(excluded) };
       } else {
@@ -169,8 +170,19 @@ router.get('/', async (req, res) => {
     }
 
     // Fallback: paginated find with projection
-    const users = await User.find(q).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 200));
+    let users = await User.find(q).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 200));
     console.log('[DEBUG Backend] Fallback query executed, returning', users.length, 'users');
+    
+    // FIX 4: If query with exclusion returns 0 and we were excluding seen, retry without exclusion
+    // This prevents users from hitting an empty feed when they've swiped through the excludeSeen pool
+    if (users.length === 0 && excludeSeen === 'true' && req.userId) {
+      console.warn('[DEBUG Backend] Filtered query returned 0, retrying without exclusion');
+      const fallbackQ = { ...q };
+      delete fallbackQ.id; // Remove the $nin exclusion filter
+      fallbackQ.id = { $ne: req.userId }; // Just exclude the current user
+      users = await User.find(fallbackQ).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 200));
+      console.log('[DEBUG Backend] Fallback without exclusion returned', users.length, 'users');
+    }
     
     // Convert GeoJSON coordinates to simple format for frontend
     const transformedUsers = users.map(user => {

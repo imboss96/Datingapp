@@ -1,5 +1,6 @@
 import express from 'express';
 import CoinPackage from '../models/CoinPackage.js';
+import LandingPageSettings from '../models/LandingPageSettings.js';
 
 const router = express.Router();
 
@@ -52,6 +53,33 @@ router.get('/coin-packages/all', async (req, res) => {
       success: false,
       error: 'Failed to fetch packages' 
     });
+  }
+});
+
+// GET landing page settings (PUBLIC - no auth required)
+router.get('/landing-page-settings', async (req, res) => {
+  try {
+    let settings = await LandingPageSettings.findOne({ id: 'default' });
+    
+    if (!settings) {
+      // Return default settings if none exist
+      settings = new LandingPageSettings({
+        id: 'default',
+        bannerImages: [],
+        aboutImages: [],
+        memberImages: [],
+        workImages: [],
+        meetImages: [],
+        storyImages: [],
+        footerImages: []
+      });
+      await settings.save();
+    }
+    
+    res.json(settings);
+  } catch (error) {
+    console.error('[ERROR public] Failed to fetch landing page settings:', error);
+    res.status(500).json({ error: 'Failed to fetch landing page settings' });
   }
 });
 

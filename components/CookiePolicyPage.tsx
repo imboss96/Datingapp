@@ -7,6 +7,25 @@ interface CookiePolicyProps {
   onClose?: () => void;
 }
 
+// Hand-sketched underline SVG
+const HandSketchedUnderline = () => (
+  <svg 
+    className="absolute bottom-0 left-0 w-full" 
+    height="12" 
+    viewBox="0 0 400 12" 
+    preserveAspectRatio="none"
+  >
+    <path 
+      d="M 0 6 Q 50 3, 100 6 T 200 6 T 300 6 T 400 6" 
+      stroke="#ec4899" 
+      strokeWidth="2" 
+      fill="none" 
+      strokeLinecap="round"
+      opacity="0.6"
+    />
+  </svg>
+);
+
 const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = false, onClose }) => {
   const navigate = useNavigate();
 
@@ -19,36 +38,35 @@ const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = fal
   };
 
   return (
-    <div className="w-full h-screen bg-white overflow-y-auto flex flex-col">
-      {/* Header */}
-      <div className="sticky top-0 bg-gradient-to-r from-pink-500 to-red-500 text-white p-6 shadow-md z-10">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Cookie Policy</h1>
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-pink-100 to-red-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+      <div className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-pink-500 to-red-500 text-white p-6 sm:p-8 flex items-center justify-between">
+          <h1 className="text-2xl sm:text-3xl font-bold relative inline-block">Cookie Policy<HandSketchedUnderline /></h1>
           {isModal && (
             <button
               onClick={handleClose}
-              className="text-white text-2xl hover:text-pink-200 transition"
+              className="text-white text-2xl hover:text-pink-200 transition flex-shrink-0"
             >
               ✕
             </button>
           )}
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
         <p className="text-gray-500 text-sm mb-6">Last Updated: February 2026</p>
 
         <section className="space-y-6 text-gray-700">
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">1. What Are Cookies?</h2>
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-2 relative inline-block py-2">1. What Are Cookies?<HandSketchedUnderline /></h2>
             <p className="leading-relaxed">
               Cookies are small text files that are stored on your device (computer, tablet, or mobile phone) when you visit a website or use an application. They contain information about your browsing patterns and preferences and help website operators understand user behavior.
             </p>
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">2. Why We Use Cookies</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">2. Why We Use Cookies<HandSketchedUnderline /></h2>
             <p className="leading-relaxed mb-3">
               We use cookies and similar tracking technologies for the following purposes:
             </p>
@@ -81,7 +99,7 @@ const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = fal
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">3. Types of Cookies We Use</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">3. Types of Cookies We Use<HandSketchedUnderline /></h2>
             <p className="leading-relaxed mb-3">
               Our App uses both session and persistent cookies:
             </p>
@@ -94,7 +112,7 @@ const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = fal
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">4. Specific Cookies We Use</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">4. Specific Cookies We Use<HandSketchedUnderline /></h2>
             <p className="leading-relaxed mb-3">
               Below is a list of cookies commonly used in our App:
             </p>
@@ -139,14 +157,14 @@ const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = fal
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">5. Local Storage & Web Storage</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">5. Local Storage & Web Storage<HandSketchedUnderline /></h2>
             <p className="leading-relaxed">
               In addition to cookies, we may use local storage (localStorage and sessionStorage) to store information about your preferences and activities. This data is stored on your device and is not sent to servers with every request.
             </p>
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">6. Third-Party Cookies</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">6. Third-Party Cookies<HandSketchedUnderline /></h2>
             <p className="leading-relaxed mb-3">
               We allow third parties to set cookies for the following purposes:
             </p>
@@ -162,7 +180,7 @@ const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = fal
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">7. How to Control Cookies</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">7. How to Control Cookies<HandSketchedUnderline /></h2>
             <p className="leading-relaxed mb-3">
               You have control over cookies through several methods:
             </p>
@@ -189,21 +207,21 @@ const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = fal
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">8. Do Not Track (DNT)</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">8. Do Not Track (DNT)<HandSketchedUnderline /></h2>
             <p className="leading-relaxed">
               Some browsers include a "Do Not Track" feature. Our App does not currently respond to DNT signals, but we respect your privacy preferences through the cookie controls described above.
             </p>
           </div>
 
           <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-3">9. Updates to This Policy</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">9. Updates to This Policy<HandSketchedUnderline /></h2>
             <p className="leading-relaxed">
               We may update this Cookie Policy from time to time to reflect changes in technology or legal requirements. We will notify you of significant changes through the App or via email.
             </p>
           </div>
 
           <div className="pt-4 border-t border-gray-200">
-            <h2 className="text-xl font-bold text-gray-900 mb-3">Contact Us</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-3 relative inline-block py-2">Contact Us<HandSketchedUnderline /></h2>
             <p className="leading-relaxed">
               If you have questions about our use of cookies, please contact us at:
             </p>
@@ -213,20 +231,19 @@ const CookiePolicyPage: React.FC<CookiePolicyProps> = ({ onAccept, isModal = fal
             </p>
           </div>
         </section>
-      </div>
+        </div>
 
-      {/* Footer */}
-      <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 shadow-lg">
-        <div className="max-w-4xl mx-auto flex gap-4">
+        {/* Footer */}
+        <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 p-4 sm:p-6 flex gap-3">
           <button
             onClick={handleClose}
-            className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-semibold hover:bg-gray-50 transition"
+            className="flex-1 py-2.5 sm:py-3 px-4 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition"
           >
             Decline
           </button>
           <button
             onClick={onAccept}
-            className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold hover:from-pink-600 hover:to-red-600 transition shadow-md"
+            className="flex-1 py-2.5 sm:py-3 px-4 rounded-lg bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold hover:from-pink-600 hover:to-red-600 transition shadow-md hover:shadow-lg"
           >
             Accept & Continue
           </button>

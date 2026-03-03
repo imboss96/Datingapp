@@ -26,7 +26,7 @@ interface ChatData {
 const CACHE_KEY_CHATS = 'cached_chats';
 const CACHE_KEY_USERS = 'cached_users';
 const CACHE_KEY_TIME  = 'cached_chats_time';
-const CACHE_TTL_MS    = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS    = 30 * 1000; // 30 seconds - professional standard for real-time chat
 
 const readCache = <T,>(key: string): T[] => {
   try {
@@ -50,24 +50,49 @@ const isCacheStale = (): boolean => {
 
 // ─── Pure Helpers ─────────────────────────────────────────────────────────────
 
+/**
+ * Generate stable participant key (matches backend convention with underscore)
+ * Normalizes participants array to ensure consistent comparison
+ */
+const generateParticipantKey = (participants: string[]): string => {
+  if (!participants || participants.length === 0) return '';
+  // Normalize: filter out empty strings, trim, lowercase, sort
+  const normalized = participants
+    .filter(p => p && typeof p === 'string')
+    .map(p => p.trim().toLowerCase())
+    .sort();
+  return normalized.join('_');
+};
+
 const deduplicateAndSort = (chatsData: ChatData[]): ChatData[] => {
   const seen: Record<string, ChatData> = {};
   const result: ChatData[] = [];
 
   for (const chat of chatsData) {
-    const key = [...(chat.participants ?? [])].sort().join(':');
+    // Use consistent key generation with normalized participants
+    const key = generateParticipantKey(chat.participants);
+    
     if (!seen[key]) {
       seen[key] = chat;
       result.push(chat);
-    } else if (chat.lastUpdated > seen[key].lastUpdated) {
-      result[result.indexOf(seen[key])] = chat;
-      seen[key] = chat;
+    } else {
+      // Always replace with the newest chat (by timestamp)
+      const existing = seen[key];
+      const shouldReplace = (chat.lastUpdated || 0) > (existing.lastUpdated || 0);
+      
+      if (shouldReplace) {
+        // Replace in result array
+        const idx = result.indexOf(existing);
+        if (idx !== -1) result[idx] = chat;
+        seen[key] = chat;
+      }
     }
   }
 
+  // Sort: unread first, then by timestamp
   return result.sort((a, b) => {
     const unreadDiff = (b.unreadCount ?? 0) - (a.unreadCount ?? 0);
-    return unreadDiff !== 0 ? unreadDiff : b.lastUpdated - a.lastUpdated;
+    return unreadDiff !== 0 ? unreadDiff : (b.lastUpdated ?? 0) - (a.lastUpdated ?? 0);
   });
 };
 
@@ -135,8 +160,10 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   const fetchingUsersRef  = useRef<Record<string, boolean>>({});
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialise from cache immediately so the UI is never blank
-  const initialChats = readCache<ChatData>(CACHE_KEY_CHATS);
+  // Initialize from cache - ALWAYS deduplicate to prevent stale duplicates
+  let initialChats = readCache<ChatData>(CACHE_KEY_CHATS);
+  initialChats = deduplicateAndSort(initialChats);  // CRITICAL: Fix cached duplicates on load
+  
   const initialUsers = readCache<UserProfile>(CACHE_KEY_USERS);
 
   const [chats,      setChats]      = useState<ChatData[]>(initialChats);
@@ -160,14 +187,25 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     try {
       silent ? setRefreshing(true) : setLoading(true);
 
-      // Step 1: fetch chats only
+      // Step 1: fetch chats from API
       const chatsData = await apiClient.getChats();
-      const sorted = deduplicateAndSort(chatsData);
+      
+      // IMMEDIATELY deduplicate API response - this is critical!
+      const dedupedFromApi = deduplicateAndSort(chatsData);
+      
+      // Log deduplication activity for debugging
+      if (dedupedFromApi.length < chatsData.length) {
+        console.warn(
+          `[ChatList] API returned ${chatsData.length} chats, ` +
+          `found ${chatsData.length - dedupedFromApi.length} duplicates. ` +
+          `Deduplicated to ${dedupedFromApi.length} unique conversations.`
+        );
+      }
 
       // Step 2: fetch only the participants we need (not ALL users)
       const participantIds = [
         ...new Set(
-          sorted
+          dedupedFromApi
             .flatMap((c) => c.participants)
             .filter((id) => id !== currentUser?.id)
         ),
@@ -196,10 +234,11 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         ...newUsers,
       ];
 
-      setChats(sorted);
+      setChats(dedupedFromApi);
       setAllUsers(mergedUsers);
 
-      writeCache(CACHE_KEY_CHATS, sorted);
+      // Cache deduplicated data
+      writeCache(CACHE_KEY_CHATS, dedupedFromApi);
       writeCache(CACHE_KEY_USERS, mergedUsers);
       writeCache(CACHE_KEY_TIME,  Date.now());
     } catch (err) {
@@ -210,10 +249,17 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     }
   }, [currentUser]);
 
-  // Initial load — use cache if fresh, otherwise fetch
+  // Initial load - force fresh data on mount to prevent stale duplicates
   useEffect(() => {
-    const silent = initialChats.length > 0;
-    if (!silent || isCacheStale()) loadData(silent);
+    // Always load fresh data on mount
+    // Use silent=true if cache exists and is fresh
+    const silent = initialChats.length > 0 && !isCacheStale();
+    loadData(silent);
+
+    // Set up periodic refresh every 30 seconds (professional standard for chat)
+    const refreshInterval = setInterval(() => loadData(true), 30_000);
+    
+    return () => clearInterval(refreshInterval);
   }, [loadData]);
 
   // Re-fetch silently when a new WebSocket message arrives
@@ -317,8 +363,10 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   const removeChat = (id: string) => {
     setChats(prev => {
       const updated = prev.filter(c => c.id !== id);
-      writeCache(CACHE_KEY_CHATS, updated);
-      return updated;
+      // Deduplicate before caching to prevent duplicates accumulating
+      const deduped = deduplicateAndSort(updated);
+      writeCache(CACHE_KEY_CHATS, deduped);
+      return deduped;
     });
   };
 
@@ -329,6 +377,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
       await apiClient.deleteChat(selectedChatId);
       removeChat(selectedChatId);
       setOptionsModalOpen(false);
+      showAlert('Success', 'Conversation deleted');
     } catch {
       showAlert('Error', 'Failed to delete chat. Please try again.');
     } finally {
@@ -345,6 +394,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
       await apiClient.blockChatRequest(selectedChatId);
       removeChat(selectedChatId);
       setOptionsModalOpen(false);
+      showAlert('Success', 'Conversation blocked');
     } catch {
       showAlert('Error', 'Failed to block chat. Please try again.');
     } finally {

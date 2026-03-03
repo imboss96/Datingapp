@@ -6,6 +6,51 @@ interface ModerationSignupPageProps {
   onSignupSuccess?: () => void;
 }
 
+// Field component extracted outside to prevent re-definition on every render
+interface FieldProps {
+  id: string;
+  label: string;
+  type: string;
+  placeholder: string;
+  fieldKey: 'name' | 'email' | 'username' | 'password' | 'passwordConfirmation';
+  value: string;
+  onChange: (value: string) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  error?: string;
+  disabled: boolean;
+  focusedField: string | null;
+  inputStyle: (id: string, hasErr: boolean) => React.CSSProperties;
+}
+
+const Field: React.FC<FieldProps> = ({
+  id, label, type, placeholder, value, onChange,
+  onFocus, onBlur, error, disabled, focusedField, inputStyle
+}) => (
+  <div style={{ marginBottom: '0.75rem' }}>
+    <label style={{
+      display: 'block', fontSize: '10px', fontWeight: 600,
+      letterSpacing: '0.08em', textTransform: 'uppercase' as const,
+      color: '#6b7280', marginBottom: '5px'
+    }}>{label}</label>
+    <input
+      type={type}
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      placeholder={placeholder}
+      disabled={disabled}
+      style={inputStyle(id, !!error)}
+    />
+    {error && (
+      <p style={{ fontSize: '10px', color: '#ef4444', marginTop: '3px', fontWeight: 500 }}>
+        {error}
+      </p>
+    )}
+  </div>
+);
+
 const ModerationSignupPage: React.FC<ModerationSignupPageProps> = ({ onSwitchToLogin, onSignupSuccess }) => {
   const { register, error, isLoading, clearError } = useModerationAuth();
   const [formData, setFormData] = useState({
@@ -30,7 +75,7 @@ const ModerationSignupPage: React.FC<ModerationSignupPageProps> = ({ onSwitchToL
     return Object.keys(e).length === 0;
   };
 
-  const handleChange = (field: string, value: string) => {
+  const handleChange = (field: keyof typeof formData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (localErrors[field]) setLocalErrors(prev => { const u = { ...prev }; delete u[field]; return u; });
   };
@@ -60,33 +105,6 @@ const ModerationSignupPage: React.FC<ModerationSignupPageProps> = ({ onSwitchToL
     boxShadow: focusedField === id ? '0 0 0 3px rgba(30,58,95,0.08)' : 'none',
     fontFamily: 'inherit',
   });
-
-  const Field = ({ id, label, type, placeholder, fieldKey }: {
-    id: string; label: string; type: string; placeholder: string; fieldKey: keyof typeof formData;
-  }) => (
-    <div style={{ marginBottom: '0.75rem' }}>
-      <label style={{
-        display: 'block', fontSize: '10px', fontWeight: 600,
-        letterSpacing: '0.08em', textTransform: 'uppercase' as const,
-        color: '#6b7280', marginBottom: '5px'
-      }}>{label}</label>
-      <input
-        type={type}
-        value={formData[fieldKey]}
-        onChange={e => handleChange(fieldKey, e.target.value)}
-        onFocus={() => setFocusedField(id)}
-        onBlur={() => setFocusedField(null)}
-        placeholder={placeholder}
-        disabled={isSubmitting}
-        style={inputStyle(id, !!localErrors[fieldKey])}
-      />
-      {localErrors[fieldKey] && (
-        <p style={{ fontSize: '10px', color: '#ef4444', marginTop: '3px', fontWeight: 500 }}>
-          {localErrors[fieldKey]}
-        </p>
-      )}
-    </div>
-  );
 
   return (
     <>
@@ -497,11 +515,26 @@ const ModerationSignupPage: React.FC<ModerationSignupPageProps> = ({ onSwitchToL
 
             <form onSubmit={handleSubmit}>
               <div className="signup-two-col">
-                <Field id="s-name" label="Name" type="text" placeholder="Enter your name" fieldKey="name" />
-                <Field id="s-email" label="Email Address" type="email" placeholder="Enter your email" fieldKey="email" />
+                <Field 
+                  id="s-name" label="Name" type="text" placeholder="Enter your name" 
+                  fieldKey="name" value={formData.name} onChange={(v) => handleChange('name', v)}
+                  onFocus={() => setFocusedField('s-name')} onBlur={() => setFocusedField(null)}
+                  error={localErrors.name} disabled={isSubmitting} focusedField={focusedField} inputStyle={inputStyle}
+                />
+                <Field 
+                  id="s-email" label="Email Address" type="email" placeholder="Enter your email" 
+                  fieldKey="email" value={formData.email} onChange={(v) => handleChange('email', v)}
+                  onFocus={() => setFocusedField('s-email')} onBlur={() => setFocusedField(null)}
+                  error={localErrors.email} disabled={isSubmitting} focusedField={focusedField} inputStyle={inputStyle}
+                />
               </div>
 
-              <Field id="s-username" label="Username" type="text" placeholder="Choose a username" fieldKey="username" />
+              <Field 
+                id="s-username" label="Username" type="text" placeholder="Choose a username" 
+                fieldKey="username" value={formData.username} onChange={(v) => handleChange('username', v)}
+                onFocus={() => setFocusedField('s-username')} onBlur={() => setFocusedField(null)}
+                error={localErrors.username} disabled={isSubmitting} focusedField={focusedField} inputStyle={inputStyle}
+              />
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.75rem' }}>
                 <input type="checkbox" id="remember-me" style={{ accentColor: '#1e3a5f' }} />
@@ -509,8 +542,18 @@ const ModerationSignupPage: React.FC<ModerationSignupPageProps> = ({ onSwitchToL
               </div>
 
               <div className="signup-two-col">
-                <Field id="s-password" label="Password" type="password" placeholder="Min 8 characters" fieldKey="password" />
-                <Field id="s-confirm" label="Confirm Password" type="password" placeholder="Re-enter password" fieldKey="passwordConfirmation" />
+                <Field 
+                  id="s-password" label="Password" type="password" placeholder="Min 8 characters" 
+                  fieldKey="password" value={formData.password} onChange={(v) => handleChange('password', v)}
+                  onFocus={() => setFocusedField('s-password')} onBlur={() => setFocusedField(null)}
+                  error={localErrors.password} disabled={isSubmitting} focusedField={focusedField} inputStyle={inputStyle}
+                />
+                <Field 
+                  id="s-confirm" label="Confirm Password" type="password" placeholder="Re-enter password" 
+                  fieldKey="passwordConfirmation" value={formData.passwordConfirmation} onChange={(v) => handleChange('passwordConfirmation', v)}
+                  onFocus={() => setFocusedField('s-confirm')} onBlur={() => setFocusedField(null)}
+                  error={localErrors.passwordConfirmation} disabled={isSubmitting} focusedField={focusedField} inputStyle={inputStyle}
+                />
               </div>
 
               <button type="submit" className="signup-btn" disabled={isSubmitting || isLoading}>

@@ -5,6 +5,7 @@ import PhotoModerationPanel from './PhotoModerationPanel';
 import ChatModerationView from './ChatModerationView';
 import PhotoVerificationReviewPanel from './PhotoVerificationReviewPanel';
 import AdminPhotoVerificationDashboard from './AdminPhotoVerificationDashboard';
+import LandingPageSettingsPanel from './LandingPageSettingsPanel';
 import apiClient from '../services/apiClient';
 import { useCoinPackages } from '../services/CoinPackageContext';
 import { useNotification } from '../services/NotificationContext';
@@ -38,7 +39,7 @@ interface ModeratorChat {
 const INITIAL_FLAGS: FlaggedItem[] = [];
 
 const ModeratorPanel: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS' | 'PAYMENTS' | 'REVENUE' | 'SUPPORT'>('CHATS');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS' | 'PAYMENTS' | 'REVENUE' | 'SUPPORT' | 'SETTINGS'>('CHATS');
   const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
   const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
   const [chats, setChats] = useState<ModeratorChat[]>([]);
@@ -1262,6 +1263,17 @@ const ModeratorPanel: React.FC = () => {
             >
               <i className="fa-solid fa-envelope"></i>
               <span>Contact Messages</span>
+            </button>
+            <button 
+              onClick={() => setActiveTab('SETTINGS')}
+              className={`flex-1 min-w-max py-3 px-4 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                activeTab === 'SETTINGS' 
+                  ? 'bg-gradient-to-br from-slate-600 to-slate-700 text-white shadow-lg scale-105' 
+                  : 'bg-white text-gray-600 hover:bg-slate-50 hover:text-slate-600'
+              }`}
+            >
+              <i className="fa-solid fa-cog"></i>
+              <span>Settings</span>
             </button>
           </div>
         </div>
@@ -3478,6 +3490,10 @@ const ModeratorPanel: React.FC = () => {
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'SETTINGS' && (
+          <LandingPageSettingsPanel isOpen={true} embedded={true} />
         )}
       </div>
 

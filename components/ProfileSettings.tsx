@@ -536,7 +536,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
       <div
         style={{
           background: 'white',
-          width: '400px',
+          width: '100%',
           height: '100%',
           position: 'fixed',
           right: 0,
@@ -546,22 +546,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: '12px',
-            right: '12px',
-            background: 'none',
-            border: 'none',
-            fontSize: '24px',
-            cursor: 'pointer',
-            color: '#666',
-          }}
-        >
-          ×
-        </button>
-
         <div className="h-full bg-white flex flex-col relative">
           {/* Checkout Overlay */}
           {selectedPack && (
@@ -708,6 +692,14 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
           {/* Profile UI */}
           <div className="relative h-64">
             <img src={user.images[0]} className="w-full h-full object-cover" alt="Me" />
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 z-20 w-10 h-10 bg-black/40 hover:bg-black/60 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-all active:scale-95"
+              title="Close profile"
+              aria-label="Close profile"
+            >
+              <i className="fa-solid fa-xmark text-2xl"></i>
+            </button>
             <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center">
               <div className="relative">
                 <img src={user.images[0]} className="w-24 h-24 rounded-full border-4 border-white object-cover shadow-xl" alt="Me" />

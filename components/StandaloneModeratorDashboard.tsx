@@ -500,15 +500,15 @@ const StandaloneModeratorDashboard: React.FC = () => {
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl shadow-xl p-8 border border-white/20">
+          <div className="bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
             {profileSuccess && (
-              <div className="mb-6 bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 p-4 rounded-lg flex items-center gap-2 animate-in fade-in">
+              <div className="mb-6 bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-lg flex items-center gap-2 animate-in fade-in">
                 <i className="fa-solid fa-check-circle"></i>
                 <span>{profileSuccess}</span>
               </div>
             )}
             {profileError && (
-              <div className="mb-6 bg-red-500/20 border border-red-400/50 text-red-300 p-4 rounded-lg flex items-center gap-2 animate-in fade-in">
+              <div className="mb-6 bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg flex items-center gap-2 animate-in fade-in">
                 <i className="fa-solid fa-exclamation-circle"></i>
                 <span>{profileError}</span>
               </div>
@@ -518,31 +518,31 @@ const StandaloneModeratorDashboard: React.FC = () => {
               <div className="space-y-8">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-2xl font-bold text-white">Edit Profile</h3>
-                    <p className="text-gray-400 text-sm mt-1">Update your personal and contact information</p>
+                    <h3 className="text-2xl font-bold text-gray-900">Edit Profile</h3>
+                    <p className="text-gray-600 text-sm mt-1">Update your personal and contact information</p>
                   </div>
                 </div>
 
                 {/* Personal Information Section */}
-                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i className="fa-solid fa-user text-blue-300"></i>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-user text-blue-600"></i>
                     Personal Information
                   </h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-white mb-2">Full Name *</label>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">Full Name *</label>
                       <input
                         type="text"
                         required
                         value={profileChanges.name || profileData?.name || ''}
                         onChange={(e) => handleProfileChange('name', e.target.value)}
                         placeholder="Enter your full name"
-                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-white mb-2">Age</label>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">Age</label>
                       <input
                         type="number"
                         min="18"
@@ -550,70 +550,70 @@ const StandaloneModeratorDashboard: React.FC = () => {
                         value={profileChanges.age || profileData?.age || ''}
                         onChange={(e) => handleProfileChange('age', e.target.value ? parseInt(e.target.value) : '')}
                         placeholder="Enter your age"
-                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* Contact Information Section */}
-                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i className="fa-solid fa-envelope text-purple-300"></i>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-envelope text-purple-600"></i>
                     Contact Information
                   </h4>
                   <div className="grid grid-cols-1 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-white mb-2">Email Address</label>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">Email Address</label>
                       <input
                         type="email"
                         value={profileChanges.email || profileData?.email || ''}
                         onChange={(e) => handleProfileChange('email', e.target.value)}
                         placeholder="Enter your email address"
-                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                       />
-                      <p className="text-xs text-gray-400 mt-1">Your email address will be used for account recovery and notifications</p>
+                      <p className="text-xs text-gray-600 mt-1">Your email address will be used for account recovery and notifications</p>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-white mb-2">Phone Number</label>
+                      <label className="block text-sm font-semibold text-gray-900 mb-2">Phone Number</label>
                       <input
                         type="tel"
                         value={profileChanges.phone || profileData?.phone || ''}
                         onChange={(e) => handleProfileChange('phone', e.target.value)}
                         placeholder="Enter your phone number"
-                        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* Location & Bio Section */}
-                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i className="fa-solid fa-location-dot text-emerald-300"></i>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-location-dot text-emerald-600"></i>
                     Location & Description
                   </h4>
                   <div className="mb-4">
-                    <label className="block text-sm font-semibold text-white mb-2">Location</label>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">Location</label>
                     <input
                       type="text"
                       value={profileChanges.location || profileData?.location || ''}
                       onChange={(e) => handleProfileChange('location', e.target.value)}
                       placeholder="City, Country"
-                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
+                      className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-white mb-2">Bio</label>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">Bio</label>
                     <textarea
                       value={profileChanges.bio || profileData?.bio || ''}
                       onChange={(e) => handleProfileChange('bio', e.target.value)}
                       placeholder="Write a short bio about yourself... (max 500 characters)"
                       maxLength={500}
                       rows={4}
-                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-400/50 focus:ring-1 focus:ring-blue-500/50 transition-all resize-none"
+                      className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none"
                     />
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-gray-600 mt-1">
                       {(profileChanges.bio || profileData?.bio || '').length}/500 characters
                     </p>
                   </div>
@@ -640,7 +640,7 @@ const StandaloneModeratorDashboard: React.FC = () => {
                   </button>
                   <button
                     onClick={handleCancelProfile}
-                    className="flex-1 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 text-white font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2"
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center gap-2"
                   >
                     <i className="fa-solid fa-times"></i>
                     Cancel
@@ -651,82 +651,82 @@ const StandaloneModeratorDashboard: React.FC = () => {
               <div className="space-y-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-2xl font-bold text-white">Profile Information</h3>
-                    <p className="text-gray-400 text-sm mt-1">View and manage your profile details</p>
+                    <h3 className="text-2xl font-bold text-gray-900">Profile Information</h3>
+                    <p className="text-gray-600 text-sm mt-1">View and manage your profile details</p>
                   </div>
                 </div>
 
                 {/* Personal Information Display */}
-                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i className="fa-solid fa-user text-blue-300"></i>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-user text-blue-600"></i>
                     Personal Information
                   </h4>
                   <div className="grid grid-cols-2 gap-6">
                     <div>
-                      <p className="text-sm text-gray-400 font-semibold">Full Name</p>
-                      <p className="text-lg text-white mt-2 font-medium">{profileData?.name || 'Not set'}</p>
+                      <p className="text-sm text-gray-700 font-semibold">Full Name</p>
+                      <p className="text-lg text-gray-900 mt-2 font-medium">{profileData?.name || 'Not set'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-400 font-semibold">Age</p>
-                      <p className="text-lg text-white mt-2 font-medium">{profileData?.age ? `${profileData.age} years old` : 'Not set'}</p>
+                      <p className="text-sm text-gray-700 font-semibold">Age</p>
+                      <p className="text-lg text-gray-900 mt-2 font-medium">{profileData?.age ? `${profileData.age} years old` : 'Not set'}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Contact Information Display */}
-                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i className="fa-solid fa-envelope text-purple-300"></i>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-envelope text-purple-600"></i>
                     Contact Information
                   </h4>
                   <div className="space-y-4">
                     <div>
-                      <p className="text-sm text-gray-400 font-semibold">Email Address</p>
-                      <p className="text-lg text-white mt-2 font-medium break-all">{profileData?.email || 'Not set'}</p>
+                      <p className="text-sm text-gray-700 font-semibold">Email Address</p>
+                      <p className="text-lg text-gray-900 mt-2 font-medium break-all">{profileData?.email || 'Not set'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-400 font-semibold">Phone Number</p>
-                      <p className="text-lg text-white mt-2 font-medium">{profileData?.phone || 'Not set'}</p>
+                      <p className="text-sm text-gray-700 font-semibold">Phone Number</p>
+                      <p className="text-lg text-gray-900 mt-2 font-medium">{profileData?.phone || 'Not set'}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Location & Bio Display */}
-                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i className="fa-solid fa-location-dot text-emerald-300"></i>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-location-dot text-emerald-600"></i>
                     Location & Bio
                   </h4>
                   <div className="space-y-4">
                     <div>
-                      <p className="text-sm text-gray-400 font-semibold">Location</p>
-                      <p className="text-lg text-white mt-2 font-medium">{profileData?.location || 'Not set'}</p>
+                      <p className="text-sm text-gray-700 font-semibold">Location</p>
+                      <p className="text-lg text-gray-900 mt-2 font-medium">{profileData?.location || 'Not set'}</p>
                     </div>
                     {profileData?.bio && (
                       <div>
-                        <p className="text-sm text-gray-400 font-semibold">Bio</p>
-                        <p className="text-gray-300 mt-2 leading-relaxed">{profileData.bio}</p>
+                        <p className="text-sm text-gray-700 font-semibold">Bio</p>
+                        <p className="text-gray-800 mt-2 leading-relaxed">{profileData.bio}</p>
                       </div>
                     )}
                   </div>
                 </div>
 
                 {/* Account Information Display */}
-                <div className="bg-white/5 rounded-xl p-6 border border-white/10">
-                  <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <i className="fa-solid fa-shield text-amber-300"></i>
+                <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <i className="fa-solid fa-shield text-amber-600"></i>
                     Account Information
                   </h4>
                   <div className="grid grid-cols-2 gap-6">
                     <div>
-                      <p className="text-sm text-gray-400 font-semibold">Username</p>
-                      <p className="text-lg text-white mt-2 font-medium">@{profileData?.username || 'N/A'}</p>
+                      <p className="text-sm text-gray-700 font-semibold">Username</p>
+                      <p className="text-lg text-gray-900 mt-2 font-medium">@{profileData?.username || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-400 font-semibold">Role</p>
+                      <p className="text-sm text-gray-700 font-semibold">Role</p>
                       <div className="mt-2">
-                        <span className="inline-block px-4 py-1 bg-purple-500/30 border border-purple-400/50 text-purple-200 rounded-full text-sm font-bold">
+                        <span className="inline-block px-4 py-1 bg-purple-100 border border-purple-300 text-purple-800 rounded-full text-sm font-bold">
                           {profileData?.role || 'Member'}
                         </span>
                       </div>

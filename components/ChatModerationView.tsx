@@ -3,6 +3,7 @@ import apiClient from '../services/apiClient';
 import { useWebSocketContext } from '../services/WebSocketProvider';
 import PaymentMethodModal from './PaymentMethodModal';
 import MediaRenderer from './MediaRenderer';
+import LandingPageSettingsPanel from './LandingPageSettingsPanel';
 import '../styles/whatsapp-background.css';
 
 // AlertContext fallback
@@ -115,6 +116,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
   const [showEarningsModal, setShowEarningsModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showLandingPageSettings, setShowLandingPageSettings] = useState(false);
   const profilePhotoInputRef = useRef<HTMLInputElement>(null);
   const { showAlert } = useAlert();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -809,7 +811,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     <div className="fixed inset-0 z-50 bg-black/20 flex items-center justify-center p-2 backdrop-blur-sm">
       <div className="bg-white rounded-2xl w-screen h-screen max-w-full max-h-full flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="bg-white/80 backdrop-blur-md border-b border-gray-200 p-2 flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-md border-b border-gray-200 p-4 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-black flex items-center gap-1 text-gray-800">
               <i className="fa-solid fa-shield-halved text-xs"></i>
@@ -1051,6 +1053,20 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                         </span>
                       </button>
 
+                      {/* Landing Page Settings (Admin only) */}
+                      {moderatorData?.role === 'ADMIN' && (
+                        <button
+                          onClick={() => {
+                            setIsMenuOpen(false);
+                            setShowLandingPageSettings(true);
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-purple-50 transition-colors flex items-center gap-3 text-gray-700 border-b border-gray-100"
+                        >
+                          <i className="fa-solid fa-sliders text-purple-500 w-4"></i>
+                          <span className="text-sm font-medium">Landing Page Settings</span>
+                        </button>
+                      )}
+
                       {/* Logout */}
                       <button
                         onClick={() => {
@@ -1290,13 +1306,13 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                     </button>
                   </div>
                 )}
-                <div className="flex gap-2 items-end bg-white rounded-lg px-4 py-2.5 border border-gray-200 shadow-md">
+                <div className="flex gap-3 items-center bg-white rounded-full px-4 md:px-5 py-0 border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
                   {/* Media Attachment Dropdown */}
                   <div className="relative">
                     <button
                       onClick={() => setShowMediaPicker(!showMediaPicker)}
                       disabled={uploadingMedia || isSendingReply}
-                      className="text-gray-600 hover:text-gray-700 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                      className="text-gray-500 hover:text-gray-600 text-lg md:text-xl transition-colors active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 p-0 h-6 leading-6"
                       title="Attach file"
                     >
                       <i className="fa-solid fa-plus-circle"></i>
@@ -1389,7 +1405,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                     <button
                       onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                       disabled={uploadingMedia || isSendingReply}
-                      className="text-gray-600 hover:text-yellow-500 text-xl transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
+                      className="text-gray-500 hover:text-yellow-500 text-lg md:text-xl transition-colors active:scale-90 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 p-0 h-6 leading-6"
                       title="Add emoji"
                     >
                       😊
@@ -1463,79 +1479,29 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                     )}
                   </div>
                   
-                  {/* GIF/Sticker Button */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowGifPicker(!showGifPicker)}
-                      disabled={uploadingMedia || isSendingReply}
-                      className="text-gray-600 hover:text-blue-500 text-lg transition-colors active:scale-75 disabled:opacity-50 flex-shrink-0"
-                      title="Add GIF"
-                    >
-                      <i className="fa-solid fa-image"></i>
-                    </button>
-
-                    {/* GIF Picker Dropdown */}
-                    {showGifPicker && (
-                      <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-64 overflow-y-auto w-64 p-3">
-                        <p className="text-xs font-semibold text-gray-600 mb-3">Popular Gifs & Stickers</p>
-                        <div className="space-y-2">
-                          {[
-                            { name: 'Haha', url: 'https://media.giphy.com/media/xTiTnIgNLz4cYEq9rH/giphy.gif' },
-                            { name: 'Love It', url: 'https://media.giphy.com/media/g9hWWsKc0p7K0/giphy.gif' },
-                            { name: 'Wow', url: 'https://media.giphy.com/media/3o7TKU7wHrGcupPnpwI/giphy.gif' },
-                            { name: 'Perfect', url: 'https://media.giphy.com/media/26uf1EUQzrAMzocKI/giphy.gif' },
-                            { name: 'Thumbs Up', url: 'https://media.giphy.com/media/3ohzdKdb5gEqY8ePFm/giphy.gif' },
-                            { name: 'Dancing', url: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif' },
-                            { name: 'Cute', url: 'https://media.giphy.com/media/JIX9RW7K6akf6/giphy.gif' },
-                            { name: 'Happy', url: 'https://media.giphy.com/media/W0lzPVRQea5zO/giphy.gif' },
-                          ].map((gif) => (
-                            <button
-                              key={gif.name}
-                              onClick={() => handleGifSelect(gif.url, gif.name)}
-                              className="w-full text-left px-3 py-2 hover:bg-blue-50 rounded transition-colors text-sm text-gray-700"
-                            >
-                              <i className="fa-solid fa-play-circle text-blue-500 w-4 mr-2"></i>
-                              {gif.name}
-                            </button>
-                          ))}
-                          <button
-                            onClick={() => {
-                              const gifUrl = prompt('Enter GIF URL:');
-                              if (gifUrl) handleGifSelect(gifUrl, 'Custom GIF');
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-green-50 rounded transition-colors text-sm text-gray-700 border-t border-gray-200 mt-2 pt-3"
-                          >
-                            <i className="fa-solid fa-link text-green-500 w-4 mr-2"></i>
-                            Add Custom GIF URL
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
                   <textarea
                     ref={textareaRef}
                     value={replyText}
                     onChange={handleTextareaChange}
                     onKeyPress={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && !isSendingReply) {
+                      if (e.key === 'Enter' && !isSendingReply) {
                         e.preventDefault();
                         handleSendReply();
                       }
                     }}
-                    placeholder="Type a message... (Shift+Enter for new line)"
+                    placeholder="Type a message..."
                     disabled={isSendingReply || uploadingMedia}
-                    className="bg-transparent flex-1 focus:outline-none text-sm text-gray-900 placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-hidden"
-                    style={{ lineHeight: '1.5rem', minHeight: '1.5rem', maxHeight: '160px' }}
+                    className="bg-transparent flex-1 focus:outline-none text-sm md:text-base text-gray-900 placeholder:text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none overflow-hidden font-medium m-0 border-0"
+                    style={{ lineHeight: '1.5rem', minHeight: '1.5rem', maxHeight: '160px', fontFamily: 'inherit', padding: '0.375rem 0', margin: 0, border: 'none', verticalAlign: 'middle' }}
                   />
                   <button 
                     onClick={handleSendReply}
                     disabled={isSendingReply || (!replyText.trim() && !selectedMedia)}
-                    className={`text-lg transition-colors active:scale-75 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className={`text-lg md:text-xl transition-all active:scale-90 flex-shrink-0 p-0 rounded-full h-6 leading-6 flex items-center justify-center ${
                       (replyText.trim() || selectedMedia)
-                        ? 'text-indigo-600 hover:text-indigo-700'
-                        : 'text-gray-400'
-                    }`}
+                        ? 'text-green-500 hover:text-green-600 hover:bg-green-50'
+                        : 'text-gray-500 hover:text-gray-600 hover:bg-gray-100'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     <i className={`fa-solid fa-paper-plane ${isSendingReply ? 'animate-pulse' : ''}`}></i>
                   </button>
@@ -2106,6 +2072,12 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
           moderatorId={currentUserId}
         />
       )}
+
+      {/* Landing Page Settings Panel */}
+      <LandingPageSettingsPanel
+        isOpen={showLandingPageSettings}
+        onClose={() => setShowLandingPageSettings(false)}
+      />
     </div>
   );
 };
