@@ -48,31 +48,23 @@ const DiscoveryCard: React.FC<{
   return (
     <div
       onClick={onSelect}
-      className="bg-white rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer h-full flex flex-col"
+      className="bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 hover:scale-105 cursor-pointer flex flex-col h-full"
     >
-      {/* Image section with carousel and counter */}
+      {/* Image section with carousel */}
       <div className="relative bg-gray-900 overflow-hidden aspect-square group">
-        {/* Progress bars for multiple images */}
-        {images.length > 1 && (
-          <div className="absolute top-2 left-2 right-2 flex gap-1 z-20 pointer-events-none">
-            {images.map((_, idx) => (
-              <div
-                key={idx}
-                className="h-0.5 flex-1 rounded-full transition-all"
-                style={{
-                  backgroundColor: idx === currentImageIndex ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.4)',
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Image counter badge */}
-        {images.length > 1 && (
-          <div className="absolute top-3 right-3 bg-black/60 text-white text-xs font-bold px-2.5 py-1 rounded-full backdrop-blur-sm z-20">
+        {/* Image counter badge - top right */}
+        {images.length > 0 && (
+          <div className="absolute top-3 right-3 bg-black/70 text-white text-xs font-black px-2.5 py-1 rounded-full z-20">
             {currentImageIndex + 1}/{images.length}
           </div>
         )}
+
+        {/* Heart icon - top right corner */}
+        <div className="absolute top-3 right-12 z-20 pointer-events-none">
+          <div className="bg-red-500 text-white rounded-full p-2 shadow-lg">
+            <i className="fa-solid fa-heart text-lg"></i>
+          </div>
+        </div>
 
         {/* Left tap zone */}
         {images.length > 1 && (
@@ -108,61 +100,59 @@ const DiscoveryCard: React.FC<{
             <span className="text-white font-bold">{profile.age}</span>
           </div>
         )}
-
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60" />
-
-        {/* Verification badge */}
-        {profile.verification?.status === 'VERIFIED' && (
-          <div className="absolute top-3 left-3 bg-emerald-500 text-white rounded-full p-1.5 z-20 shadow-lg">
-            <i className="fa-solid fa-shield-check text-sm"></i>
-          </div>
-        )}
-
-        {/* Profile info overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 z-10 text-white">
-          <h3 className="text-xl font-black mb-1">
-            {profile.username || profile.name}, {profile.age}
-          </h3>
-          <div className="flex items-center gap-1.5 text-sm font-semibold mb-3">
-            <i className="fa-solid fa-location-dot text-red-400"></i>
-            <span>{profile.location}</span>
-          </div>
-
-          {/* Interests preview */}
-          <div className="flex flex-wrap gap-1.5">
-            {profile.interests.slice(0, 3).map((interest) => (
-              <span
-                key={interest}
-                className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-bold backdrop-blur-sm"
-              >
-                {interest}
-              </span>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Action buttons */}
-      <div className="p-4 flex gap-2 mt-auto">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect();
-          }}
-          className="flex-1 py-2.5 bg-white text-gray-800 rounded-xl font-bold text-sm border-2 border-gray-200 hover:border-gray-400 transition-all"
-        >
-          Profile
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onSelect();
-          }}
-          className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg"
-        >
-          Message
-        </button>
+      {/* Profile info section - below image */}
+      <div className="p-4 flex flex-col flex-1">
+        {/* Name and age */}
+        <h3 className="text-lg font-black text-gray-900 mb-1">
+          {profile.username || profile.name}, {profile.age}
+        </h3>
+
+        {/* Location */}
+        <div className="flex items-center gap-1.5 text-sm text-gray-600 mb-3">
+          <i className="fa-solid fa-location-dot text-red-500"></i>
+          <span className="font-semibold">{profile.location}</span>
+        </div>
+
+        {/* Bio */}
+        {profile.bio && (
+          <p className="text-sm text-gray-600 mb-3 line-clamp-2">{profile.bio}</p>
+        )}
+
+        {/* Interests with red background */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {profile.interests.slice(0, 3).map((interest) => (
+            <span
+              key={interest}
+              className="text-xs bg-red-500 text-white px-3 py-1 rounded-full font-bold"
+            >
+              {interest}
+            </span>
+          ))}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 mt-auto">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+            }}
+            className="flex-1 py-2.5 bg-gray-100 text-gray-800 rounded-xl font-bold text-sm hover:bg-gray-200 transition-all border border-gray-300"
+          >
+            Profile
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect();
+            }}
+            className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg"
+          >
+            Message
+          </button>
+        </div>
       </div>
     </div>
   );
