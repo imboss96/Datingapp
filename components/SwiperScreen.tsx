@@ -147,24 +147,43 @@ const ActionButton: React.FC<{
   coinCost?: boolean;
   coinColor?: string;
   title?: string;
-}> = ({ onClick, icon, color, hoverBg, size = 'sm', coinCost, coinColor = 'amber', title }) => (
-  <button
-    onClick={onClick}
-    title={title}
-    className={`relative rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center ${color} ${hoverBg} active:scale-90 transition-all ${
-      size === 'lg'
-        ? 'w-14 h-14 md:w-16 md:h-16 text-xl md:text-2xl'
-        : 'w-12 h-12 md:w-14 md:h-14 text-lg md:text-xl'
-    }`}
-  >
-    <i className={`fa-solid ${icon}`} />
-    {coinCost && (
-      <span className={`absolute -top-1 -right-1 bg-${coinColor}-500 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-white`}>
-        1
-      </span>
-    )}
-  </button>
-);
+  glowColor?: string;
+}> = ({ onClick, icon, color, hoverBg, size = 'sm', coinCost, coinColor = 'amber', title, glowColor = 'gray' }) => {
+  const colorMap: Record<string, string> = {
+    amber: 'rgba(217, 119, 6, 0.5)',
+    red: 'rgba(239, 68, 68, 0.5)',
+    blue: 'rgba(96, 165, 250, 0.5)',
+    emerald: 'rgba(34, 197, 94, 0.5)',
+  };
+  
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`relative rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center ${color} ${hoverBg} active:scale-90 transition-all duration-200 hover:scale-110 ${
+        size === 'lg'
+          ? 'w-16 h-16 md:w-20 md:h-20 text-2xl md:text-3xl'
+          : 'w-14 h-14 md:w-18 md:h-18 text-xl md:text-2xl'
+      }`}
+      style={{
+        boxShadow: `0 4px 20px rgba(0, 0, 0, 0.1), 0 0 30px ${colorMap[glowColor] || 'rgba(0,0,0,0)'}`,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = `0 8px 30px rgba(0, 0, 0, 0.15), 0 0 40px ${colorMap[glowColor] || 'rgba(0,0,0,0)'}`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = `0 4px 20px rgba(0, 0, 0, 0.1), 0 0 30px ${colorMap[glowColor] || 'rgba(0,0,0,0)'}`;
+      }}
+    >
+      <i className={`fa-solid ${icon}`} />
+      {coinCost && (
+        <span className={`absolute -top-2 -right-2 bg-${coinColor}-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white`}>
+          1
+        </span>
+      )}
+    </button>
+  );
+};
 
 // ═══ Main Component ════════════════════════════════════════════════════════════
 
@@ -668,8 +687,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         }
       `}</style>
 
-      <div className="h-full flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-white md:bg-gray-50 pt-2 md:pt-8">
-        <div className="w-full flex-1 md:h-full max-w-[420px] md:max-h-[700px] flex flex-col relative group">
+      <div className="h-full flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-gradient-to-b from-white to-gray-50 md:bg-gradient-to-b md:from-gray-50 md:to-gray-100 pt-2 md:pt-8">
+        <div className="w-full flex-1 md:h-full max-w-[420px] md:max-w-[540px] md:max-h-[750px] flex flex-col relative group">
 
           {/* ── Top overlay controls ── */}
           <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto gap-2">
@@ -754,7 +773,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
             onTouchEnd={handleTouchEnd}
             onClick={handleCardTap}
           >
-            <div className="absolute inset-0 bg-gray-200 rounded-[2rem] overflow-hidden shadow-2xl swipe-card ring-1 ring-black/5">
+            <div className="absolute inset-0 bg-gray-200 rounded-[2.5rem] overflow-hidden swipe-card ring-1 ring-black/5" style={{
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 0, 0, 0.1)',
+            }}>
 
               {/* Skeleton while image loads */}
               {!imgLoaded && <ProfileImageSkeleton />}
@@ -894,7 +915,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
           </div>
 
           {/* ── Action Controls ── */}
-          <div className="flex justify-center gap-3 md:gap-5 mt-4 md:mt-8 pb-2 md:pb-4">
+          <div className="flex justify-center gap-4 md:gap-8 mt-6 md:mt-10 pb-2 md:pb-8">
             <ActionButton
               onClick={handleRewind}
               icon="fa-rotate-left"
@@ -903,6 +924,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               title="Rewind (1 Coin)"
               coinCost={!currentUser.isPremium}
               coinColor="amber"
+              glowColor="amber"
             />
             <ActionButton
               onClick={handlePass}
@@ -910,6 +932,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               color="text-red-500"
               hoverBg="hover:bg-red-50"
               size="lg"
+              glowColor="red"
             />
             <ActionButton
               onClick={handleSuperLike}
@@ -919,6 +942,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               title="Super Like (1 Coin)"
               coinCost={!currentUser.isPremium}
               coinColor="blue"
+              glowColor="blue"
             />
             <ActionButton
               onClick={handleLike}
@@ -927,6 +951,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               hoverBg="hover:bg-emerald-50"
               size="lg"
               title="Like"
+              glowColor="emerald"
             />
           </div>
         </div>
