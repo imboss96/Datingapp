@@ -308,6 +308,93 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
     }
   };
 
+  // ─── TikTok Authentication ────
+  const handleTiktokLogin = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const clientKey = import.meta.env.VITE_TIKTOK_CLIENT_KEY || 'YOUR_TIKTOK_CLIENT_KEY';
+      const redirectUri = `${window.location.origin}/auth/tiktok/callback`;
+      const scope = 'user.info.basic';
+      
+      // Redirect to TikTok OAuth authorization
+      const tiktokAuthUrl = `https://www.tiktok.com/v1/oauth/authorize/?client_key=${clientKey}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}`;
+      
+      // Store the redirect URL for after auth
+      sessionStorage.setItem('tiktok_redirect_pending', 'true');
+      
+      window.location.href = tiktokAuthUrl;
+    } catch (err: any) {
+      console.error('[ERROR LoginPage] TikTok login error:', err);
+      setError(err.message || 'TikTok authentication failed');
+      setLoading(false);
+    }
+  };
+
+  // Handle TikTok OAuth callback (when component mounts and URL has code parameter)
+  React.useEffect(() => {
+    const handleTiktokCallback = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      
+      if (code && sessionStorage.getItem('tiktok_redirect_pending')) {
+        sessionStorage.removeItem('tiktok_redirect_pending');
+        console.log('[DEBUG LoginPage] TikTok callback received with code');
+        
+        try {
+          setLoading(true);
+          
+          // Exchange code for token (backend handles this)
+          const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/tiktok/callback`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ code })
+          });
+          
+          if (!response.ok) {
+            throw new Error('TikTok authentication failed');
+          }
+          
+          const authData = await response.json();
+          console.log('[DEBUG LoginPage] TikTok auth response:', authData);
+          
+          // Get user profile
+          const me = await apiClient.getCurrentUser();
+          const user: UserProfile = {
+            id: me.id,
+            name: me.name,
+            username: me.username || '',
+            age: me.age || 25,
+            bio: me.bio || 'Welcome to lunesa!',
+            images: me.images || [],
+            isPremium: me.isPremium || false,
+            role: (me.role as UserRole) || UserRole.USER,
+            location: me.location || 'Not specified',
+            interests: me.interests || [],
+            coins: me.coins || 10,
+            verification: { status: VerificationStatus.UNVERIFIED },
+            blockedUsers: [],
+            reportedUsers: [],
+            termsOfServiceAccepted: me.termsOfServiceAccepted || false,
+            privacyPolicyAccepted: me.privacyPolicyAccepted || false,
+            cookiePolicyAccepted: me.cookiePolicyAccepted || false,
+          };
+          
+          // Clean up URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          onLoginSuccess?.(user, false);
+        } catch (err: any) {
+          console.error('[ERROR LoginPage] TikTok callback error:', err);
+          setError(err.message || 'Failed to authenticate with TikTok');
+          setLoading(false);
+        }
+      }
+    };
+    
+    handleTiktokCallback();
+  }, []);
+
   const content = (
     <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8">
       <div className="mb-8 text-center">
@@ -366,6 +453,17 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
             <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
           </svg>
           Sign in with Facebook
+        </button>
+        
+        <button
+          onClick={handleTiktokLogin}
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-black hover:bg-gray-900 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-all duration-200 text-sm"
+        >
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.1 1.82 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-.96-.1z" />
+          </svg>
+          Sign in with TikTok
         </button>
       </div>
 

@@ -147,6 +147,14 @@ class APIClient {
     return data;
   }
 
+  async tiktokSignIn(tiktokToken: string, email: string, name: string, profilePicture?: string) {
+    const data = await this.request('/auth/tiktok', {
+      method: 'POST',
+      body: JSON.stringify({ tiktokToken, email, name, profilePicture }),
+    });
+    return data;
+  }
+
   async logout() {
     return this.request('/auth/logout', {
       method: 'POST',

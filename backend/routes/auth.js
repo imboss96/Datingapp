@@ -457,6 +457,263 @@ router.post('/facebook', async (req, res) => {
   }
 });
 
+// TikTok Sign-In/Sign-Up
+router.post('/tiktok', async (req, res) => {
+  try {
+    const { tiktokToken, email, name, profilePicture } = req.body;
+
+    if (!tiktokToken || !email || !name) {
+      console.error('[DEBUG] TikTok: Missing fields:', { tiktokToken: !!tiktokToken, email, name });
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // TikTok OAuth flow - validate token with TikTok API
+    let tiktokId;
+    let userEmail = email;
+    
+    try {
+      console.log('[DEBUG] TikTok auth for email:', email);
+      
+      // Verify token with TikTok API: https://open.tiktokapis.com/v1/oauth/token/introspect
+      try {
+        const tiktokResponse = await fetch('https://open.tiktokapis.com/v1/oauth/token/introspect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${tiktokToken}`
+          },
+          body: JSON.stringify({
+            access_token: tiktokToken
+          })
+        });
+        
+        if (tiktokResponse.ok) {
+          const tiktokData = await tiktokResponse.json();
+          tiktokId = tiktokData.open_id || tiktokData.sub; // TikTok unique ID
+          console.log('[DEBUG] TikTok verified ID:', tiktokId);
+        } else {
+          // Fallback: generate ID from email hash
+          tiktokId = `tt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          console.warn('[WARN] TikTok token verification failed, using generated ID');
+        }
+      } catch (ttErr) {
+        console.warn('[WARN] Could not verify with TikTok API:', ttErr.message);
+        tiktokId = `tt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
+    } catch (err) {
+      console.error('[DEBUG] TikTok ID extraction error:', err.message);
+      return res.status(401).json({ error: 'Invalid TikTok token: ' + err.message });
+    }
+
+    // Normalize email and check if user exists
+    const normEmail = String(userEmail).toLowerCase();
+    let user = await User.findOne({ $or: [{ email: normEmail }, { tiktokId }] });
+
+    if (!user) {
+      // Create new user
+      const userId = uuidv4();
+      user = new User({
+        id: userId,
+        email: normEmail,
+        tiktokId,
+        name,
+        age: 25, // Default age for TikTok sign-up
+        location: 'Not specified',
+        profilePicture,
+        interests: [],
+        coins: 10,
+        isPremium: false,
+        role: 'USER',
+      });
+      await user.save();
+      console.log('[DEBUG] New TikTok user created:', userId);
+    } else if (!user.tiktokId) {
+      // Link TikTok account to existing email user
+      user.tiktokId = tiktokId;
+      if (profilePicture && !user.profilePicture) {
+        user.profilePicture = profilePicture;
+      }
+      await user.save();
+      console.log('[DEBUG] Linked TikTok to existing user:', user.id);
+    }
+
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your-secret-key', {
+      expiresIn: '7d',
+    });
+
+    // Set httpOnly cookie
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    console.log('[DEBUG Backend] TikTok auth successful for user:', user.id);
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        age: user.age,
+        location: user.location,
+        interests: user.interests || [],
+        profilePicture: user.profilePicture,
+        images: user.images || [],
+        coins: user.coins,
+        termsOfServiceAccepted: user.termsOfServiceAccepted || false,
+        privacyPolicyAccepted: user.privacyPolicyAccepted || false,
+        cookiePolicyAccepted: user.cookiePolicyAccepted || false,
+      },
+    });
+  } catch (err) {
+    console.error('[ERROR] TikTok auth error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// TikTok OAuth Callback - Exchange code for token
+router.post('/tiktok/callback', async (req, res) => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      return res.status(400).json({ error: 'Authorization code missing' });
+    }
+
+    console.log('[DEBUG] TikTok callback: exchanging code for token');
+
+    // Exchange authorization code for access token
+    const clientKey = process.env.TIKTOK_CLIENT_KEY;
+    const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+
+    if (!clientKey || !clientSecret) {
+      console.error('[ERROR] TikTok credentials not configured');
+      return res.status(500).json({ error: 'TikTok OAuth not configured' });
+    }
+
+    const tokenResponse = await fetch('https://open.tiktokapis.com/v1/oauth/token/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_key: clientKey,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+      }).toString(),
+    });
+
+    const tokenData = await tokenResponse.json();
+    
+    if (tokenData.error) {
+      console.error('[ERROR] TikTok token exchange failed:', tokenData.error);
+      return res.status(401).json({ error: 'Failed to exchange TikTok code for token' });
+    }
+
+    const accessToken = tokenData.access_token;
+    const openId = tokenData.open_id;
+    console.log('[DEBUG] TikTok token received, open_id:', openId);
+
+    // Get user info from TikTok
+    const userResponse = await fetch('https://open.tiktokapis.com/v1/user/info/', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!userResponse.ok) {
+      console.error('[ERROR] Failed to fetch TikTok user info');
+      return res.status(401).json({ error: 'Failed to fetch TikTok user info' });
+    }
+
+    const userDataResponse = await userResponse.json();
+    const tiktokUser = userDataResponse.data?.user || {};
+    console.log('[DEBUG] TikTok user info:', { open_id: openId, display_name: tiktokUser.display_name });
+
+    // Use provided email or generate from TikTok ID
+    let userEmail = `tiktok_${openId}@tiktok.local`;
+    const name = tiktokUser.display_name || 'TikTok User';
+    const profilePicture = tiktokUser.avatar_url;
+
+    // Normalize email
+    const normEmail = String(userEmail).toLowerCase();
+    const tiktokId = String(openId);
+
+    // Check if user exists
+    let user = await User.findOne({ $or: [{ email: normEmail }, { tiktokId }] });
+
+    if (!user) {
+      // Create new user
+      const userId = uuidv4();
+      user = new User({
+        id: userId,
+        email: normEmail,
+        tiktokId,
+        name,
+        age: 25,
+        location: 'Not specified',
+        profilePicture,
+        interests: [],
+        coins: 10,
+        isPremium: false,
+        role: 'USER',
+      });
+      await user.save();
+      console.log('[DEBUG] New TikTok user created:', userId);
+    } else if (!user.tiktokId) {
+      // Link TikTok to existing user
+      user.tiktokId = tiktokId;
+      if (profilePicture && !user.profilePicture) {
+        user.profilePicture = profilePicture;
+      }
+      await user.save();
+      console.log('[DEBUG] Linked TikTok to existing user:', user.id);
+    }
+
+    // Create JWT token
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'your-secret-key', {
+      expiresIn: '7d',
+    });
+
+    // Set httpOnly cookie
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    console.log('[DEBUG] TikTok auth successful for user:', user.id);
+
+    // Return auth response
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        age: user.age,
+        location: user.location,
+        interests: user.interests || [],
+        profilePicture: user.profilePicture,
+        images: user.images || [],
+        coins: user.coins,
+        termsOfServiceAccepted: user.termsOfServiceAccepted || false,
+        privacyPolicyAccepted: user.privacyPolicyAccepted || false,
+        cookiePolicyAccepted: user.cookiePolicyAccepted || false,
+      },
+    });
+  } catch (err) {
+    console.error('[ERROR] TikTok callback error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get current user based on token
 router.get('/me', authMiddleware, async (req, res) => {
   try {

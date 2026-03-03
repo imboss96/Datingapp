@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema({
   passwordHash: { type: String },
   googleId: { type: String, sparse: true },
   facebookId: { type: String, sparse: true },
+  tiktokId: { type: String, sparse: true },
   name: { type: String, required: true },
   username: { type: String, unique: true, sparse: true, lowercase: true, index: true },
   age: { type: Number, required: true },
