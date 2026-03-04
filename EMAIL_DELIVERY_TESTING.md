@@ -203,7 +203,7 @@ After running tests, **check Brevo Dashboard** at https://app.brevo.com/dashboar
 In `backend/.env`, verify these are set:
 
 ```env
-BREVO_API_KEY=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
+BREVO_API_KEY=<set in .env file - not shown for security>
 BREVO_PREMIUM_UPGRADE_TEMPLATE_ID=7
 BREVO_COIN_PURCHASE_TEMPLATE_ID=8
 BREVO_API_URL=https://api.brevo.com/v3

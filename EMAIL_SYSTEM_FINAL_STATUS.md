@@ -101,7 +101,7 @@ Email queued for delivery
 
 ### `.env` File
 ```
-✅ BREVO_API_KEY=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
+✅ BREVO_API_KEY=<set in .env file - not shown>
 ✅ BREVO_COIN_PURCHASE_TEMPLATE_ID=7          (Template 7 = COIN PURCHASE)
 ✅ BREVO_PREMIUM_UPGRADE_TEMPLATE_ID=8       (Template 8 = PREMIUM SUBSCRIPTION)
 ✅ BREVO_EMAIL_VERIFICATION_TEMPLATE_ID=2
