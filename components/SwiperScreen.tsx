@@ -264,6 +264,19 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const doubleTapTimeout   = useRef<NodeJS.Timeout | null>(null);
   const profilesLengthRef  = useRef(0); // always up-to-date profiles.length for async callbacks
   const isLoadingMoreRef   = useRef(false);
+  const lastCachedGeoRef   = useRef<{ lat: number; lon: number; timestamp: number } | null>(null);
+  
+  // Haversine distance calculation (meters)
+  const calcGeoDistance = useCallback((lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371000; // Earth radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }, []);
 
   // Keep refs in sync
   useEffect(() => { profilesLengthRef.current = profiles.length; }, [profiles]);
@@ -412,6 +425,42 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      // Extract current coordinates
+      const currentCoords = extractCoordinates(currentUser.coordinates);
+      
+      // Check cache: only fetch if user moved >500m OR 2 hours passed
+      if (lastCachedGeoRef.current && currentCoords) {
+        const timeSinceLastFetch = Date.now() - lastCachedGeoRef.current.timestamp;
+        const distanceMoved = calcGeoDistance(
+          lastCachedGeoRef.current.lat,
+          lastCachedGeoRef.current.lon,
+          currentCoords.lat,
+          currentCoords.lon
+        );
+        
+        console.log(`[SwiperScreen] Distance moved: ${Math.round(distanceMoved)}m, Time since fetch: ${Math.round(timeSinceLastFetch / 1000)}s`);
+        
+        // If user moved <500m AND <2 hours passed, skip fetch
+        const TWO_HOURS = 2 * 60 * 60 * 1000;
+        const MOVEMENT_THRESHOLD = 500; // meters
+        
+        if (distanceMoved < MOVEMENT_THRESHOLD && timeSinceLastFetch < TWO_HOURS) {
+          console.log('[SwiperScreen] Cache valid - skipping fetch');
+          return; // Skip fetching
+        }
+        
+        console.log('[SwiperScreen] Cache expired or user moved - refetching profiles');
+      }
+
+      // Update cache with current coordinates
+      if (currentCoords) {
+        lastCachedGeoRef.current = {
+          lat: currentCoords.lat,
+          lon: currentCoords.lon,
+          timestamp: Date.now()
+        };
+      }
+
       setLoading(true);
       setError(null);
       setProfiles([]);
@@ -472,7 +521,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     };
     load();
     return () => { cancelled = true; };
-  }, [currentUser.id, maxDistance, fetchProfileBatch]);
+  }, [currentUser.id, maxDistance, fetchProfileBatch, calcGeoDistance]);
 
   // ── Preload next image ──────────────────────────────────────────────────
 
