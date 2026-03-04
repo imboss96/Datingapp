@@ -249,14 +249,8 @@ router.post('/create-or-get', async (req, res) => {
     let isNewChat = false;
 
     if (!chat) {
-      // ✅ CRITICAL FIX: Don't create chat if we're just looking it up (skipMessageValidation = true)
-      if (req.body.skipMessageValidation) {
-        console.log('[DEBUG] Chat not found and skipMessageValidation=true. Not creating empty chat.');
-        return res.status(404).json({ error: 'Chat does not exist yet', notFound: true });
-      }
-
-      console.log('[DEBUG] No existing chat found, creating new one with initial message');
-      // ✅ DUPLICATE PREVENTION: Use findOneAndUpdate with proper indexing
+      console.log('[DEBUG] No existing chat found, creating new one');
+      // ✅ Allow empty chat creation - message validation happens on send, not creation
       try {
         chat = await Chat.findOneAndUpdate(
           { participantsKey },
@@ -265,16 +259,9 @@ router.post('/create-or-get', async (req, res) => {
               id: uuidv4(),
               participants,
               participantsKey,
-              messages: initialMessage ? [{
-                id: uuidv4(),
-                senderId: req.userId,
-                text: initialMessage.text || '',
-                media: initialMessage.media || null,
-                timestamp: Date.now(),
-                isFlagged: false,
-              }] : [],
+              messages: [],
               lastUpdated: Date.now(),
-              requestStatus: 'accepted', // Default to accepted (can be changed by user later)
+              requestStatus: 'accepted',
               requestInitiator: req.userId,
               requestInitiatorFirstMessage: false,
               blockedBy: [],
@@ -285,22 +272,21 @@ router.post('/create-or-get', async (req, res) => {
           { upsert: true, new: true, setDefaultsOnInsert: true }
         );
         isNewChat = true;
-        console.log('[DEBUG] Created new chat:', chat.id, 'with participantsKey:', chat.participantsKey, 'messages:', chat.messages.length);
+        console.log('[DEBUG] Created new chat:', chat.id, 'with participantsKey:', chat.participantsKey);
       } catch (upsertErr) {
-        // ✅ Handle duplicate key error (E11000) - another request created it simultaneously
+        // ✅ Handle E11000 duplicate key error
         if (upsertErr.code === 11000) {
-          console.log('[WARN] Duplicate key error during upsert (E11000), refetching existing chat...');
+          console.log('[WARN] E11000 duplicate key - concurrent create, refetching...');
           chat = await Chat.findOne({ participantsKey });
           if (!chat) {
-            throw new Error('Failed to create or retrieve chat after duplicate key error');
+            throw new Error('Failed to create or retrieve chat');
           }
           isNewChat = false;
-          console.log('[DEBUG] Retrieved existing chat created by concurrent request:', chat.id);
+          console.log('[DEBUG] Retrieved existing chat:', chat.id);
         } else {
           throw upsertErr;
         }
-      }
-    } else {
+      } else {
       // Ensure participantsKey is set on existing chat
       if (!chat.participantsKey) {
         chat.participantsKey = participantsKey;

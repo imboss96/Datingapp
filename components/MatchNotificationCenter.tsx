@@ -62,14 +62,10 @@ export const MatchNotificationCenter: React.FC<MatchNotificationCenterProps> = (
       (async () => {
         try {
           const chat = await apiClient.createOrGetChat(notification.matchedWith.id);
-          
-          // ✅ Handle both existing chats and new chats that don't exist yet
-          const chatId = chat?.id || chat?._id || (chat?.chatNotCreatedYet ? notification.matchedWith.id : null);
-          
+          const chatId = chat?.id || chat?._id;
           if (chatId) {
             window.location.href = `/#/chat/${chatId}`;
           } else {
-            // Fallback: navigate to chat list with query
             window.location.href = `/chats?userId=${notification.matchedWith.id}`;
           }
         } catch (err) {

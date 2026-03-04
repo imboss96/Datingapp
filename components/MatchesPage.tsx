@@ -93,18 +93,15 @@ const MatchesPage: React.FC<MatchesPageProps> = ({ currentUserId }) => {
       (async () => {
         try {
           const chat = await apiClient.createOrGetChat(match.matchedUser.id);
-          
-          // ✅ Handle both existing chats and new chats that don't exist yet
-          const chatId = chat?.id || chat?._id || (chat?.chatNotCreatedYet ? match.matchedUser.id : null);
-          
+          const chatId = chat?.id || chat?._id;
           if (chatId) {
             navigate(`/chat/${chatId}`, { state: { matchedProfile: match.matchedUser } });
           } else {
-            navigate('/chats');
+            showAlert('Error', 'Failed to create chat');
           }
         } catch (err) {
           console.error('[Matches] Failed to create/get chat:', err);
-          navigate('/chats');
+          showAlert('Error', 'Failed to open chat');
         }
       })();
     }

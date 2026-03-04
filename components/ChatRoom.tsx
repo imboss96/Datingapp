@@ -32,7 +32,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [isUserTyping, setIsUserTyping] = useState(false);
   const [loading, setLoading] = useState(true);
   const [chatId, setChatId] = useState<string | null>(null);
-  const [newChatUserId, setNewChatUserId] = useState<string | null>(null); // ✅ For chats being created
   const [selectedMedia, setSelectedMedia] = useState<MediaFile | null>(null);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -612,35 +611,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         } catch (err: any) {
           console.log('[DEBUG ChatRoom] Not a chatId, attempting createOrGet with userId:', id);
           chatData = await apiClient.createOrGetChat(id);
-          
-          // ✅ Handle case where chat doesn't exist yet
-          if (chatData?.chatNotCreatedYet) {
-            console.log('[DEBUG ChatRoom] Chat does not exist yet for user:', id, '- will be created on first message');
-            setChatId('new-chat-' + id); // Temporary ID for UI
-            setMessages([]);
-            setNewChatUserId(id); // Store the userId for when first message is sent
-            
-            // Load user profile
-            try {
-              const allUsers = await apiClient.getAllUsers();
-              const user = (allUsers || []).find((u: UserProfile | null) => u && (u as any).id === id);
-              if (user) {
-                console.log('[DEBUG ChatRoom] Found user:', user.name);
-                setChatUser(user);
-              }
-            } catch (err) {
-              console.error('[ERROR ChatRoom] Failed to fetch user profile:', err);
-            }
-            
-            setLoading(false);
-            return;
-          }
-          
-          console.log('[DEBUG ChatRoom] Chat created/retrieved successfully via createOrGet:', chatData.id);
+          console.log('[DEBUG ChatRoom] Chat created/retrieved successfully via createOrGet:', chatData?.id);
         }
 
         if (!chatData || !chatData.id) {
-          throw new Error('Chat creation/lookup returned no ID');
+          throw new Error('Failed to create or load chat');
         }
 
         setChatId(chatData.id);
@@ -896,40 +871,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
       console.log('[DEBUG ChatRoom] Sending message to chat:', chatId, 'text:', messageText, 'with media:', !!media);
 
-      let actualChatId = chatId;
-      
-      // ✅ NEW: If this is a new chat (not yet created), create it with the first message
-      if (chatId.startsWith('new-chat-') && newChatUserId) {
-        console.log('[DEBUG ChatRoom] Creating new chat with first message for user:', newChatUserId);
-        const chatData = await apiClient.createOrGetChat(newChatUserId, {
-          text: messageText,
-          media: media
-        });
-        
-        if (!chatData || !chatData.id) {
-          throw new Error('Failed to create chat');
-        }
-        
-        actualChatId = chatData.id;
-        setChatId(chatData.id);
-        setMessages(chatData.messages || []);
-        setNewChatUserId(null); // Clear the temp userId
-        
-        if (!currentUser.isPremium) {
-          onDeductCoin();
-        }
-        
-        console.log('[DEBUG ChatRoom] Chat created successfully, messages count:', chatData.messages?.length || 0);
-        return;
-      }
-
       let response;
       if (media && messageText) {
-        response = await apiClient.sendMessageWithMedia(actualChatId, messageText, media);
+        response = await apiClient.sendMessageWithMedia(chatId, messageText, media);
       } else if (media) {
-        response = await apiClient.sendMessageWithMedia(actualChatId, '', media);
+        response = await apiClient.sendMessageWithMedia(chatId, '', media);
       } else {
-        response = await apiClient.sendMessage(actualChatId, messageText);
+        response = await apiClient.sendMessage(chatId, messageText);
       }
 
       console.log('[DEBUG ChatRoom] Message sent successfully:', response);
@@ -940,7 +888,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const chatData = await apiClient.getChat(actualChatId);
+      const chatData = await apiClient.getChat(chatId);
       console.log('[DEBUG ChatRoom] Refreshed chat data after send, messages count:', chatData.messages?.length || 0);
       setMessages(chatData.messages || []);
     } catch (err: any) {
@@ -948,7 +896,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       console.error('[ERROR ChatRoom] Response status:', err.response?.status);
       console.error('[ERROR ChatRoom] Response data:', err.response?.data);
       showAlert('Error', 'Failed to send message: ' + (err.message || 'Unknown error'));
-      setInputText(inputText);
+      setInputText(messageText); // Restore message on error
     }
   };
 
