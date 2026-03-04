@@ -110,6 +110,46 @@ const validateImageUrl = (url: string | undefined): string | null => {
   }
 };
 
+// Helper to detect if media URL is a video
+const isVideoUrl = (url: string | undefined): boolean => {
+  if (!url || typeof url !== 'string') return false;
+  const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.mkv', '.avi', '.flv', '.m4v'];
+  const lowerUrl = url.toLowerCase();
+  return videoExtensions.some(ext => lowerUrl.includes(ext));
+};
+
+// Helper to validate and optimize video URLs
+const validateVideoUrl = (url: string | undefined): string | null => {
+  if (!url || typeof url !== 'string') return null;
+  if (!url.trim()) return null;
+  
+  try {
+    const trimmed = url.trim();
+    
+    // Validate URL
+    new URL(trimmed);
+    
+    // If it's a Cloudinary URL, optimize video
+    if (trimmed.includes('res.cloudinary.com')) {
+      if (!trimmed.includes('/q_')) {
+        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhxitpddx';
+        // Optimize video: quality auto, format mp4
+        const cloudinaryOptimized = trimmed.replace(
+          /res\.cloudinary\.com\/([^/]+)\/video\/upload\//,
+          `res.cloudinary.com/${cloudName}/video/upload/q_auto,f_auto/`
+        );
+        console.log('[SwiperScreen] Optimized Cloudinary Video URL:', cloudinaryOptimized);
+        return cloudinaryOptimized;
+      }
+    }
+    
+    return trimmed;
+  } catch (err) {
+    console.warn('[SwiperScreen] Invalid video URL:', url, 'Error:', err);
+    return null;
+  }
+};
+
 // Helper to preload image with proper error handling and timeout
 const preloadImage = (url: string, timeoutMs: number = 8000): Promise<void> => {
   return new Promise((resolve) => {
@@ -256,6 +296,23 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [failedImages,     setFailedImages]     = useState<Set<string>>(new Set());
   const [swipedProfiles,   setSwipedProfiles]   = useState<Set<string>>(new Set());
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showAllMembers,   setShowAllMembers]   = useState(false);
+
+    // Function to reload only swipe profiles (not the whole page)
+    const refreshProfilesOnly = useCallback(() => {
+      setLoading(true);
+      setError(null);
+      setProfiles([]);
+      setCurrentIndex(0);
+      setCurrentBatch(0);
+      matchScoreCache.current = {};
+      // Optionally reset swipedProfiles if you want to allow re-swiping
+      // setSwipedProfiles(new Set());
+      // Trigger profile reload by toggling showAllMembers (if needed)
+      // Or just re-run the effect by updating a dummy state
+      // For now, just re-run the effect by updating showAllMembers
+      setShowAllMembers(showAllMembers);
+    }, [showAllMembers]);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const cardRef            = useRef<HTMLDivElement>(null);
@@ -341,7 +398,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   // ── Profile fetching ──────────────────────────────────────────────────────
 
-  const fetchProfileBatch = useCallback(async (batchNumber: number, distance: number): Promise<UserProfile[]> => {
+  const fetchProfileBatch = useCallback(async (batchNumber: number, distance: number, includeAllMembers: boolean = false): Promise<UserProfile[]> => {
     try {
       const skip = batchNumber * BATCH_SIZE;
 
@@ -350,27 +407,28 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       const lat = coordsData?.lat ?? null;
       const lon = coordsData?.lon ?? null;
 
-      console.log('[SwiperScreen] Fetching batch:', { batchNumber, skip, distance, userLocation: coordsData });
+      console.log('[SwiperScreen] Fetching batch:', { batchNumber, skip, distance, userLocation: coordsData, includeAllMembers });
 
-      // Initially try geo-based discovery with excludeSeen=true
+      // If showing all members, always exclude seen to be false (show all)
+      // Otherwise, try with excludeSeen=true first
       let batchUsers = await apiClient.getProfilesForSwiping(
         BATCH_SIZE,
         skip,
-        true,  // excludeSeen
+        !includeAllMembers,  // excludeSeen - false if showing all members
         lat,
         lon
       );
 
       // 1) If first page empty and we provided coords, retry without coords (general feed)
       if (batchUsers.length === 0 && lat != null && lon != null && batchNumber === 0) {
-        console.warn('[SwiperScreen] Geo fetch returned 0, retrying without coordinates');
-        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, true);
+        console.warn('[SwiperScreen] Fetch returned 0, retrying without coordinates');
+        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, !includeAllMembers);
       }
 
-      // 2) If still nothing and we were excluding seen users, try again including them
+      // 2) If still nothing and we want all members, or if still nothing on first page
       if (batchUsers.length === 0 && batchNumber === 0) {
-        console.warn('[SwiperScreen] No profiles after excludeSeen, retrying with excludeSeen=false');
-        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, false, lat, lon);
+        console.warn('[SwiperScreen] No profiles, retrying with excludeSeen=' + includeAllMembers);
+        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, includeAllMembers, lat, lon);
       }
 
       // 3) If still nothing, try fetching without any filters (unsorted fallback)
@@ -475,7 +533,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       // Retry logic for failed fetches
       while (retryCount <= maxRetries && initial.length === 0 && !cancelled) {
         try {
-          initial = await fetchProfileBatch(0, maxDistance);
+          initial = await fetchProfileBatch(0, maxDistance, showAllMembers);
           console.log('[SwiperScreen] initial fetch returned', initial.length, 'profiles');
           if (initial.length > 0) break; // Success, exit retry loop
         } catch (err: any) {
@@ -492,7 +550,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       if (initial.length === 0 && currentUser.coordinates && !cancelled) {
         console.warn('[SwiperScreen] Initial fetch empty, performing raw fallback without coordinates');
         try {
-          const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, 0, true);
+          const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, 0, !showAllMembers);
           const others = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
           initial = others.sort((a, b) => getMatchScore(b) - getMatchScore(a));
         } catch (err) {
@@ -521,7 +579,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     };
     load();
     return () => { cancelled = true; };
-  }, [currentUser.id, maxDistance, fetchProfileBatch, calcGeoDistance]);
+  }, [currentUser.id, maxDistance, fetchProfileBatch, calcGeoDistance, showAllMembers]);
 
   // ── Preload next image ──────────────────────────────────────────────────
 
@@ -860,18 +918,28 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       <div className="bg-blue-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-users text-4xl text-blue-500" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-800">No new profiles available</h2>
+      <h2 className="text-2xl font-bold text-gray-800">You have finished potential matches</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">
-        {swipedProfiles.size > 0 
-          ? 'You\'ve reviewed everyone! Check back later for new profiles.' 
-          : 'There are no other users in your area yet. Check back later!'}
+        {showAllMembers 
+          ? 'You\'re viewing all members in the database. Keep discovering!' 
+          : 'You\'ve reviewed all potential matches. Browse all members to continue matching!'}
       </p>
-      <button
-        onClick={() => window.location.reload()}
-        className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
-      >
-        Refresh
-      </button>
+      <div className="mt-6 flex gap-3 flex-wrap justify-center">
+        {!showAllMembers && (
+          <button
+            onClick={() => setShowAllMembers(true)}
+            className="px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
+          >
+            Browse All Members
+          </button>
+        )}
+        <button
+          onClick={refreshProfilesOnly}
+          className="px-10 py-3 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-full font-bold transition-colors"
+        >
+          {showAllMembers ? 'Refresh' : 'Retry'}
+        </button>
+      </div>
     </div>
   );
 
@@ -1064,15 +1132,33 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               {/* Image progress indicator bars */}
               {currentProfile?.images && currentProfile?.images.length > 1 && (
                 <div className="absolute top-0 left-0 right-0 flex gap-1 px-3 pt-3 z-20 pointer-events-none">
-                  {currentProfile?.images.map((_, idx) => (
-                    <div 
-                      key={idx}
-                      className="h-1 flex-1 rounded-full transition-all bg-white/40"
-                      style={{
-                        backgroundColor: idx === currentImageIndex ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.4)',
-                      }}
-                    />
-                  ))}
+                  {currentProfile?.images.map((_, idx) => {
+                    const isCurrentVideo = isVideoUrl(currentProfile?.images?.[idx]);
+                    return (
+                      <div
+                        key={idx}
+                        className="h-1 flex-1 rounded-full transition-all bg-white/40 relative group"
+                        style={{
+                          backgroundColor: idx === currentImageIndex ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.4)',
+                        }}
+                      >
+                        {/* Video badge on progress bar */}
+                        {isCurrentVideo && idx === currentImageIndex && (
+                          <div className="absolute -top-1 -right-1 bg-blue-500 rounded-full p-1 shadow-lg group-hover:bg-blue-600 transition-colors">
+                            <i className="fa-solid fa-play text-white text-xs"></i>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Video indicator badge for current media */}
+              {currentProfile?.images?.[currentImageIndex] && isVideoUrl(currentProfile?.images?.[currentImageIndex]) && (
+                <div className="absolute top-4 right-4 bg-blue-500/90 text-white px-3 py-1 rounded-full flex items-center gap-2 z-20 shadow-lg backdrop-blur-sm">
+                  <i className="fa-solid fa-play text-sm"></i>
+                  <span className="text-xs font-semibold">Video</span>
                 </div>
               )}
 
@@ -1100,19 +1186,21 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
               {currentProfile?.images?.[currentImageIndex] ? (
                 (() => {
-                  const imageUrl = validateImageUrl(currentProfile?.images?.[currentImageIndex]);
-                  const imageCacheKey = `${currentProfile?.id}-${currentImageIndex}`;
-                  const isFailed = failedImages.has(imageCacheKey);
+                  const mediaUrl = currentProfile?.images?.[currentImageIndex];
+                  const isVideo = isVideoUrl(mediaUrl);
+                  const validatedUrl = isVideo ? validateVideoUrl(mediaUrl) : validateImageUrl(mediaUrl);
+                  const mediaCacheKey = `${currentProfile?.id}-${currentImageIndex}`;
+                  const isFailed = failedImages.has(mediaCacheKey);
                   
-                  if (!imageUrl || isFailed) {
-                    console.warn(`[SwiperScreen] ${isFailed ? 'Failed to load' : 'No valid'} image URL for profile ${currentProfile?.id} at index ${currentImageIndex}`);
+                  if (!validatedUrl || isFailed) {
+                    console.warn(`[SwiperScreen] ${isFailed ? 'Failed to load' : 'No valid'} media URL for profile ${currentProfile?.id} at index ${currentImageIndex}`);
                     return (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
-                        <div className="text-6xl mb-4">📷</div>
+                        <div className="text-6xl mb-4">{isVideo ? '🎬' : '📷'}</div>
                         <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
                         <p className="text-xl text-white/80 font-semibold mb-4">{currentProfile?.age}</p>
                         <p className="text-sm text-white/60 text-center max-w-xs mb-6">{currentProfile?.location}</p>
-                        <p className="text-xs text-white/50 text-center">{isFailed ? 'Image failed to load' : 'Image data unavailable'}</p>
+                        <p className="text-xs text-white/50 text-center">{isFailed ? 'Media failed to load' : 'Media data unavailable'}</p>
                       </div>
                     );
                   }
@@ -1129,33 +1217,62 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                         </div>
                       )}
                       
-                      {/* Image - fades in when loaded */}
-                      <img
-                        key={imageCacheKey}
-                        src={imageUrl}
-                        alt={`${currentProfile?.name} - photo ${currentImageIndex + 1}`}
-                        onLoad={() => {
-                          console.log('[SwiperScreen] Image loaded successfully:', imageCacheKey);
-                          setImgLoaded(true);
-                        }}
-                        onError={() => {
-                          console.warn('[SwiperScreen] Image failed to load:', imageCacheKey, 'URL:', imageUrl);
-                          // Mark this image as failed and don't try again for this profile/index combo
-                          setFailedImages(prev => new Set([...prev, imageCacheKey]));
-                          setImgLoaded(true); // Allow UI to show error state
-                        }}
-                        className="w-full h-full object-cover select-none transition-opacity duration-500"
-                        loading="eager"
-                        decoding="async"
-                        style={{ 
-                          opacity: imgLoaded ? 1 : 0,
-                          width: '100%', 
-                          height: '100%',
-                          position: 'absolute',
-                          top: 0,
-                          left: 0
-                        }}
-                      />
+                      {/* Video - silent autoplay when loaded */}
+                      {isVideo ? (
+                        <video
+                          key={mediaCacheKey}
+                          src={validatedUrl}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          onLoadedData={() => {
+                            console.log('[SwiperScreen] Video loaded successfully:', mediaCacheKey);
+                            setImgLoaded(true);
+                          }}
+                          onError={() => {
+                            console.warn('[SwiperScreen] Video failed to load:', mediaCacheKey, 'URL:', validatedUrl);
+                            setFailedImages(prev => new Set([...prev, mediaCacheKey]));
+                            setImgLoaded(true);
+                          }}
+                          className="w-full h-full object-cover select-none transition-opacity duration-500"
+                          style={{
+                            opacity: imgLoaded ? 1 : 0,
+                            width: '100%',
+                            height: '100%',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0
+                          }}
+                        />
+                      ) : (
+                        /* Image - fades in when loaded */
+                        <img
+                          key={mediaCacheKey}
+                          src={validatedUrl}
+                          alt={`${currentProfile?.name} - photo ${currentImageIndex + 1}`}
+                          onLoad={() => {
+                            console.log('[SwiperScreen] Image loaded successfully:', mediaCacheKey);
+                            setImgLoaded(true);
+                          }}
+                          onError={() => {
+                            console.warn('[SwiperScreen] Image failed to load:', mediaCacheKey, 'URL:', validatedUrl);
+                            setFailedImages(prev => new Set([...prev, mediaCacheKey]));
+                            setImgLoaded(true);
+                          }}
+                          className="w-full h-full object-cover select-none transition-opacity duration-500"
+                          loading="eager"
+                          decoding="async"
+                          style={{
+                            opacity: imgLoaded ? 1 : 0,
+                            width: '100%',
+                            height: '100%',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0
+                          }}
+                        />
+                      )}
                     </div>
                   );
                 })()
