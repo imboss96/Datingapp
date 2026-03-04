@@ -7,7 +7,7 @@
 import ngrok from 'ngrok';
 
 const BACKEND_PORT = 5000;
-const NGROK_TOKEN = '34duLO5DUkrtABcX6F81FVOu34O_3DFpxtgvKL6n1EmrZtH2W';
+const NGROK_TOKEN = process.env.NGROK_TOKEN || '';
 const WEBHOOK_PATH = '/api/lipana/webhook';
 
 async function startTunnel() {
