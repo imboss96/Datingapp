@@ -25,7 +25,7 @@ interface Heart {
 
 // ═══ Constants ═════════════════════════════════════════════════════════════════
 
-const BATCH_SIZE        = 100;
+const BATCH_SIZE        = 30;
 const PRELOAD_THRESHOLD = 20; // load next batch EARLY when this many profiles remain - background loading
 
 // ═══ Helpers (outside component – never recreated) ═══════════════════════════

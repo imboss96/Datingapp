@@ -8,42 +8,43 @@ const router = express.Router();
 // Configure multer for in-memory storage (file is kept in memory before upload)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit per file
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit per file (allows videos)
   fileFilter: (req, file, cb) => {
-    // Accept image files only
-    if (file.mimetype.startsWith('image/')) {
+    // Accept image and video files
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'), false);
+      cb(new Error('Only image and video files are allowed'), false);
     }
   },
 });
 
-// Upload single image
+// Upload single image or video
 router.post('/upload-image', authMiddleware, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    console.log('[DEBUG Upload] Processing image upload:', {
+    const isVideo = req.file.mimetype.startsWith('video/');
+    console.log('[DEBUG Upload] Processing ' + (isVideo ? 'video' : 'image') + ' upload:', {
       fieldname: req.file.fieldname,
       mimetype: req.file.mimetype,
       size: req.file.size,
     });
 
     // Upload to Cloudinary
-    const imageUrl = await uploadToCloudinary(
+    const mediaUrl = await uploadToCloudinary(
       req.file.buffer,
       `${req.userId}_${Date.now()}`
     );
 
-    console.log('[DEBUG Upload] Image uploaded successfully:', imageUrl);
+    console.log('[DEBUG Upload] ' + (isVideo ? 'Video' : 'Image') + ' uploaded successfully:', mediaUrl);
 
     res.json({
       success: true,
-      imageUrl,
-      message: 'Image uploaded successfully',
+      imageUrl: mediaUrl,
+      message: (isVideo ? 'Video' : 'Image') + ' uploaded successfully',
     });
   } catch (err) {
     console.error('[ERROR Upload]:', err.message);
@@ -51,31 +52,36 @@ router.post('/upload-image', authMiddleware, upload.single('image'), async (req,
   }
 });
 
-// Upload multiple images
+// Upload multiple images or videos
 router.post('/upload-images', authMiddleware, upload.array('images', 5), async (req, res) => {
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files provided' });
     }
 
+    const videoCount = req.files.filter(f => f.mimetype.startsWith('video/')).length;
+    const imageCount = req.files.length - videoCount;
+    
     console.log('[DEBUG Upload] Processing batch upload:', {
       count: req.files.length,
+      images: imageCount,
+      videos: videoCount,
       sizes: req.files.map((f) => f.size),
     });
 
-    // Upload all images in parallel
+    // Upload all files in parallel
     const uploadPromises = req.files.map((file, index) =>
       uploadToCloudinary(file.buffer, `${req.userId}_${Date.now()}_${index}`)
     );
 
-    const imageUrls = await Promise.all(uploadPromises);
+    const mediaUrls = await Promise.all(uploadPromises);
 
-    console.log('[DEBUG Upload] Batch upload completed:', imageUrls.length, 'images');
+    console.log('[DEBUG Upload] Batch upload completed:', mediaUrls.length, 'files');
 
     res.json({
       success: true,
-      imageUrls,
-      message: `${imageUrls.length} images uploaded successfully`,
+      imageUrls: mediaUrls,
+      message: `${mediaUrls.length} files uploaded successfully (${imageCount} images, ${videoCount} videos)`,
     });
   } catch (err) {
     console.error('[ERROR Upload]:', err.message);

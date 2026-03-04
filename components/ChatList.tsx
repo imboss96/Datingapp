@@ -6,7 +6,7 @@ import { formatLastSeen } from '../services/lastSeenUtils';
 import ChatOptionsModal from './ChatOptionsModal';
 import { useAlert } from '../services/AlertContext';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ChatData {
   id: string;
@@ -26,21 +26,17 @@ interface ChatData {
 const CACHE_KEY_CHATS = 'cached_chats';
 const CACHE_KEY_USERS = 'cached_users';
 const CACHE_KEY_TIME  = 'cached_chats_time';
-const CACHE_TTL_MS    = 30 * 1000; // 30 seconds - professional standard for real-time chat
+const CACHE_TTL_MS    = 30 * 1000;
 
 const readCache = <T,>(key: string): T[] => {
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T[]) : [];
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 };
 
 const writeCache = (key: string, value: unknown): void => {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch { /* storage full – ignore */ }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 };
 
 const isCacheStale = (): boolean => {
@@ -50,62 +46,28 @@ const isCacheStale = (): boolean => {
 
 // ─── Pure Helpers ─────────────────────────────────────────────────────────────
 
-/**
- * Generate stable participant key (matches backend convention with underscore)
- * Normalizes participants array to ensure consistent comparison
- */
-const generateParticipantKey = (participants: string[]): string => {
-  if (!participants || participants.length === 0) return '';
-  // Normalize: filter out empty strings, trim, lowercase, sort
-  const normalized = participants
-    .filter(p => p && typeof p === 'string')
-    .map(p => p.trim().toLowerCase())
-    .sort();
-  return normalized.join('_');
-};
-
 const deduplicateAndSort = (chatsData: ChatData[]): ChatData[] => {
   if (!chatsData || chatsData.length === 0) return [];
-
-  // PERMANENT: WhatsApp-style deduplication - one entry per unique user pair
   const chatsByParticipant: Record<string, ChatData> = {};
   let duplicatesFound = 0;
-
   for (const chat of chatsData) {
     if (!chat.id || !Array.isArray(chat.participants)) continue;
-
-    // Generate stable key matching backend: normalize and sort participant IDs
     const normalized = chat.participants
       .filter((p: string) => p && typeof p === 'string')
       .map((p: string) => p.trim().toLowerCase())
       .sort();
     const key = normalized.join('_');
-    
     if (!key) continue;
-
     if (!chatsByParticipant[key]) {
       chatsByParticipant[key] = chat;
     } else {
-      // Keep the most recently updated chat, discard the stale one
       const existing = chatsByParticipant[key];
-      const incomingTime = chat.lastUpdated || 0;
-      const existingTime = existing.lastUpdated || 0;
-      
-      if (incomingTime > existingTime) {
+      if ((chat.lastUpdated || 0) > (existing.lastUpdated || 0)) {
         chatsByParticipant[key] = chat;
       }
       duplicatesFound++;
     }
   }
-
-  if (duplicatesFound > 0) {
-    console.warn(
-      `[ChatList] Deduplication: ${duplicatesFound} duplicate(s) found. ` +
-      `Consolidated from ${chatsData.length} → ${Object.keys(chatsByParticipant).length} chats.`
-    );
-  }
-
-  // Convert to array and sort: unread first, then by recency
   const result = Object.values(chatsByParticipant);
   return result.sort((a, b) => {
     const unreadA = a.unreadCount ?? 0;
@@ -115,8 +77,11 @@ const deduplicateAndSort = (chatsData: ChatData[]): ChatData[] => {
   });
 };
 
-const getLastMessage = (chat: ChatData): string =>
-  chat.messages?.length ? chat.messages[chat.messages.length - 1].text : 'No messages yet';
+const getLastMessage = (chat: ChatData, currentUserId?: string): { text: string; isMe: boolean } => {
+  if (!chat.messages?.length) return { text: 'No messages yet', isMe: false };
+  const last = chat.messages[chat.messages.length - 1];
+  return { text: last.text, isMe: last.senderId === currentUserId };
+};
 
 const getTimeAgo = (timestamp: number): string => {
   const diff  = Date.now() - timestamp;
@@ -124,7 +89,7 @@ const getTimeAgo = (timestamp: number): string => {
   const hours = Math.floor(diff / 3_600_000);
   const days  = Math.floor(diff / 86_400_000);
   if (mins  <  1) return 'now';
-  if (mins  < 60) return `${mins}m ago`;
+  if (mins  < 60) return `${mins} min`;
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
 };
@@ -132,69 +97,120 @@ const getTimeAgo = (timestamp: number): string => {
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
 
 const ChatSkeleton: React.FC = () => (
-  <div className="divide-y divide-gray-50">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-4 p-4 animate-pulse">
+  <div className="divide-y divide-gray-50 mt-2">
+    {Array.from({ length: 6 }).map((_, i) => (
+      <div key={i} className="flex items-center gap-3 px-5 py-3.5 animate-pulse">
         <div className="w-14 h-14 rounded-full bg-gray-200 shrink-0" />
         <div className="flex-1 space-y-2">
-          <div className="h-3 bg-gray-200 rounded w-1/3" />
-          <div className="h-3 bg-gray-200 rounded w-2/3" />
-          <div className="h-2 bg-gray-100 rounded w-1/4" />
+          <div className="h-3.5 bg-gray-200 rounded-full w-1/3" />
+          <div className="h-3 bg-gray-100 rounded-full w-2/3" />
         </div>
+        <div className="h-2.5 bg-gray-100 rounded w-10" />
       </div>
     ))}
   </div>
 );
 
-// ─── Avatar with fallback ─────────────────────────────────────────────────────
+// ─── Avatar ───────────────────────────────────────────────────────────────────
 
-const Avatar: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
+const Avatar: React.FC<{
+  src?: string;
+  alt: string;
+  size?: 'sm' | 'md';
+  hasRing?: boolean;
+  isOnline?: boolean;
+}> = ({ src, alt, size = 'md', hasRing = false, isOnline = false }) => {
   const [errored, setErrored] = useState(false);
   const initials = alt.slice(0, 2).toUpperCase();
 
-  if (!src || errored) {
-    return (
-      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg shadow-sm border border-gray-100">
-        {initials}
-      </div>
-    );
-  }
+  // Outer wrapper sizing (includes ring padding)
+  const outerDim  = size === 'sm' ? 'w-[68px] h-[68px]' : 'w-[60px] h-[60px]';
+  // Inner image sizing (slightly smaller to leave room for ring gap)
+  const innerDim  = size === 'sm' ? 'w-[58px] h-[58px]' : 'w-[52px] h-[52px]';
 
   return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      onError={() => setErrored(true)}
-      className="w-14 h-14 rounded-full object-cover shadow-sm border border-gray-100"
-    />
+    <div className={`relative shrink-0 flex items-center justify-center ${outerDim}`}>
+      {/* Gradient ring */}
+      {hasRing && (
+        <div
+          className="absolute inset-0 rounded-full"
+          style={{
+            background: 'linear-gradient(135deg, #f72585, #ff6b9d, #c9184a)',
+            padding: '2.5px',
+          }}
+        >
+          <div className="w-full h-full rounded-full bg-white" />
+        </div>
+      )}
+
+      {/* Avatar */}
+      <div className={`relative z-10 ${innerDim} rounded-full overflow-hidden`}>
+        {!src || errored ? (
+          <div className="w-full h-full rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white font-bold text-base">
+            {initials}
+          </div>
+        ) : (
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            onError={() => setErrored(true)}
+            className="w-full h-full object-cover"
+          />
+        )}
+      </div>
+
+      {/* Online dot */}
+      {isOnline && (
+        <span className="absolute bottom-0.5 right-0.5 z-20 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full" />
+      )}
+    </div>
+  );
+};
+
+// ─── Activity Story Item ──────────────────────────────────────────────────────
+
+const ActivityItem: React.FC<{ user: UserProfile; isCurrentUser?: boolean; onClick: () => void }> = ({
+  user, isCurrentUser = false, onClick,
+}) => {
+  const name = isCurrentUser ? 'You' : (user.username || user.name).split(' ')[0];
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-center gap-1.5 shrink-0 group"
+    >
+      <Avatar
+        src={user.images?.[0]}
+        alt={name}
+        size="sm"
+        hasRing={true}
+        isOnline={user.isOnline}
+      />
+      <span className="text-[12px] font-semibold text-gray-700 group-hover:text-rose-500 transition-colors max-w-[68px] truncate">
+        {name}
+      </span>
+    </button>
   );
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
-  const navigate          = useNavigate();
-  const { showAlert }     = useAlert();
-  const fetchingUsersRef  = useRef<Record<string, boolean>>({});
+  const navigate         = useNavigate();
+  const { showAlert }    = useAlert();
+  const fetchingUsersRef = useRef<Record<string, boolean>>({});
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize from cache - ALWAYS deduplicate to prevent stale duplicates
   let initialChats = readCache<ChatData>(CACHE_KEY_CHATS);
-  initialChats = deduplicateAndSort(initialChats);  // CRITICAL: Fix cached duplicates on load
-  
+  initialChats = deduplicateAndSort(initialChats);
   const initialUsers = readCache<UserProfile>(CACHE_KEY_USERS);
 
-  const [chats,      setChats]      = useState<ChatData[]>(initialChats);
-  const [allUsers,   setAllUsers]   = useState<UserProfile[]>(initialUsers);
-  const [loading,    setLoading]    = useState(initialChats.length === 0);
-  const [refreshing, setRefreshing] = useState(false);
+  const [chats,       setChats]      = useState<ChatData[]>(initialChats);
+  const [allUsers,    setAllUsers]   = useState<UserProfile[]>(initialUsers);
+  const [loading,     setLoading]    = useState(initialChats.length === 0);
+  const [refreshing,  setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ user: UserProfile; isCurrentChat: boolean }>>([]);
-  const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile | null>(null);
-  const [showProfileModal, setShowProfileModal] = useState(false);
 
-  // Options modal
   const [optionsModalOpen,     setOptionsModalOpen]     = useState(false);
   const [selectedChatId,       setSelectedChatId]       = useState<string | null>(null);
   const [selectedChatUsername, setSelectedChatUsername] = useState('');
@@ -205,23 +221,9 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   const loadData = useCallback(async (silent: boolean) => {
     try {
       silent ? setRefreshing(true) : setLoading(true);
-
-      // Step 1: fetch chats from API
-      const chatsData = await apiClient.getChats();
-      
-      // IMMEDIATELY deduplicate API response - this is critical!
+      const chatsData     = await apiClient.getChats();
       const dedupedFromApi = deduplicateAndSort(chatsData);
-      
-      // Log deduplication activity for debugging
-      if (dedupedFromApi.length < chatsData.length) {
-        console.warn(
-          `[ChatList] API returned ${chatsData.length} chats, ` +
-          `found ${chatsData.length - dedupedFromApi.length} duplicates. ` +
-          `Deduplicated to ${dedupedFromApi.length} unique conversations.`
-        );
-      }
 
-      // Step 2: fetch only the participants we need (not ALL users)
       const participantIds = [
         ...new Set(
           dedupedFromApi
@@ -230,7 +232,6 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         ),
       ];
 
-      // Fetch all participants in parallel, skip ones we already have cached
       const cachedUsers = readCache<UserProfile>(CACHE_KEY_USERS);
       const cachedIds   = new Set(cachedUsers.map((u: any) => u?.id));
       const missingIds  = participantIds.filter((id) => !cachedIds.has(id));
@@ -247,7 +248,6 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
           isOnline: u.isOnline ?? false,
         })) as UserProfile[];
 
-      // Merge newly fetched with already cached
       const mergedUsers = [
         ...cachedUsers.filter((u: any) => participantIds.includes(u?.id)),
         ...newUsers,
@@ -255,8 +255,6 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
 
       setChats(dedupedFromApi);
       setAllUsers(mergedUsers);
-
-      // Cache deduplicated data
       writeCache(CACHE_KEY_CHATS, dedupedFromApi);
       writeCache(CACHE_KEY_USERS, mergedUsers);
       writeCache(CACHE_KEY_TIME,  Date.now());
@@ -268,18 +266,11 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     }
   }, [currentUser]);
 
-  // Initial load - force fresh data on mount to prevent stale duplicates
   useEffect(() => {
-    // Always load fresh data on mount
-    // Use silent=true if cache exists and is fresh
     const silent = initialChats.length > 0 && !isCacheStale();
     loadData(silent);
-
-    // No auto-refresh - manual refresh only via user interaction
-    return () => {};
   }, [loadData]);
 
-  // Re-fetch silently when a new WebSocket message arrives
   useEffect(() => {
     const handleNewMessage = () => loadData(true);
     window.addEventListener('ws:new_message', handleNewMessage);
@@ -292,10 +283,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     if (!currentUser) return null;
     const otherId = chat.participants.find(id => id !== currentUser.id);
     if (!otherId) return null;
-
     const found = allUsers.find(u => u?.id === otherId);
-
-    // Lazy-fetch any participant still missing after initial load
     if (!found && !fetchingUsersRef.current[otherId]) {
       fetchingUsersRef.current[otherId] = true;
       apiClient.getUser(otherId)
@@ -316,7 +304,6 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         .catch(() => {})
         .finally(() => { fetchingUsersRef.current[otherId] = false; });
     }
-
     return found ?? null;
   }, [currentUser, allUsers]);
 
@@ -330,32 +317,6 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     if (optionsModalOpen) { e.stopPropagation(); return; }
     e.stopPropagation();
     openChat(chatId, otherUser);
-  };
-
-  // ── Search users ────────────────────────────────────────────────────────────
-
-  const handleSearch = (query: string) => {
-    setSearchQuery(query);
-
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    const queryLower = query.toLowerCase();
-    const results = allUsers
-      .filter(user => {
-        if (!user) return false;
-        const username = (user.username || user.name).toLowerCase();
-        return username.includes(queryLower);
-      })
-      .map(user => ({
-        user,
-        isCurrentChat: chats.some(chat => chat.participants.includes(user.id))
-      }))
-      .slice(0, 10); // Limit to 10 results
-
-    setSearchResults(results);
   };
 
   // ── Long-press ──────────────────────────────────────────────────────────────
@@ -379,11 +340,9 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
 
   const removeChat = (id: string) => {
     setChats(prev => {
-      const updated = prev.filter(c => c.id !== id);
-      // Deduplicate before caching to prevent duplicates accumulating
-      const deduped = deduplicateAndSort(updated);
-      writeCache(CACHE_KEY_CHATS, deduped);
-      return deduped;
+      const updated = deduplicateAndSort(prev.filter(c => c.id !== id));
+      writeCache(CACHE_KEY_CHATS, updated);
+      return updated;
     });
   };
 
@@ -427,138 +386,194 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     setSelectedChatUsername('');
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Filtered chats ──────────────────────────────────────────────────────────
+
+  const filteredChats = chats.filter(chat => {
+    if (!searchQuery.trim()) return true;
+    const otherUser = getOtherUser(chat);
+    if (!otherUser) return false;
+    const username = (otherUser.username || otherUser.name).toLowerCase();
+    return username.includes(searchQuery.toLowerCase());
+  });
+
+  // ── Activity bar users (recent chat partners) ───────────────────────────────
+
+  const activityUsers = chats
+    .slice(0, 8)
+    .map(chat => getOtherUser(chat))
+    .filter((u): u is UserProfile => u !== null);
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-full bg-white flex flex-col pointer-events-auto">
+    /* Outer shell: soft blush/pink background (visible behind the white card) */
+    <div className="h-full flex flex-col" style={{ background: 'linear-gradient(160deg, #fce8f0 0%, #f8e8fb 100%)' }}>
 
-      {/* Header */}
-      <div className="md:hidden p-4 border-b flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-800">Messages</h2>
-        {refreshing && (
-          <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
-        )}
+      {/* Header lives on the blush background */}
+      <div className="flex items-center justify-between px-5 pt-6 pb-4 shrink-0">
+        <h1 className="text-[30px] font-extrabold text-gray-900 tracking-tight">Messages</h1>
+        <div className="flex items-center gap-2">
+          {refreshing && (
+            <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+          )}
+          <button
+            onClick={() => loadData(true)}
+            className="w-10 h-10 rounded-xl border border-rose-100 bg-white/70 flex items-center justify-center text-gray-500 hover:text-rose-500 transition-colors shadow-sm"
+            title="Refresh"
+          >
+            {/* Filter / sliders icon matching screenshot */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="4"  y1="6"  x2="20" y2="6"/>
+              <line x1="8"  y1="6"  x2="8"  y2="3"/>
+              <line x1="16" y1="6"  x2="16" y2="3"/>
+              <line x1="4"  y1="12" x2="20" y2="12"/>
+              <line x1="10" y1="12" x2="10" y2="9"/>
+              <line x1="4"  y1="18" x2="20" y2="18"/>
+              <line x1="14" y1="18" x2="14" y2="15"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Body */}
-      {loading ? (
-        <ChatSkeleton />
-      ) : (
-        <div className="flex-1 overflow-y-auto">
-          {/* Search Bar */}
-          <div className="px-3 pt-4 pb-2 sticky top-0 bg-white z-10">
-            <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-2">
-              <i className="fa-solid fa-magnifying-glass text-gray-500 text-sm"></i>
-              <input
-                type="text"
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 bg-transparent text-sm focus:outline-none placeholder-gray-500 text-gray-900"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="text-gray-500 hover:text-gray-700 text-xs"
-                  title="Clear search"
-                >
-                  <i className="fa-solid fa-xmark"></i>
-                </button>
-              )}
-            </div>
+      {/* White card with rounded top corners */}
+      <div className="flex-1 bg-white rounded-t-[28px] flex flex-col overflow-hidden shadow-[0_-4px_24px_rgba(200,60,120,0.08)]">
+
+        {/* Search */}
+        <div className="px-5 pt-5 pb-3 shrink-0">
+          <div className="flex items-center gap-2.5 bg-gray-100 rounded-2xl px-4 py-3">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round">
+              <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none font-medium"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            )}
           </div>
+        </div>
 
-          <div className="px-4 pt-4">
-            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
-              Conversations ({chats.length})
-            </h3>
-          </div>
+        {loading ? (
+          <ChatSkeleton />
+        ) : (
+          <div className="flex-1 overflow-y-auto min-h-0">
 
-          {chats.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-8 text-center">
-              <i className="fa-solid fa-message text-4xl text-gray-300 mb-3" />
-              <p className="text-gray-500 text-sm">No conversations yet. Start swiping to match!</p>
+            {/* Activities */}
+            {activityUsers.length > 0 && !searchQuery && (
+              <div className="px-5 pt-2 pb-4 shrink-0">
+                <h2 className="text-[16px] font-extrabold text-gray-900 mb-4">Activities</h2>
+                <div className="flex gap-5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {currentUser && (
+                    <ActivityItem user={currentUser} isCurrentUser onClick={() => {}} />
+                  )}
+                  {activityUsers.map(user => (
+                    <ActivityItem
+                      key={user.id}
+                      user={user}
+                      onClick={() => {
+                        const chat = chats.find(c => c.participants.includes(user.id));
+                        if (chat) openChat(chat.id, user);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Messages section title */}
+            <div className="px-5 pb-2">
+              <h2 className="text-[16px] font-extrabold text-gray-900">Messages</h2>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-50">
-              {chats.filter(chat => {
-                if (!searchQuery.trim()) return true;
-                const otherUser = getOtherUser(chat);
-                if (!otherUser) return false;
-                const username = (otherUser.username || otherUser.name).toLowerCase();
-                return username.includes(searchQuery.toLowerCase());
-              }).map(chat => {
-                const otherUser = getOtherUser(chat);
-                if (!otherUser) return null;
 
-                const unread   = chat.unreadCount ?? 0;
-                const username = otherUser.username || otherUser.name;
+            {filteredChats.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
+                <div className="w-20 h-20 rounded-full bg-rose-50 flex items-center justify-center mb-4">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f43f5e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                  </svg>
+                </div>
+                <p className="text-gray-800 font-bold text-base">No conversations yet</p>
+                <p className="text-gray-400 text-sm mt-1">Start swiping to find your match!</p>
+              </div>
+            ) : (
+              <div className="pb-6">
+                {filteredChats.map((chat, index) => {
+                  const otherUser = getOtherUser(chat);
+                  if (!otherUser) return null;
 
-                return (
-                  <div
-                    key={chat.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={e => handleChatClick(e, chat.id, otherUser)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' || e.key === ' ') {
+                  const unread    = chat.unreadCount ?? 0;
+                  const username  = otherUser.username || otherUser.name;
+                  const lastMsg   = getLastMessage(chat, currentUser?.id);
+                  const timeLabel = getTimeAgo(chat.lastUpdated);
+
+                  return (
+                    <div
+                      key={chat.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={e => handleChatClick(e, chat.id, otherUser)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openChat(chat.id, otherUser);
+                        }
+                      }}
+                      onTouchStart={() => handleTouchStart(chat.id, username)}
+                      onTouchEnd={handleTouchEnd}
+                      onContextMenu={e => {
                         e.preventDefault();
-                        openChat(chat.id, otherUser);
-                      }
-                    }}
-                    onTouchStart={() => handleTouchStart(chat.id, username)}
-                    onTouchEnd={handleTouchEnd}
-                    onContextMenu={e => {
-                      e.preventDefault();
-                      setSelectedChatId(chat.id);
-                      setSelectedChatUsername(username);
-                      setOptionsModalOpen(true);
-                    }}
-                    className={`flex items-center gap-4 p-4 transition-colors cursor-pointer pointer-events-auto ${
-                      unread > 0 ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50 active:bg-gray-100'
-                    }`}
-                  >
-                    {/* Avatar with online indicator */}
-                    <div className="relative shrink-0">
-                      <Avatar src={otherUser.images?.[0]} alt={username} />
-                      {otherUser.isOnline && (
-                        <span className="absolute bottom-0.5 right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full" />
-                      )}
-                    </div>
+                        setSelectedChatId(chat.id);
+                        setSelectedChatUsername(username);
+                        setOptionsModalOpen(true);
+                      }}
+                      className="flex items-center gap-3.5 px-5 py-3 hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition-colors"
+                    >
+                      {/* Avatar with ring always shown */}
+                      <Avatar
+                        src={otherUser.images?.[0]}
+                        alt={username}
+                        hasRing={true}
+                        isOnline={otherUser.isOnline}
+                      />
 
-                    {/* Chat info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-center mb-0.5">
-                        <h4 className={`text-gray-900 truncate text-sm ${unread > 0 ? 'font-black' : 'font-bold'}`}>
-                          {username}
-                        </h4>
-                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                          <span className={`text-[15px] truncate ${unread > 0 ? 'font-extrabold text-gray-900' : 'font-bold text-gray-800'}`}>
+                            {username}
+                          </span>
+                          <span className="text-[11px] text-gray-400 font-medium shrink-0">
+                            {timeLabel}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-[13px] truncate ${unread > 0 ? 'text-gray-700 font-semibold' : 'text-gray-400 font-normal'}`}>
+                            {lastMsg.isMe && <span className="text-gray-400">You: </span>}
+                            {lastMsg.text}
+                          </p>
                           {unread > 0 && (
-                            <span className="inline-flex items-center justify-center bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                            <span className="min-w-[20px] h-5 rounded-full bg-rose-500 text-white text-[11px] font-black flex items-center justify-center px-1.5 shrink-0">
                               {unread > 9 ? '9+' : unread}
                             </span>
                           )}
-                          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
-                            {getTimeAgo(chat.lastUpdated)}
-                          </span>
                         </div>
                       </div>
-
-                      <p className={`text-xs truncate font-medium ${unread > 0 ? 'text-gray-600 font-semibold' : 'text-gray-400'}`}>
-                        {getLastMessage(chat)}
-                      </p>
-
-                      <span className={`text-[10px] font-semibold uppercase tracking-tight ${otherUser.isOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        {formatLastSeen(otherUser.lastSeen, !!otherUser.isOnline)}
-                      </span>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Options Modal */}
       <ChatOptionsModal

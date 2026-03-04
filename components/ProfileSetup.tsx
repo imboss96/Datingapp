@@ -177,20 +177,20 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({ userId, name, email, profil
           <div className="bg-gradient-to-br from-pink-50 to-red-50 dark:from-gray-700 dark:to-gray-800 rounded-2xl p-5 sm:p-6 border border-pink-100 dark:border-gray-600">
             <div className="flex items-center gap-2 mb-4">
               <i className="fa-solid fa-image text-red-500 text-lg"></i>
-              <label className="text-sm font-bold text-gray-900 dark:text-white">Profile Photos</label>
+              <label className="text-sm font-bold text-gray-900 dark:text-white">Profile Photos & Videos</label>
             </div>
             
             {/* Upload File Input */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Upload Photos</label>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Upload Photos or Videos</label>
               <input
                 type="file"
                 multiple
-                accept="image/*"
+                accept="image/*,video/*"
                 onChange={handleImageUpload}
                 className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-2xl cursor-pointer hover:border-red-500 dark:hover:border-red-400 transition-colors focus:outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Drop up to 5 photos (JPG, PNG) - First photo will be your profile picture</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Drop up to 5 files (JPG, PNG, MP4, WebM) - First item will be your profile picture</p>
             </div>
 
             {/* URL Input */}

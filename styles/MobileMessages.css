@@ -1,0 +1,36 @@
+/* Paste the CSS from your HTML here. You can further modularize or optimize as needed. */
+
+:root {
+  --pink: #f72585;
+  --pink-light: #ff6b9d;
+  --bg: #ffffff;
+  --text-dark: #111;
+  --text-muted: #999;
+  --bottom-bar: 64px;
+}
+
+html, body {
+  height: 100%;
+  background: #e0e0e0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: 'Nunito', sans-serif;
+}
+
+.phone {
+  width: 375px;
+  height: 812px;
+  background: var(--bg);
+  border-radius: 48px;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    0 0 0 10px #1a1a1a,
+    0 0 0 12px #333,
+    0 30px 80px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ...existing CSS from your HTML... */

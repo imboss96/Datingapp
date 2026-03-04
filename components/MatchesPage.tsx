@@ -31,195 +31,263 @@ interface MatchesPageProps {
   currentUserId?: string;
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+const isToday = (dateStr: string): boolean => {
+  const d = new Date(dateStr);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+};
+
+const isYesterday = (dateStr: string): boolean => {
+  const d = new Date(dateStr);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate();
+};
+
+const getSectionLabel = (dateStr: string): string => {
+  if (isToday(dateStr)) return 'Today';
+  if (isYesterday(dateStr)) return 'Yesterday';
+  return new Date(dateStr).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+};
+
+// ── Skeleton ───────────────────────────────────────────────────────────────────
+
+const MatchSkeleton: React.FC = () => (
+  <div className="grid grid-cols-2 gap-3 px-4">
+    {Array.from({ length: 4 }).map((_, i) => (
+      <div key={i} className="rounded-2xl overflow-hidden bg-gray-100 animate-pulse">
+        <div className="aspect-[3/4] bg-gray-200" />
+        <div className="bg-gray-100 p-2">
+          <div className="h-3 bg-gray-200 rounded w-2/3 mb-1" />
+          <div className="flex gap-2 mt-2">
+            <div className="flex-1 h-8 bg-gray-200 rounded-xl" />
+            <div className="flex-1 h-8 bg-gray-200 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+// ── Section Divider ────────────────────────────────────────────────────────────
+
+const SectionDivider: React.FC<{ label: string }> = ({ label }) => (
+  <div className="flex items-center gap-3 px-4 py-3">
+    <div className="flex-1 h-px bg-gray-200" />
+    <span className="text-[12px] font-semibold text-gray-400 tracking-wide">{label}</span>
+    <div className="flex-1 h-px bg-gray-200" />
+  </div>
+);
+
+// ── Match Card ─────────────────────────────────────────────────────────────────
+
+const MatchCard: React.FC<{
+  match: Match;
+  onChat: () => void;
+  onUnmatch: () => void;
+}> = ({ match, onChat, onUnmatch }) => {
+  const user = match.matchedUser;
+  const photo = user?.profilePicture || match.user1Image || match.user2Image;
+  const name  = user?.name || match.user1Name || match.user2Name || 'Unknown';
+  const age   = user?.age;
+
+  return (
+    <div className="rounded-[18px] overflow-hidden shadow-sm" style={{ background: '#1a1a1a' }}>
+      {/* Photo */}
+      <div className="relative aspect-[3/4] bg-gray-800">
+        {photo ? (
+          <img
+            src={photo}
+            alt={name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center text-white text-4xl font-black"
+            style={{ background: 'linear-gradient(135deg, #f72585, #c9184a)' }}
+          >
+            {name.charAt(0).toUpperCase()}
+          </div>
+        )}
+
+        {/* Name overlay */}
+        <div
+          className="absolute bottom-0 left-0 right-0 px-3 py-2"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, transparent 100%)' }}
+        >
+          <p className="text-white font-bold text-[14px] leading-tight">
+            {name}{age ? `, ${age}` : ''}
+          </p>
+        </div>
+      </div>
+
+      {/* Action bar */}
+      <div className="flex" style={{ background: '#1a1a1a' }}>
+        {/* Unmatch / X */}
+        <button
+          onClick={onUnmatch}
+          className="flex-1 flex items-center justify-center py-3 transition-colors hover:bg-white/10 active:bg-white/20"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M18 6L6 18M6 6l12 12" stroke="white" strokeWidth="2.2" strokeLinecap="round"/>
+          </svg>
+        </button>
+
+        {/* Divider */}
+        <div className="w-px bg-white/10 my-2" />
+
+        {/* Like / Chat */}
+        <button
+          onClick={onChat}
+          className="flex-1 flex items-center justify-center py-3 transition-colors hover:bg-white/10 active:bg-white/20"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#f72585">
+            <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── Main Component ─────────────────────────────────────────────────────────────
+
 const MatchesPage: React.FC<MatchesPageProps> = ({ currentUserId }) => {
   const navigate = useNavigate();
   const { showAlert, showConfirm } = useAlert();
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [matches, setMatches]   = useState<Match[]>([]);
+  const [loading, setLoading]   = useState(true);
 
-  // App-like swipe view state (mirrors behavior from SwiperScreen)
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [hearts, setHearts] = useState<{ id: string; x: number; y: number }[]>([]);
-  const [tapCount, setTapCount] = useState(0);
-  const [lastTapTime, setLastTapTime] = useState(0);
-  const cardRef = React.useRef<HTMLDivElement>(null);
-  const touchStartX = React.useRef(0);
-  const touchEndX = React.useRef(0);
-  const doubleTapTimeout = React.useRef<NodeJS.Timeout | null>(null);
-  useEffect(() => {
-    fetchMatches();
-  }, [currentUserId]);
+  useEffect(() => { fetchMatches(); }, [currentUserId]);
 
   const fetchMatches = async () => {
     try {
       setLoading(true);
-      setError(null);
-      const uid = currentUserId;
-      if (!uid) {
-        setMatches([]);
-        return;
-      }
-
-      const response = await apiClient.getMatches(uid);
-      // apiClient.getMatches returns either an array or an object with { matches }
+      if (!currentUserId) { setMatches([]); return; }
+      const response   = await apiClient.getMatches(currentUserId);
       const matchesData = Array.isArray(response) ? response : (response?.matches || []);
       setMatches(matchesData);
     } catch (err: any) {
       console.error('[Matches] Error fetching:', err);
-      setError(err?.message || 'Failed to load matches');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUnmatch = async (matchId: string) => {
+  const handleUnmatch = (matchId: string) => {
     showConfirm('Unmatch?', 'Are you sure you want to unmatch this person?', async () => {
       try {
         await apiClient.deleteMatch(matchId);
-        setMatches(matches.filter(m => m.id !== matchId));
-        setCurrentIndex(Math.max(0, currentIndex - 1));
+        setMatches(prev => prev.filter(m => m.id !== matchId));
       } catch (err: any) {
-        console.error('[Matches] Error unmatching:', err);
         showAlert('Error', 'Failed to unmatch: ' + err?.message);
       }
     }, true);
   };
 
-  const handleStartChat = (matchId: string) => {
-    const match = matches.find(m => m.id === matchId);
+  const handleStartChat = (match: Match) => {
     if (match?.matchedUser?.id) {
-      // Navigate with userId prefixed with "new-" to indicate new chat
-      // This way we don't create the chat until first message is sent
-      console.log('[Matches] Opening new chat with:', match.matchedUser.name);
       navigate(`/chat/new-${match.matchedUser.id}`, { state: { matchedProfile: match.matchedUser } });
     }
   };
 
-  // Swipe navigation for app-like feel
-  const handleSwipe = (direction: 'left' | 'right') => {
-    setCurrentIndex((prev) => {
-      if (direction === 'right') return Math.min(prev + 1, matches.length - 1);
-      return Math.max(prev - 1, 0);
-    });
-    setSelectedMatch(null);
-  };
+  // ── Group matches by date section ─────────────────────────────────────────────
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    touchEndX.current = e.changedTouches[0].clientX;
-    const diff = touchStartX.current - touchEndX.current;
-    if (diff > 50) handleSwipe('right');
-    else if (diff < -50) handleSwipe('left');
-  };
-
-  const addHeart = (x: number, y: number) => {
-    const newHeart = { id: `h-${Date.now()}-${Math.random()}`, x, y };
-    setHearts((p) => [...p, newHeart]);
-    setTimeout(() => setHearts((p) => p.filter((h) => h.id !== newHeart.id)), 900);
-  };
-
-  const handleCardTap = (e: React.MouseEvent | React.TouchEvent) => {
-    const now = Date.now();
-    const timeDiff = now - lastTapTime;
-    if (timeDiff < 300 && tapCount > 0) {
-      const clientX = 'clientX' in e ? (e as React.MouseEvent).clientX : (e as React.TouchEvent).currentTarget.getBoundingClientRect().left + (e as any).currentTarget.getBoundingClientRect().width / 2;
-      const clientY = 'clientY' in e ? (e as React.MouseEvent).clientY : (e as any).currentTarget.getBoundingClientRect().top + (e as any).currentTarget.getBoundingClientRect().height / 2;
-      if (cardRef.current) {
-        const rect = cardRef.current.getBoundingClientRect();
-        addHeart(clientX - rect.left, clientY - rect.top);
-      }
-      // double tap: open chat for current
-      const m = matches[currentIndex];
-      if (m?.matchedUser?.id) handleStartChat(m.id);
-      if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
-      setTapCount(0);
-      setLastTapTime(0);
-    } else {
-      setTapCount((t) => t + 1);
-      setLastTapTime(now);
-      if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
-      doubleTapTimeout.current = setTimeout(() => setTapCount(0), 500);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mb-4"></div>
-          <p className="text-gray-600">Loading your matches...</p>
-        </div>
-      </div>
-    );
+  const grouped: { label: string; items: Match[] }[] = [];
+  for (const match of matches) {
+    const label = getSectionLabel(match.createdAt);
+    const existing = grouped.find(g => g.label === label);
+    if (existing) existing.items.push(match);
+    else grouped.push({ label, items: [match] });
   }
 
-  // App-like centered card view
-  const current = matches[currentIndex];
+  // ── Render ─────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-screen flex items-start justify-center bg-white md:bg-gray-50 p-4 md:p-8">
-      <div className="w-full max-w-[420px] h-full flex flex-col items-center">
-        <div className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white p-4 rounded-2xl mb-4">
-          <h1 className="text-xl font-bold flex items-center gap-2"><i className="fa-solid fa-heart text-lg"></i>Matches</h1>
-          <p className="text-pink-100 text-sm">{matches.length} total matches</p>
+    <div
+      className="h-full w-full flex flex-col overflow-hidden"
+      style={{ background: '#fff' }}
+    >
+      {/* ── Header ── */}
+      <div className="px-5 pt-6 pb-2 flex items-start justify-between shrink-0">
+        <div>
+          <h1 className="text-[28px] font-extrabold text-gray-900 tracking-tight leading-tight">
+            Matches
+          </h1>
+          <p className="text-[14px] text-gray-400 font-medium mt-0.5 leading-snug max-w-[220px]">
+            This is a list of people who have liked you and your matches.
+          </p>
         </div>
 
-        {matches.length === 0 ? (
-          <div className="flex-1 w-full rounded-2xl bg-white shadow-lg p-8 flex flex-col items-center justify-center">
-            <div className="mb-4">
-              <i className="fa-solid fa-heart text-6xl text-gray-300"></i>
-            </div>
-            <h3 className="text-lg font-bold text-gray-800 mb-2">No matches yet</h3>
-            <p className="text-gray-600 text-center">Keep swiping — your matches will appear here when you have mutual likes.</p>
-          </div>
-        ) : (
-          <div className="flex-1 w-full max-h-[80vh] flex flex-col items-center justify-between">
-            <div
-              ref={cardRef}
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-              onClick={handleCardTap}
-              className="relative w-full flex-1 rounded-2xl overflow-hidden shadow-2xl bg-gray-200"
-            >
-              {current?.matchedUser?.profilePicture && (
-                <img src={current.matchedUser.profilePicture} alt={current.matchedUser.name} className="w-full h-full object-cover" />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent p-6 flex flex-col justify-end">
-                <div>
-                  <h2 className="text-2xl font-extrabold text-white truncate">{current.matchedUser?.name} {current.matchedUser?.age && <span className="text-sm font-medium text-gray-200">{current.matchedUser.age}</span>}</h2>
-                  {current.matchedUser?.location && <p className="text-sm text-gray-300"><i className="fa-solid fa-location-dot mr-2"></i>{current.matchedUser.location}</p>}
-                </div>
-                <div className="mt-4 flex gap-3">
-                  <button onClick={() => handleStartChat(current.id)} className="flex-1 py-3 sm:py-4 min-h-[44px] sm:min-h-[48px] bg-white/20 text-white rounded-full font-semibold transition-opacity hover:bg-white/30 active:opacity-75"><i className="fa-solid fa-message mr-2"></i>Message</button>
-                  <button onClick={() => handleUnmatch(current.id)} className="flex-1 py-3 sm:py-4 min-h-[44px] sm:min-h-[48px] bg-gray-200 text-gray-800 rounded-full font-semibold transition-opacity hover:bg-gray-300 active:opacity-75"><i className="fa-solid fa-user-slash mr-2"></i>Unmatch</button>
-                </div>
-                <p className="text-xs text-gray-300 text-center mt-3">Matched {new Date(current.createdAt).toLocaleDateString()}</p>
-              </div>
+        {/* Icon button top-right */}
+        <div
+          className="w-11 h-11 rounded-2xl flex items-center justify-center mt-1 shrink-0"
+          style={{ border: '1.5px solid #fdd0e0', background: '#fff9fb' }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"
+              stroke="#f72585"
+              strokeWidth="1.8"
+              fill="none"
+            />
+          </svg>
+        </div>
+      </div>
 
-              {/* Hearts overlay */}
-              <div className="absolute inset-0 pointer-events-none">
-                {hearts.map(h => (
-                  <div key={h.id} style={{ left: h.x, top: h.y }} className="absolute animate-pulse">
-                    <i className="fa-solid fa-heart text-red-500 text-3xl drop-shadow-lg"></i>
-                  </div>
+      {/* ── Body ── */}
+      {loading ? (
+        <div className="flex-1 overflow-y-auto pt-4">
+          <MatchSkeleton />
+        </div>
+      ) : matches.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center px-8 text-center pb-20">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center mb-5"
+            style={{ background: '#fff0f5' }}
+          >
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"
+                stroke="#f72585"
+                strokeWidth="1.5"
+                fill="none"
+              />
+            </svg>
+          </div>
+          <h3 className="text-[18px] font-extrabold text-gray-800 mb-2">No matches yet</h3>
+          <p className="text-[14px] text-gray-400 leading-relaxed">
+            Keep swiping — your matches will appear here when you have mutual likes.
+          </p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto pb-6 min-h-0">
+          {grouped.map(group => (
+            <div key={group.label}>
+              <SectionDivider label={group.label} />
+
+              {/* 2-column grid */}
+              <div className="grid grid-cols-2 gap-3 px-4">
+                {group.items.map(match => (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    onChat={() => handleStartChat(match)}
+                    onUnmatch={() => handleUnmatch(match.id)}
+                  />
                 ))}
               </div>
             </div>
-
-            {/* Controls */}
-            <div className="w-full flex items-center justify-center gap-4 mt-4 sm:mt-6">
-              <button onClick={() => handleSwipe('left')} className="w-14 h-14 sm:w-12 sm:h-12 min-h-[48px] min-w-[48px] rounded-full bg-white shadow-md flex items-center justify-center text-lg hover:shadow-lg transition-shadow active:scale-95">◀</button>
-              <div className="text-sm text-gray-600 px-4">{currentIndex + 1} / {matches.length}</div>
-              <button onClick={() => handleSwipe('right')} className="w-14 h-14 sm:w-12 sm:h-12 min-h-[48px] min-w-[48px] rounded-full bg-white shadow-md flex items-center justify-center text-lg hover:shadow-lg transition-shadow active:scale-95">▶</button>
-            </div>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

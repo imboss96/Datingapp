@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useWebSocketContext } from '../services/WebSocketProvider';
-import apiClient from '../services/apiClient';
 
 interface MatchNotification {
   matchId: string;
@@ -23,172 +22,238 @@ interface MatchNotification {
 
 interface MatchNotificationCenterProps {
   userId: string;
+  currentUserPhoto?: string;
 }
 
-export const MatchNotificationCenter: React.FC<MatchNotificationCenterProps> = ({ userId }) => {
+export const MatchNotificationCenter: React.FC<MatchNotificationCenterProps> = ({ userId, currentUserPhoto }) => {
   const [notification, setNotification] = useState<MatchNotification | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [visible, setVisible] = useState(false);
   const { addMessageHandler } = useWebSocketContext();
 
   useEffect(() => {
-    console.log('[MatchNotificationCenter] Registered for user:', userId);
-    
-    // Register handler for match notifications
     const unsubscribe = addMessageHandler((data: any) => {
-      console.log('[MatchNotificationCenter] Received WebSocket data:', data);
-      
       if (data.type === 'match') {
-        console.log('[MatchNotificationCenter] MATCH DETECTED!', data);
         setNotification({
           matchId: data.matchId,
           matchedWith: data.matchedWith,
           compatibility: data.compatibility,
-          timestamp: data.timestamp
+          timestamp: data.timestamp,
         });
         setShowModal(true);
-
-        // Auto-hide after 10 seconds if user doesn't interact
-        setTimeout(() => {
-          setShowModal(false);
-        }, 10000);
+        setTimeout(() => setVisible(true), 10);
+        setTimeout(() => handleClose(), 10000);
       }
     });
-
     return unsubscribe;
   }, [userId, addMessageHandler]);
 
-  const handleSayHello = () => {
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(() => {
+      setShowModal(false);
+      setNotification(null);
+    }, 400);
+  };
+
+  const handleSendMessage = () => {
     if (notification?.matchedWith.id) {
-      // Navigate without creating chat - let it be created on first message
-      console.log('[MatchNotificationCenter] Opening new chat with:', notification.matchedWith.name);
       window.location.href = `/#/chat/new-${notification.matchedWith.id}`;
     }
   };
 
-  const handleViewProfile = () => {
-    if (notification?.matchedWith.id) {
-      window.location.href = `/profile/${notification.matchedWith.id}`;
-    }
-  };
+  if (!showModal || !notification) return null;
 
-  if (!showModal || !notification) {
-    return null;
-  }
+  const matched = notification.matchedWith;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-md w-full overflow-hidden animate-pulse">
-        {/* Header - Celebratory */}
-        <div className="bg-gradient-to-r from-pink-500 to-red-500 p-6 text-center">
-          <div className="text-4xl mb-2">🎉</div>
-          <h2 className="text-white text-2xl font-bold">It's a Match!</h2>
-          <p className="text-white/90 text-sm mt-1">You have a new connection</p>
-        </div>
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.82)',
+      backdropFilter: 'blur(6px)',
+      transition: 'opacity 0.4s ease',
+      opacity: visible ? 1 : 0,
+    }}>
+      {/* Particle burst (static decorative dots) */}
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+        {Array.from({ length: 28 }).map((_, i) => (
+          <div key={i} style={{
+            position: 'absolute',
+            width: 4 + (i % 3) * 2,
+            height: 4 + (i % 3) * 2,
+            borderRadius: '50%',
+            background: ['#FF4B7B','#FF6B95','#fff','#FFB3C6','#FF2D55'][i % 5],
+            left: `${5 + (i * 3.3) % 90}%`,
+            top: `${5 + (i * 7.1) % 80}%`,
+            opacity: 0.25 + (i % 4) * 0.1,
+          }} />
+        ))}
+      </div>
 
-        {/* Match Photo */}
-        {notification.matchedWith.profilePicture && (
-          <div className="flex justify-center p-6">
-            <img
-              src={notification.matchedWith.profilePicture}
-              alt={notification.matchedWith.name}
-              className="w-32 h-32 rounded-full object-cover border-4 border-pink-500 shadow-lg"
-            />
-          </div>
-        )}
+      <div style={{
+        width: '100%', maxWidth: 380,
+        padding: '0 24px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        transform: visible ? 'translateY(0) scale(1)' : 'translateY(40px) scale(0.95)',
+        transition: 'transform 0.45s cubic-bezier(0.34,1.56,0.64,1)',
+      }}>
 
-        {/* Match Info */}
-        <div className="px-6 py-4 text-center">
-          <h3 className="text-2xl font-bold text-gray-800 mb-2">
-            {notification.matchedWith.name}
-            {notification.matchedWith.age && (
-              <span className="text-gray-600 font-normal ml-2">{notification.matchedWith.age}</span>
-            )}
-          </h3>
+        {/* Title */}
+        <h1 style={{
+          fontFamily: "'Dancing Script', 'Brush Script MT', cursive",
+          fontSize: 58,
+          fontWeight: 700,
+          color: '#fff',
+          margin: '0 0 12px',
+          textAlign: 'center',
+          lineHeight: 1.1,
+          textShadow: '0 2px 20px rgba(255,75,123,0.4)',
+          letterSpacing: -1,
+        }}>
+          It's a Match!
+        </h1>
 
-          {notification.matchedWith.location && (
-            <p className="text-gray-600 text-sm mb-3">📍 {notification.matchedWith.location}</p>
-          )}
+        {/* Subtitle */}
+        <p style={{
+          color: 'rgba(255,255,255,0.82)',
+          fontSize: 17,
+          textAlign: 'center',
+          margin: '0 0 44px',
+          lineHeight: 1.5,
+          fontFamily: "'Helvetica Neue', Arial, sans-serif",
+          fontWeight: 400,
+          maxWidth: 280,
+        }}>
+          You and <strong style={{ color: '#fff', fontWeight: 600 }}>{matched.name}</strong> have liked each other.
+        </p>
 
-          {notification.matchedWith.bio && (
-            <p className="text-gray-700 text-sm mb-4 italic">&quot;{notification.matchedWith.bio}&quot;</p>
-          )}
-
-          {/* Compatibility Scores */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <h4 className="text-gray-700 font-semibold text-sm mb-3">Compatibility</h4>
-            <div className="flex gap-4 justify-center">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-pink-500">
-                  {notification.compatibility.interestMatch}%
+        {/* Two circular photos */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 20,
+          marginBottom: 52,
+        }}>
+          {/* Current user */}
+          <div style={photoRingStyle}>
+            <div style={photoInnerStyle}>
+              {currentUserPhoto ? (
+                <img src={currentUserPhoto} alt="You" style={photoImgStyle} />
+              ) : (
+                <div style={{ ...photoImgStyle, background: 'linear-gradient(135deg,#FF4B7B,#FF8CAB)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <span style={{ fontSize: 36, color: '#fff', fontWeight: 700 }}>Y</span>
                 </div>
-                <p className="text-xs text-gray-600">Interest Match</p>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-red-500">
-                  {Math.round(notification.compatibility.ageMatch)}%
-                </div>
-                <p className="text-xs text-gray-600">Age Match</p>
-              </div>
+              )}
             </div>
-
-            {notification.compatibility.mutualInterests && notification.compatibility.mutualInterests.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs text-gray-600 mb-2">Shared interests:</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {notification.compatibility.mutualInterests.slice(0, 3).map((interest) => (
-                    <span key={interest} className="text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded-full">
-                      {interest}
-                    </span>
-                  ))}
-                  {notification.compatibility.mutualInterests.length > 3 && (
-                    <span className="text-xs text-gray-600">+{notification.compatibility.mutualInterests.length - 3} more</span>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
-          {/* All Interests */}
-          {notification.matchedWith.interests && notification.matchedWith.interests.length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs text-gray-600 mb-2">Interests:</p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                {notification.matchedWith.interests.slice(0, 5).map((interest) => (
-                  <span key={interest} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
-                    {interest}
-                  </span>
-                ))}
-              </div>
+          {/* Heart between */}
+          <div style={{
+            width: 36, height: 36,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1,
+          }}>
+            <svg width="32" height="28" viewBox="0 0 24 21" fill="none">
+              <path d="M12 20.5C12 20.5 1 13.5 1 6.5C1 3.46 3.46 1 6.5 1C8.24 1 9.79 1.81 10.88 3.09L12 4.5L13.12 3.09C14.21 1.81 15.76 1 17.5 1C20.54 1 23 3.46 23 6.5C23 13.5 12 20.5 12 20.5Z" fill="#FF4B7B" />
+            </svg>
+          </div>
+
+          {/* Matched user */}
+          <div style={photoRingStyle}>
+            <div style={photoInnerStyle}>
+              {matched.profilePicture ? (
+                <img src={matched.profilePicture} alt={matched.name} style={photoImgStyle} />
+              ) : (
+                <div style={{ ...photoImgStyle, background: 'linear-gradient(135deg,#a18cd1,#fbc2eb)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <span style={{ fontSize: 36, color: '#fff', fontWeight: 700 }}>{matched.name.charAt(0).toUpperCase()}</span>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="px-6 py-4 flex gap-3">
-          <button
-            onClick={handleViewProfile}
-            className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition"
-          >
-            View Profile
-          </button>
-          <button
-            onClick={handleSayHello}
-            className="flex-1 px-4 py-2 bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 text-white font-semibold rounded-lg transition"
-          >
-            Say Hello 💬
-          </button>
-        </div>
-
-        {/* Close Button */}
+        {/* SEND MESSAGE button */}
         <button
-          onClick={() => setShowModal(false)}
-          className="w-full py-2 text-gray-600 hover:text-gray-800 border-t text-sm"
+          onClick={handleSendMessage}
+          style={{
+            width: '100%',
+            padding: '18px 0',
+            borderRadius: 50,
+            border: 'none',
+            background: 'linear-gradient(90deg, #FF4B7B 0%, #FF8C42 100%)',
+            color: '#fff',
+            fontSize: 15,
+            fontWeight: 700,
+            letterSpacing: 2,
+            cursor: 'pointer',
+            marginBottom: 14,
+            fontFamily: "'Helvetica Neue', Arial, sans-serif",
+            boxShadow: '0 4px 24px rgba(255,75,123,0.45)',
+            transition: 'transform 0.12s, box-shadow 0.12s',
+          }}
+          onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.97)')}
+          onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
         >
-          Maybe Later
+          SEND MESSAGE
+        </button>
+
+        {/* KEEP SWIPING button */}
+        <button
+          onClick={handleClose}
+          style={{
+            width: '100%',
+            padding: '16px 0',
+            borderRadius: 50,
+            border: '2px solid rgba(255,75,123,0.7)',
+            background: 'transparent',
+            color: '#fff',
+            fontSize: 15,
+            fontWeight: 700,
+            letterSpacing: 2,
+            cursor: 'pointer',
+            fontFamily: "'Helvetica Neue', Arial, sans-serif",
+            transition: 'border-color 0.2s, transform 0.12s',
+          }}
+          onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.97)')}
+          onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
+        >
+          KEEP SWIPING
         </button>
       </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap');
+      `}</style>
     </div>
   );
+};
+
+const photoRingStyle: React.CSSProperties = {
+  width: 140,
+  height: 140,
+  borderRadius: '50%',
+  padding: 4,
+  background: 'linear-gradient(135deg, #FF4B7B, #FF8C42)',
+  boxShadow: '0 6px 32px rgba(255,75,123,0.35)',
+  flexShrink: 0,
+};
+
+const photoInnerStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  borderRadius: '50%',
+  overflow: 'hidden',
+  border: '3px solid #1a1a1a',
+};
+
+const photoImgStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  display: 'block',
+  filter: 'grayscale(20%)',
 };
 
 export default MatchNotificationCenter;

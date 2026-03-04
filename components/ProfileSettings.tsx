@@ -1017,21 +1017,21 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       <p className="text-xs text-blue-800"><strong>Pro Tip:</strong> Profiles with clear bio + verified photos get 3x more matches!</p>
                     </div>
 
-                    {/* Profile Photos */}
+                    {/* Profile Photos & Videos */}
                     <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Profile Photos</label>
+                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Profile Photos & Videos</label>
                       
                       {/* Upload File Input */}
                       <div className="mb-3">
                         <input
                           type="file"
                           multiple
-                          accept="image/*"
+                          accept="image/*,video/*"
                           onChange={handleImageUpload}
                           disabled={uploading}
                           className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-rose-500 transition-colors focus:outline-none bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Drop photos (JPG, PNG) • Max 5 per upload</p>
+                        <p className="text-xs text-gray-500 mt-1">Drop photos or videos (JPG, PNG, MP4, WebM) • Max 5 per upload</p>
                         
                         {/* Upload Progress */}
                         {uploading && uploadProgress > 0 && (

@@ -1247,11 +1247,19 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             ) : displayedProfiles.length === 0 && !discoverySearch ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center space-y-4">
-                  <div className="text-6xl text-gray-300 mb-2">—</div>
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-800 mb-2">No profiles available</h3>
-                    <p className="text-gray-500 text-sm">Check back soon for more matches</p>
+                  <div className="bg-blue-50 p-6 rounded-full mb-4 shadow-inner inline-block">
+                    <i className="fa-solid fa-users text-4xl text-blue-500"></i>
                   </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">You have finished potential matches</h3>
+                    <p className="text-gray-500 text-sm max-w-xs">You've reviewed all available profiles. More members join every day!</p>
+                  </div>
+                  <button 
+                    onClick={() => window.location.reload()} 
+                    className="px-6 py-2 mt-4 spark-gradient text-white rounded-full font-bold transition-transform hover:shadow-lg"
+                  >
+                    Refresh
+                  </button>
                 </div>
               </div>
             ) : (
