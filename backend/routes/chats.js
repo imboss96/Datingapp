@@ -286,7 +286,8 @@ router.post('/create-or-get', async (req, res) => {
         } else {
           throw upsertErr;
         }
-      } else {
+      }
+    } else {
       // Ensure participantsKey is set on existing chat
       if (!chat.participantsKey) {
         chat.participantsKey = participantsKey;
