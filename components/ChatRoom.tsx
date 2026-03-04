@@ -666,8 +666,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       } catch (err: any) {
         console.error('[ERROR ChatRoom] Failed to load chat:', err.message || err);
         console.error('[ERROR ChatRoom] Full error details:', err);
-        console.error('[ERROR ChatRoom] Error response:', err.response || 'No response object');
-        showAlert('Loading Error', `Chat loading failed: ${err.message || 'Unknown error'}`);
+        // Don't show error alert to user - let them type and send message instead
+        // This matches WhatsApp behavior where failed loads fail silently
+        setLoading(false);
       } finally {
         setLoading(false);
       }

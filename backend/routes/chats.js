@@ -190,12 +190,9 @@ router.post('/create-or-get', async (req, res) => {
   try {
     const { otherUserId, initialMessage } = req.body;
     
-    // ✅ NEW VALIDATION: Don't create chat without initial message or explicit flag
-    const hasValidMessage = initialMessage && (initialMessage.text?.trim() || initialMessage.media);
-    if (!hasValidMessage && !req.body.skipMessageValidation) {
-      console.log('[DEBUG] Rejecting create-or-get without initial message');
-      return res.status(400).json({ error: 'Cannot create chat without initial message content' });
-    }
+    // Simply allow chat creation without validation - like WhatsApp
+    // Message validation happens only on MESSAGE SEND (/:chatId/messages route)
+    // This allows users to open a chat and type a message naturally
     
     const participants = getSortedParticipants(req.userId, otherUserId);
 
