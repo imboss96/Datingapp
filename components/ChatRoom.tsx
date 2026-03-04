@@ -618,6 +618,21 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             setMessages([]);
             setLoading(false);
             return;
+          } else {
+            // Fallback: load user profile by ID
+            try {
+              const allUsers = await apiClient.getAllUsers();
+              const user = (allUsers || []).find((u: UserProfile | null) => u && (u as any).id === actualId);
+              if (user) {
+                setChatUser(user);
+                setChatId(null);
+                setMessages([]);
+                setLoading(false);
+                return;
+              }
+            } catch (err) {
+              console.warn('[WARN ChatRoom] Failed to load user profil:', err);
+            }
           }
         }
 
