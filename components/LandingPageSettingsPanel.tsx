@@ -286,7 +286,7 @@ const LandingPageSettingsPanel: React.FC<Props> = ({ isOpen = true, onClose = ()
 
         {/* Messages */}
         {message && (
-          <div className={`p-4 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+          <div className={`p-4 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
             <div className="flex items-center gap-2">
               <i className={`fa-solid ${message.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
               {message.text}
@@ -495,7 +495,7 @@ const LandingPageSettingsPanel: React.FC<Props> = ({ isOpen = true, onClose = ()
                 {heroSettings.heroVideoUrl && (
                   <button
                     onClick={() => setHeroSettings({ ...heroSettings, heroVideoUrl: '', heroVideoOpacity: 0.5, heroVideoTransparency: 0.3 })}
-                    className="w-full mt-4 bg-red-500 text-white font-bold py-2 rounded-lg hover:bg-red-600 transition-all"
+                    className="w-full mt-4 bg-rose-500 text-white font-bold py-2 rounded-lg hover:bg-rose-600 transition-all"
                   >
                     <i className="fa-solid fa-trash mr-2"></i>
                     Remove Video
@@ -592,7 +592,7 @@ const LandingPageSettingsPanel: React.FC<Props> = ({ isOpen = true, onClose = ()
                           <button
                             onClick={() => handleDeleteImage(idx)}
                             disabled={saving}
-                            className="flex-1 bg-red-500 text-white font-bold py-1 rounded text-xs hover:bg-red-600 disabled:opacity-50 transition-all"
+                            className="flex-1 bg-rose-500 text-white font-bold py-1 rounded text-xs hover:bg-rose-600 disabled:opacity-50 transition-all"
                           >
                             <i className="fa-solid fa-trash mr-1"></i>
                             Delete
@@ -661,7 +661,7 @@ const LandingPageSettingsPanel: React.FC<Props> = ({ isOpen = true, onClose = ()
 
         {/* Messages */}
         {message && (
-          <div className={`px-6 py-3 ${message.type === 'success' ? 'bg-green-50 text-green-700 border-b border-green-200' : 'bg-red-50 text-red-700 border-b border-red-200'}`}>
+          <div className={`px-6 py-3 ${message.type === 'success' ? 'bg-green-50 text-green-700 border-b border-green-200' : 'bg-rose-50 text-rose-700 border-b border-rose-200'}`}>
             <div className="flex items-center gap-2">
               <i className={`fa-solid ${message.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
               {message.text}
@@ -902,7 +902,7 @@ const LandingPageSettingsPanel: React.FC<Props> = ({ isOpen = true, onClose = ()
                           <button
                             onClick={() => handleDeleteImage(idx)}
                             disabled={saving}
-                            className="flex-1 bg-red-500 text-white font-bold py-1 rounded text-xs hover:bg-red-600 disabled:opacity-50 transition-all"
+                            className="flex-1 bg-rose-500 text-white font-bold py-1 rounded text-xs hover:bg-rose-600 disabled:opacity-50 transition-all"
                           >
                             <i className="fa-solid fa-trash mr-1"></i>
                             Delete

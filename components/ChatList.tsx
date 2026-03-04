@@ -154,7 +154,7 @@ const Avatar: React.FC<{ src?: string; alt: string }> = ({ src, alt }) => {
 
   if (!src || errored) {
     return (
-      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg shadow-sm border border-gray-100">
+      <div className="w-14 h-14 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg shadow-sm border border-gray-100">
         {initials}
       </div>
     );
@@ -438,7 +438,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
       <div className="md:hidden p-4 border-b flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-800">Messages</h2>
         {refreshing && (
-          <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
         )}
       </div>
 
@@ -536,7 +536,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
                         </h4>
                         <div className="flex items-center gap-2 shrink-0 ml-2">
                           {unread > 0 && (
-                            <span className="inline-flex items-center justify-center bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                            <span className="inline-flex items-center justify-center bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
                               {unread > 9 ? '9+' : unread}
                             </span>
                           )}

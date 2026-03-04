@@ -60,12 +60,12 @@ const ChatOptionsModal: React.FC<ChatOptionsModalProps> = ({
           <button
             onClick={onDelete}
             disabled={loading}
-            className="w-full px-4 py-3 text-left text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed mt-1"
+            className="w-full px-4 py-3 text-left text-rose-600 hover:bg-rose-50 rounded-lg transition-colors flex items-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed mt-1"
           >
             <i className="fa-solid fa-trash text-lg"></i>
             <div>
               <div className="font-semibold">Delete Chat</div>
-              <div className="text-xs text-red-500">Remove conversation</div>
+              <div className="text-xs text-rose-500">Remove conversation</div>
             </div>
           </button>
 

@@ -87,7 +87,7 @@ const IntroScreen: React.FC = () => {
       {/* Timer */}
       <div className="absolute top-6 right-6 bg-white px-6 py-3 rounded-full shadow-lg">
         <p className="text-sm text-gray-600">
-          Continuing in <span className="font-bold text-red-500">{timeLeft}s</span>
+          Continuing in <span className="font-bold text-rose-500">{timeLeft}s</span>
         </p>
       </div>
 
@@ -131,7 +131,7 @@ const IntroScreen: React.FC = () => {
                 <div className="text-white font-bold text-lg">
                   {currentCard + 1}/{cards.length}
                 </div>
-                <div className="w-12 h-12 rounded-full bg-red-500/80 backdrop-blur-sm flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-rose-500/80 backdrop-blur-sm flex items-center justify-center">
                   <span className="text-xs font-medium">Like</span>
                 </div>
               </div>
@@ -141,7 +141,7 @@ const IntroScreen: React.FC = () => {
             <div className="h-1/4 p-6 flex flex-col justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">
-                  {card.name}, <span className="text-red-500">{card.age}</span>
+                  {card.name}, <span className="text-rose-500">{card.age}</span>
                 </h2>
                 <p className="text-gray-600 text-sm mt-1">{card.bio}</p>
               </div>
@@ -149,7 +149,7 @@ const IntroScreen: React.FC = () => {
                 {card.interests.map((interest, idx) => (
                   <span
                     key={idx}
-                    className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded-full"
+                    className="text-xs bg-rose-100 text-rose-600 px-3 py-1 rounded-full"
                   >
                     {interest}
                   </span>
@@ -185,7 +185,7 @@ const IntroScreen: React.FC = () => {
 
       {/* Decorative elements */}
       <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-pink-200/30 rounded-full blur-3xl"></div>
-      <div className="absolute -top-40 -left-20 w-60 h-60 bg-red-200/20 rounded-full blur-3xl"></div>
+      <div className="absolute -top-40 -left-20 w-60 h-60 bg-rose-200/20 rounded-full blur-3xl"></div>
     </div>
   );
 };

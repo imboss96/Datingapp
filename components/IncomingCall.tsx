@@ -39,7 +39,7 @@ const IncomingCall: React.FC<IncomingCallProps> = ({
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="absolute inset-0 rounded-full border-2 border-red-500/50 animate-ping"
+                className="absolute inset-0 rounded-full border-2 border-rose-500/50 animate-ping"
                 style={{
                   animationDelay: `${i * 200}ms`,
                   width: `${120 + i * 40}px`,
@@ -62,8 +62,8 @@ const IncomingCall: React.FC<IncomingCallProps> = ({
         <p className="text-gray-400 text-lg mb-6">{caller.location}</p>
 
         {/* Call Type */}
-        <div className="inline-block bg-red-500/20 border border-red-500 rounded-full px-4 py-2 mb-8">
-          <span className="text-red-400 font-bold text-sm flex items-center gap-2">
+        <div className="inline-block bg-rose-500/20 border border-rose-500 rounded-full px-4 py-2 mb-8">
+          <span className="text-rose-400 font-bold text-sm flex items-center gap-2">
             <i className={`fa-solid ${isVideo ? 'fa-video' : 'fa-phone'} animate-pulse`}></i>
             {isVideo ? 'Video Call' : 'Voice Call'}
           </span>
@@ -74,7 +74,7 @@ const IncomingCall: React.FC<IncomingCallProps> = ({
           {/* Reject Button */}
           <button
             onClick={onReject}
-            className="flex-1 py-4 bg-red-500 hover:bg-red-600 text-white font-black rounded-2xl transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
+            className="flex-1 py-4 bg-rose-500 hover:bg-rose-600 text-white font-black rounded-2xl transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
           >
             <i className="fa-solid fa-phone-slash"></i>
             Decline

@@ -152,35 +152,60 @@ const ActionButton: React.FC<{
   title?: string;
   glowColor?: string;
 }> = ({ onClick, icon, color, hoverBg, size = 'sm', coinCost, coinColor = 'amber', title, glowColor = 'gray' }) => {
-  const colorMap: Record<string, string> = {
-    amber: 'rgba(217, 119, 6, 0.5)',
-    red: 'rgba(239, 68, 68, 0.5)',
-    blue: 'rgba(96, 165, 250, 0.5)',
-    emerald: 'rgba(34, 197, 94, 0.5)',
+  const sizeClasses = size === 'lg' 
+    ? 'w-16 h-16 md:w-20 md:h-20 text-2xl md:text-3xl' 
+    : 'w-14 h-14 md:w-16 md:h-16 text-xl md:text-2xl';
+  
+  const colorMap: Record<string, { shadow: string; border: string; bg: string }> = {
+    amber: { 
+      shadow: '0 0 20px rgba(217, 119, 6, 0.4)',
+      border: 'border-amber-200',
+      bg: 'bg-amber-50'
+    },
+    rose: { 
+      shadow: '0 0 25px rgba(244, 63, 94, 0.5)',
+      border: 'border-rose-200',
+      bg: 'bg-rose-50'
+    },
+    pink: { 
+      shadow: '0 0 25px rgba(236, 72, 153, 0.5)',
+      border: 'border-pink-200',
+      bg: 'bg-pink-50'
+    },
+    purple: { 
+      shadow: '0 0 25px rgba(192, 132, 252, 0.5)',
+      border: 'border-purple-200',
+      bg: 'bg-purple-50'
+    },
+    emerald: { 
+      shadow: '0 0 20px rgba(34, 197, 94, 0.4)',
+      border: 'border-emerald-200',
+      bg: 'bg-emerald-50'
+    },
   };
+
+  const colorStyle = colorMap[glowColor] || colorMap.gray;
   
   return (
     <button
       onClick={onClick}
       title={title}
-      className={`relative rounded-full bg-white shadow-xl border border-gray-100 flex items-center justify-center ${color} ${hoverBg} active:scale-90 transition-all duration-200 hover:scale-110 ${
-        size === 'lg'
-          ? 'w-16 h-16 md:w-20 md:h-20 text-2xl md:text-3xl'
-          : 'w-14 h-14 md:w-18 md:h-18 text-xl md:text-2xl'
-      }`}
+      className={`relative rounded-full bg-white shadow-2xl border-2 ${colorStyle.border} flex items-center justify-center ${color} active:scale-90 transition-all duration-200 hover:scale-110 transform ${sizeClasses}`}
       style={{
-        boxShadow: `0 4px 20px rgba(0, 0, 0, 0.1), 0 0 30px ${colorMap[glowColor] || 'rgba(0,0,0,0)'}`,
+        boxShadow: `0 8px 24px rgba(0, 0, 0, 0.12), ${colorStyle.shadow}`,
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `0 8px 30px rgba(0, 0, 0, 0.15), 0 0 40px ${colorMap[glowColor] || 'rgba(0,0,0,0)'}`;
+        e.currentTarget.style.transform = 'scale(1.15)';
+        e.currentTarget.style.boxShadow = `0 12px 32px rgba(0, 0, 0, 0.15), ${colorStyle.shadow}`;
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = `0 4px 20px rgba(0, 0, 0, 0.1), 0 0 30px ${colorMap[glowColor] || 'rgba(0,0,0,0)'}`;
+        e.currentTarget.style.transform = 'scale(1)';
+        e.currentTarget.style.boxShadow = `0 8px 24px rgba(0, 0, 0, 0.12), ${colorStyle.shadow}`;
       }}
     >
       <i className={`fa-solid ${icon}`} />
       {coinCost && (
-        <span className={`absolute -top-2 -right-2 bg-${coinColor}-500 text-white text-[9px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white`}>
+        <span className={`absolute -top-3 -right-3 bg-${coinColor}-500 text-white text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white shadow-lg`}>
           1
         </span>
       )}
@@ -538,8 +563,13 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         showAlert('It\'s a Match! 🎉', `You and ${res.matchedUser.name} liked each other!`);
       }
     } catch (err: any) {
-      console.error('[SwiperScreen] Failed to record like:', err);
-      showAlert('Error', err.message || 'Failed to save like');
+      // Silently handle "Already swiped" errors - just advance to next profile
+      if (err.message?.includes('Already swiped') || err.status === 400) {
+        // Profile already swiped, skip to next one silently
+      } else {
+        console.error('[SwiperScreen] Failed to record like:', err);
+        showAlert('Error', err.message || 'Failed to save like');
+      }
     }
     advance(currentIndex + 1);
   }, [profiles, currentIndex, currentUser.id, advance, showAlert]);
@@ -550,8 +580,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       try {
         await storePass(currentUser.id, profile.id);
       } catch (err: any) {
-        console.error('[SwiperScreen] Failed to record pass:', err);
         // Silent fail for pass action - non-critical
+        // "Already swiped" errors are expected and handled by advancing to next
       }
     }
     advance(currentIndex + 1);
@@ -573,8 +603,13 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
           showAlert('Super Like Match! 🌟', `${res.matchedUser.name} loved your super like!`);
         }
       } catch (err: any) {
-        console.error('[SwiperScreen] Failed to record super like:', err);
-        showAlert('Error', err.message || 'Failed to save super like');
+        // Silently handle "Already swiped" errors - just advance to next profile
+        if (err.message?.includes('Already swiped') || err.status === 400) {
+          // Profile already super liked, skip to next one silently
+        } else {
+          console.error('[SwiperScreen] Failed to record super like:', err);
+          showAlert('Error', err.message || 'Failed to save super like');
+        }
       }
     }
     if (!currentUser.isPremium) onDeductCoin();
@@ -680,15 +715,15 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-full">
-      <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+      <div className="w-16 h-16 border-4 border-rose-500 border-t-transparent rounded-full animate-spin" />
       <p className="mt-4 text-gray-500 font-medium">Finding potential matches...</p>
     </div>
   );
 
   if (error) return (
     <div className="flex flex-col items-center justify-center h-screen p-8 text-center bg-white md:bg-gray-50 pb-24 md:pb-8">
-      <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
-        <i className="fa-solid fa-exclamation-circle text-4xl text-red-500" />
+      <div className="bg-rose-50 p-6 rounded-full mb-4 shadow-inner">
+        <i className="fa-solid fa-exclamation-circle text-4xl text-rose-500" />
       </div>
       <h2 className="text-2xl font-bold text-gray-800">Oops!</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">{error}</p>
@@ -759,8 +794,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   if (currentIndex >= profiles.length) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
-      <div className="bg-red-50 p-6 rounded-full mb-4 shadow-inner">
-        <i className="fa-solid fa-location-dot text-4xl text-red-500" />
+      <div className="bg-rose-50 p-6 rounded-full mb-4 shadow-inner">
+        <i className="fa-solid fa-location-dot text-4xl text-rose-500" />
       </div>
       <h2 className="text-2xl font-bold text-gray-800">No more new profiles</h2>
       <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">You've reviewed everyone in your area. Refresh to see profiles again!</p>
@@ -773,7 +808,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         </button>
         <button
           onClick={() => window.location.reload()}
-          className="px-10 py-3 border-2 border-red-500 text-red-500 rounded-full font-bold hover:bg-red-50 active:scale-95 transition-transform flex-1 sm:flex-auto"
+          className="px-10 py-3 border-2 border-rose-500 text-rose-500 rounded-full font-bold hover:bg-rose-50 active:scale-95 transition-transform flex-1 sm:flex-auto"
         >
           Reload App
         </button>
@@ -793,7 +828,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     <>
       {/* Background loading indicator - subtle progress bar at top */}
       {isLoadingMore && (
-        <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-500 via-purple-500 to-blue-500 animate-pulse z-50" />
+        <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 via-pink-500 to-purple-500 animate-pulse z-50" />
       )}
 
       {/* Desktop search bar */}
@@ -822,8 +857,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         }
       `}</style>
 
-      <div className="h-screen flex flex-col items-center justify-start md:justify-center p-2 md:p-8 bg-gradient-to-b from-white to-gray-50 md:bg-gradient-to-b md:from-gray-50 md:to-gray-100 pt-2 md:pt-8 pb-24 md:pb-8">
-        <div className="w-full flex-1 md:h-full max-w-[420px] md:max-w-[540px] md:max-h-[750px] flex flex-col relative group">
+      <div className="h-screen flex flex-col items-center justify-start md:justify-center p-2 md:p-4 bg-white md:bg-gray-50 pt-2 md:pt-4 pb-24 md:pb-4">
+        <div className="w-full flex-1 md:h-full max-w-sm md:max-w-2xl md:max-h-[90vh] flex flex-col relative group">
 
           {/* ── Top overlay controls ── */}
           <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto gap-2">
@@ -857,7 +892,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                     className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-md border hover:bg-white transition-colors"
                     title="Distance filter"
                   >
-                    <i className="fa-solid fa-location-crosshairs text-red-500" />
+                    <i className="fa-solid fa-location-crosshairs text-rose-500" />
                   </button>
 
                   {showDistanceFilter && (
@@ -882,7 +917,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                             }}
                             className={`w-full px-3 py-2 rounded-lg text-sm text-left transition-colors ${
                               maxDistance === d
-                                ? 'bg-red-100 text-red-700 font-bold border border-red-300'
+                                ? 'bg-rose-100 text-rose-700 font-bold border border-rose-300'
                                 : 'bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100'
                             }`}
                           >
@@ -908,13 +943,13 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
           {/* ── Profile Card ── */}
           <div
             ref={cardRef}
-            className="flex-1 relative cursor-pointer select-none"
+            className="flex-1 relative cursor-pointer select-none mx-2 md:mx-0"
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
             onClick={handleCardTap}
           >
-            <div className="absolute inset-0 bg-gray-200 rounded-[2.5rem] overflow-hidden swipe-card ring-1 ring-black/5" style={{
-              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 0, 0, 0.1)',
+            <div className="absolute inset-0 bg-gray-300 rounded-3xl overflow-hidden swipe-card ring-1 ring-black/5" style={{
+              boxShadow: '0 16px 48px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
             }}>
 
               {/* Skeleton while image loads */}
@@ -1002,7 +1037,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                 </div>
               )}
 
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent pointer-events-none" />
 
               {/* Hearts */}
               <div className="absolute inset-0 pointer-events-none">
@@ -1012,7 +1047,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                     className="absolute"
                     style={{ left: heart.x, top: heart.y, animation: 'heartFloat 1s ease-out forwards' }}
                   >
-                    <i className="fa-solid fa-heart text-red-500 text-4xl drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 8px rgba(239,68,68,0.6))' }} />
+                    <i className="fa-solid fa-heart text-rose-500 text-5xl drop-shadow-lg" style={{ filter: 'drop-shadow(0 0 12px rgba(244,63,94,0.8))' }} />
                   </div>
                 ))}
               </div>
@@ -1020,54 +1055,60 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               {/* Double-tap hint */}
               {tapCount > 0 && (
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                  <div className="text-white text-sm font-bold bg-black/50 px-4 py-2 rounded-full backdrop-blur-sm">
+                  <div className="text-white text-sm font-bold bg-black/60 px-4 py-2 rounded-full backdrop-blur-md">
                     👆 Tap again to like!
                   </div>
                 </div>
               )}
 
-              {/* Profile info overlay */}
-              <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 text-white">
-                <div className="flex items-center gap-2 md:gap-3 mb-1 flex-wrap">
-                  <h3 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-                    {profile.username || profile.name}, {profile.age}
-                  </h3>
+              {/* Profile info overlay - Tinder style */}
+              <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 text-white">
+                <div className="flex items-end gap-3 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-4xl md:text-5xl font-black tracking-tight truncate">
+                      {profile.username || profile.name}
+                    </h2>
+                    <p className="text-xl md:text-2xl font-semibold text-white/90">{profile.age}</p>
+                  </div>
                   {profile.isPremium && (
-                    <span className="premium-gradient px-2.5 py-0.5 md:px-3 md:py-1 rounded-lg text-[8px] md:text-[9px] font-black uppercase tracking-widest text-white shadow-lg flex-shrink-0">
+                    <span className="premium-gradient px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-widest text-white shadow-lg flex-shrink-0">
                       Premium
                     </span>
                   )}
                 </div>
 
-                {/* Match score + distance */}
-                <div className="mb-2 md:mb-3 flex items-center gap-1.5 md:gap-2 flex-wrap">
-                  <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-[8px] md:text-[10px] font-black flex items-center gap-1">
-                    <i className="fa-solid fa-heart text-red-400" />
+                {/* Match score + distance - compact badges */}
+                <div className="mb-3 md:mb-4 flex items-center gap-2 flex-wrap">
+                  <div className="bg-white/25 backdrop-blur-lg ring-1 ring-white/50 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5">
+                    <i className="fa-solid fa-heart text-pink-200" />
                     <span>{matchScore}% Match</span>
                   </div>
                   {distance !== null && (
-                    <div className="bg-white/20 backdrop-blur-xl ring-1 ring-white/50 px-2.5 md:px-3 py-1 md:py-1.5 rounded-full text-[8px] md:text-[10px] font-black flex items-center gap-1">
-                      <i className="fa-solid fa-location-dot text-blue-300" />
+                    <div className="bg-white/25 backdrop-blur-lg ring-1 ring-white/50 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5">
+                      <i className="fa-solid fa-location-dot text-blue-200" />
                       <span>{distance < 1 ? '<1 km' : `${Math.round(distance)} km`}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center gap-1 md:gap-2 text-xs md:text-sm text-gray-300 mb-3 md:mb-4">
+                <div className="flex items-center gap-1.5 text-xs md:text-sm text-gray-200 mb-2 md:mb-3">
                   <i className="fa-solid fa-location-arrow text-[9px] md:text-[10px]" />
                   <span className="font-medium truncate">{profile.location}</span>
                 </div>
 
-                <p className="text-xs md:text-sm line-clamp-2 md:line-clamp-3 text-gray-100 mb-4 md:mb-6 leading-relaxed">{profile.bio}</p>
+                {profile.bio && (
+                  <p className="text-xs md:text-sm line-clamp-2 text-gray-100 mb-3 md:mb-4 leading-relaxed">{profile.bio}</p>
+                )}
 
-                <div className="flex flex-wrap gap-1.5 md:gap-2.5 mb-4 md:mb-6">
-                  {profile.interests.slice(0, 5).map(interest => (
+                {/* Interests pills */}
+                <div className="flex flex-wrap gap-1.5 md:gap-2">
+                  {profile.interests.slice(0, 6).map(interest => (
                     <span
                       key={interest}
-                      className={`px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[9px] md:text-[11px] font-semibold ${
+                      className={`px-3 py-1 md:px-3.5 md:py-1.5 rounded-full text-[9px] md:text-xs font-semibold transition-colors ${
                         currentUser.interests.includes(interest)
-                          ? 'bg-green-500/30 ring-1 ring-green-400/50'
-                          : 'bg-white/10 ring-1 ring-white/20'
+                          ? 'bg-emerald-500/40 ring-1 ring-emerald-300/60 text-white'
+                          : 'bg-white/20 ring-1 ring-white/30 text-white/90'
                       }`}
                     >
                       {interest}
@@ -1075,17 +1116,17 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   ))}
                 </div>
 
-                <div className="hidden md:flex gap-3">
+                <div className="hidden md:flex gap-3 mt-4">
                   <button
                     onClick={() => setShowProfileModal(true)}
-                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-lg ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
                   >
                     <i className="fa-solid fa-eye text-sm" />
                     View Profile
                   </button>
                   <button
                     onClick={() => navigate(`/chat/${profile.id}`, { state: { matchedProfile: profile } })}
-                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-xl ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-lg ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
                   >
                     <i className="fa-solid fa-message text-sm" />
                     Message
@@ -1095,8 +1136,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
             </div>
           </div>
 
-          {/* ── Action Controls ── */}
-          <div className="flex justify-center gap-2 md:gap-8 mt-4 md:mt-10 pb-4 md:pb-8 px-1 md:px-0">
+          {/* ── Action Controls - Tinder Style ── */}
+          <div className="flex justify-center items-center gap-3 md:gap-6 mt-6 md:mt-8 pb-4 md:pb-8 px-2 md:px-0">
             <ActionButton
               onClick={handleRewind}
               icon="fa-rotate-left"
@@ -1106,33 +1147,35 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               coinCost={!currentUser.isPremium}
               coinColor="amber"
               glowColor="amber"
+              size="sm"
             />
             <ActionButton
               onClick={handlePass}
               icon="fa-xmark"
-              color="text-red-500"
-              hoverBg="hover:bg-red-50"
+              color="text-rose-500"
+              hoverBg="hover:bg-rose-50"
               size="lg"
-              glowColor="red"
+              glowColor="rose"
             />
             <ActionButton
               onClick={handleSuperLike}
               icon="fa-star"
-              color="text-blue-400"
-              hoverBg="hover:bg-blue-50"
+              color="text-purple-500"
+              hoverBg="hover:bg-purple-50"
               title="Super Like (1 Coin)"
               coinCost={!currentUser.isPremium}
-              coinColor="blue"
-              glowColor="blue"
+              coinColor="purple"
+              glowColor="purple"
+              size="sm"
             />
             <ActionButton
               onClick={handleLike}
               icon="fa-heart"
-              color="text-emerald-500"
-              hoverBg="hover:bg-emerald-50"
+              color="text-pink-500"
+              hoverBg="hover:bg-pink-50"
               size="lg"
               title="Like"
-              glowColor="emerald"
+              glowColor="pink"
             />
           </div>
         </div>

@@ -887,7 +887,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                             >
                               <div className="flex items-start justify-between">
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-bold text-gray-900 truncate group-hover:text-red-700">
+                                  <p className="text-sm font-bold text-gray-900 truncate group-hover:text-rose-700">
                                     {chatClient?.name} → {chatOperator?.name}
                                   </p>
                                   <p className="text-xs text-gray-700 mt-0.5">
@@ -900,7 +900,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                                   </p>
                                   <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                                     <span>
-                                      <i className="fa-solid fa-comments text-red-600 mr-1"></i>
+                                      <i className="fa-solid fa-comments text-rose-600 mr-1"></i>
                                       {c.messages?.length || 0}
                                     </span>
                                     <span>
@@ -909,7 +909,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                                     </span>
                                   </div>
                                 </div>
-                                <div className="flex-shrink-0 ml-2 text-red-600 group-hover:translate-x-1 transition-transform">
+                                <div className="flex-shrink-0 ml-2 text-rose-600 group-hover:translate-x-1 transition-transform">
                                   <i className="fa-solid fa-chevron-right"></i>
                                 </div>
                               </div>
@@ -1073,9 +1073,9 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                           setIsMenuOpen(false);
                           handleLogout();
                         }}
-                        className="w-full px-4 py-3 text-left hover:bg-red-50 transition-colors flex items-center gap-3 text-red-600"
+                        className="w-full px-4 py-3 text-left hover:bg-rose-50 transition-colors flex items-center gap-3 text-rose-600"
                       >
-                        <i className="fa-solid fa-sign-out-alt text-red-500 w-4"></i>
+                        <i className="fa-solid fa-sign-out-alt text-rose-500 w-4"></i>
                         <span className="text-sm font-medium">Logout</span>
                       </button>
                     </div>
@@ -1277,7 +1277,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                   <div className={`text-xs font-semibold px-3 py-1.5 rounded flex items-center gap-2 ${
                     successMessage.includes('sent') || successMessage.includes('successful')
                       ? 'bg-green-100 text-green-700' 
-                      : 'bg-red-100 text-red-700'
+                      : 'bg-rose-100 text-rose-700'
                   }`}>
                     <i className={`fa-solid ${successMessage.includes('sent') || successMessage.includes('successful') ? 'fa-check-circle' : 'fa-exclamation-circle'}`}></i>
                     {successMessage.replace('✓ ', '').replace('✗ ', '')}
@@ -1289,7 +1289,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                       {selectedMedia.type === 'image' ? (
                         <i className="fa-solid fa-image text-blue-600"></i>
                       ) : selectedMedia.type === 'video' ? (
-                        <i className="fa-solid fa-video text-red-600"></i>
+                        <i className="fa-solid fa-video text-rose-600"></i>
                       ) : selectedMedia.type === 'audio' ? (
                         <i className="fa-solid fa-music text-purple-600"></i>
                       ) : (
@@ -1342,9 +1342,9 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
                               fileInputRef.current.click();
                             }
                           }}
-                          className="w-full text-left px-4 py-2 hover:bg-red-50 transition-colors flex items-center gap-3"
+                          className="w-full text-left px-4 py-2 hover:bg-rose-50 transition-colors flex items-center gap-3"
                         >
-                          <i className="fa-solid fa-video text-red-500 w-5"></i>
+                          <i className="fa-solid fa-video text-rose-500 w-5"></i>
                           <span className="text-sm text-gray-700">Video</span>
                         </button>
                         <button
@@ -1669,7 +1669,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
             <div className="p-6 space-y-5">
               {/* Error Message */}
               {profileEditError && (
-                <div className="bg-red-50 border border-red-200 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2">
+                <div className="bg-rose-50 border border-rose-200 text-rose-600 p-3 rounded-lg text-sm flex items-center gap-2">
                   <i className="fa-solid fa-exclamation-circle"></i>
                   {profileEditError}
                 </div>
@@ -1770,7 +1770,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
               {/* Interests Field */}
               <div>
                 <label className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-2 block">
-                  <i className="fa-solid fa-heart text-red-500 mr-1"></i>
+                  <i className="fa-solid fa-heart text-rose-500 mr-1"></i>
                   Interests (comma separated)
                 </label>
                 <input

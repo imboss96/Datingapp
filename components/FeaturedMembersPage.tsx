@@ -69,7 +69,7 @@ const FeaturedMembersPage: React.FC<FeaturedMembersPageProps> = ({
                 }
                 if (isModal && onClose) onClose();
               }}
-              className="w-full bg-gradient-to-r from-pink-500 to-red-500 hover:from-pink-600 hover:to-red-600 text-white font-semibold py-3 px-6 rounded-lg transition-all transform hover:scale-105"
+              className="w-full bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-semibold py-3 px-6 rounded-lg transition-all transform hover:scale-105"
             >
               Log In or Sign Up
             </button>
@@ -185,7 +185,7 @@ const FeaturedMembersPage: React.FC<FeaturedMembersPageProps> = ({
   return (
     <div className="w-full bg-white overflow-y-auto flex flex-col" style={{ height: isModal ? '600px' : '100vh' }}>
       {/* Header */}
-      <div className="sticky top-0 bg-gradient-to-r from-pink-500 to-red-500 text-white p-6 shadow-md z-10">
+      <div className="sticky top-0 bg-gradient-to-r from-pink-500 to-rose-500 text-white p-6 shadow-md z-10">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">{getTabTitle()}</h1>
@@ -211,7 +211,7 @@ const FeaturedMembersPage: React.FC<FeaturedMembersPageProps> = ({
               onClick={() => setActiveTab(tab)}
               className={`px-6 py-4 font-semibold border-b-2 transition ${
                 activeTab === tab
-                  ? 'border-red-500 text-red-500'
+                  ? 'border-rose-500 text-rose-500'
                   : 'border-transparent text-gray-600 hover:text-gray-900'
               }`}
             >
@@ -227,16 +227,16 @@ const FeaturedMembersPage: React.FC<FeaturedMembersPageProps> = ({
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin">
-                <i className="fas fa-spinner text-4xl text-red-500"></i>
+                <i className="fas fa-spinner text-4xl text-rose-500"></i>
               </div>
             </div>
           ) : error ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center text-red-700">
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-6 text-center text-rose-700">
               <i className="fas fa-exclamation-circle text-2xl mb-2"></i>
               <p>{error}</p>
               <button
                 onClick={fetchMembers}
-                className="mt-4 px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                className="mt-4 px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition"
               >
                 Try Again
               </button>
@@ -294,7 +294,7 @@ const FeaturedMembersPage: React.FC<FeaturedMembersPageProps> = ({
                         {member.name}, {member.age}
                       </h3>
                       <p className="text-sm text-gray-600 flex items-center gap-1">
-                        <i className="fas fa-map-marker-alt text-red-500"></i>
+                        <i className="fas fa-map-marker-alt text-rose-500"></i>
                         {member.location}
                       </p>
                     </div>
@@ -330,7 +330,7 @@ const FeaturedMembersPage: React.FC<FeaturedMembersPageProps> = ({
                       </p>
                     )}
 
-                    <button className="w-full mt-3 bg-gradient-to-r from-pink-500 to-red-500 text-white py-2 rounded-lg font-semibold hover:from-pink-600 hover:to-red-600 transition">
+                    <button className="w-full mt-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white py-2 rounded-lg font-semibold hover:from-pink-600 hover:to-rose-600 transition">
                       <i className="fas fa-heart mr-2"></i>
                       View Profile
                     </button>
@@ -348,7 +348,7 @@ const FeaturedMembersPage: React.FC<FeaturedMembersPageProps> = ({
           <div className="max-w-6xl mx-auto">
             <button
               onClick={handleClose}
-              className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold hover:from-pink-600 hover:to-red-600 transition"
+              className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold hover:from-pink-600 hover:to-rose-600 transition"
             >
               Close
             </button>

@@ -62,7 +62,7 @@ const PhotoVerificationModal: React.FC<PhotoVerificationModalProps> = ({
   const getQualityColor = (score: number) => {
     if (score >= 0.75) return 'from-green-500 to-green-600';
     if (score >= 0.6) return 'from-yellow-500 to-yellow-600';
-    return 'from-red-500 to-red-600';
+    return 'from-rose-500 to-rose-600';
   };
 
   const getQualityText = (score: number) => {

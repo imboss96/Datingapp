@@ -28,20 +28,20 @@ const AccountSuspendedPage: React.FC<AccountSuspendedPageProps> = ({
   const content = (
     <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
       {/* Header */}
-      <div className="bg-gradient-to-r from-red-600 to-red-700 text-white p-6 text-center">
+      <div className="bg-gradient-to-r from-rose-600 to-rose-700 text-white p-6 text-center">
         <div className="text-5xl mb-3">
           <i className="fa-solid fa-circle-exclamation"></i>
         </div>
         <h1 className="text-xl font-bold mb-1">Account {typeName}</h1>
-        <p className="text-red-100 text-xs">Access restricted</p>
+        <p className="text-rose-100 text-xs">Access restricted</p>
       </div>
 
       {/* Content */}
       <div className="p-6 max-h-[70vh] overflow-y-auto">
         {/* Status Box */}
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-5 rounded">
-          <p className="text-xs text-red-700 font-semibold mb-1">Account Status:</p>
-          <p className="text-red-900 font-bold text-sm">{error.message || `Your account has been ${suspensionType}`}</p>
+        <div className="bg-rose-50 border-l-4 border-rose-500 p-4 mb-5 rounded">
+          <p className="text-xs text-rose-700 font-semibold mb-1">Account Status:</p>
+          <p className="text-rose-900 font-bold text-sm">{error.message || `Your account has been ${suspensionType}`}</p>
         </div>
 
         {/* Reason */}
@@ -105,8 +105,8 @@ const AccountSuspendedPage: React.FC<AccountSuspendedPageProps> = ({
 
         {/* Additional Info */}
         {isBanned ? (
-          <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-5">
-            <p className="text-xs text-red-800">
+          <div className="bg-rose-50 p-3 rounded-lg border border-rose-200 mb-5">
+            <p className="text-xs text-rose-800">
               <strong>Permanent Ban:</strong> This account has been permanently banned. Contact support immediately if you believe this is an error.
             </p>
           </div>
@@ -162,7 +162,7 @@ const AccountSuspendedPage: React.FC<AccountSuspendedPageProps> = ({
 
   // Full page version - for direct route
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-rose-50 to-orange-50 flex items-center justify-center p-4">
       {content}
     </div>
   );

@@ -155,7 +155,7 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
   const getQualityColor = (score: number) => {
     if (score >= 0.8) return 'bg-green-100 text-green-800';
     if (score >= 0.6) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-red-100 text-red-800';
+    return 'bg-rose-100 text-rose-800';
   };
 
   return (
@@ -201,9 +201,9 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
           <div className="text-3xl font-bold text-green-600">{stats.approved}</div>
           <div className="text-xs text-gray-500 mt-2">Verified users</div>
         </div>
-        <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-          <div className="text-sm text-gray-600">Rejected</div>
-          <div className="text-3xl font-bold text-red-600">{stats.rejected}</div>
+        <div className="bg-rose-50 rounded-lg p-4 border border-rose-200">
+          <div className="text-sm text-gray-600 mb-1">Rejected</div>
+          <div className="text-3xl font-bold text-rose-600">{stats.rejected}</div>
           <div className="text-xs text-gray-500 mt-2">Not approved</div>
         </div>
         <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
@@ -318,7 +318,7 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
                                   ? 'bg-green-500'
                                   : analysis.qualityScore >= 0.6
                                   ? 'bg-yellow-500'
-                                  : 'bg-red-500'
+                                  : 'bg-rose-500'
                               }`}
                               style={{ width: `${analysis.qualityScore * 100}%` }}
                             ></div>
@@ -336,7 +336,7 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
                         {analysis.faceDetected ? (
                           <span className="text-green-600">✓ {analysis.faceCount} face(s)</span>
                         ) : (
-                          <span className="text-red-600">✗ No face</span>
+                          <span className="text-rose-600">✗ No face</span>
                         )}
                       </div>
                     </div>
@@ -398,7 +398,7 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
                   </button>
                   <button
                     onClick={() => setRejectReason('other')}
-                    className="py-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                    className="py-2 bg-rose-500 hover:bg-rose-600 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <i className="fa-solid fa-times"></i>
                     Reject
@@ -413,7 +413,7 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
                     <select
                       value={rejectReason}
                       onChange={(e) => setRejectReason(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                     >
                       <option value="">Select a reason...</option>
                       {rejectionReasons.map((reason) => (
@@ -426,7 +426,7 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
                     <button
                       onClick={handleReject}
                       disabled={loading || !rejectReason}
-                      className="w-full py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white font-semibold rounded-lg transition-colors"
+                      className="w-full py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-gray-300 text-white font-semibold rounded-lg transition-colors"
                     >
                       {loading ? 'Processing...' : 'Confirm Rejection'}
                     </button>

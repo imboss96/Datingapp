@@ -42,8 +42,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
       ? wsEnv
       : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
-    console.log('[WS] Connecting to:', wsUrl);
-
     try {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -51,7 +49,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
       ws.onopen = () => {
         isConnectingRef.current = false;
         reconnectDelayRef.current = 3000; // reset backoff on success
-        console.log('[WS] Connected');
         setIsConnected(true);
 
         ws.send(JSON.stringify({ type: 'register', userId }));

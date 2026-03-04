@@ -44,7 +44,7 @@ const DiscoveryPage: React.FC<DiscoveryPageProps> = ({
     <div className="h-full bg-white md:bg-[#f0f2f5] flex flex-col">
       {/* Header */}
       <div className="bg-white border-b px-6 py-4 sticky top-0 z-10 shadow-sm flex items-center gap-4">
-        <button onClick={() => navigate('/')} className="md:hidden text-gray-500 hover:text-red-500 transition-colors">
+        <button onClick={() => navigate('/')} className="md:hidden text-gray-500 hover:text-rose-500 transition-colors">
           <i className="fa-solid fa-chevron-left text-lg"></i>
         </button>
         <div className="flex-1">
@@ -95,7 +95,7 @@ const DiscoveryPage: React.FC<DiscoveryPageProps> = ({
                 <div className="absolute bottom-0 left-0 right-0 p-6 z-10">
                   <h2 className="text-4xl font-black text-white">{selectedProfile.name}, {selectedProfile.age}</h2>
                   <div className="flex items-center gap-2 mt-2 text-gray-100">
-                    <i className="fa-solid fa-location-dot text-red-400"></i>
+                    <i className="fa-solid fa-location-dot text-rose-400"></i>
                     <span className="font-semibold">{selectedProfile.location}</span>
                   </div>
                 </div>
@@ -137,7 +137,7 @@ const DiscoveryPage: React.FC<DiscoveryPageProps> = ({
                   </button>
                   <button
                     onClick={handleBlockClick}
-                    className="py-3 bg-red-50 text-red-600 rounded-2xl font-bold hover:bg-red-100 transition flex items-center justify-center gap-2"
+                    className="py-3 bg-rose-50 text-rose-600 rounded-2xl font-bold hover:bg-rose-100 transition flex items-center justify-center gap-2"
                   >
                     <i className="fa-solid fa-ban"></i>
                     Block

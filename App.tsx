@@ -570,7 +570,7 @@ const App: React.FC = () => {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <h4 className="font-bold text-sm text-gray-900 flex items-center gap-2">
-                          <i className="fa-solid fa-comment-dots text-red-500"></i>
+                          <i className="fa-solid fa-comment-dots text-rose-500"></i>
                           New Message
                         </h4>
                       </div>

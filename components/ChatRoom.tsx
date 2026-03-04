@@ -1063,7 +1063,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       <div className="flex flex-col w-full h-full bg-white md:bg-[#f0f2f5] relative">
         {/* Header */}
         <div className="bg-white px-2 md:px-6 py-1.5 md:py-4 flex items-center gap-2 md:gap-4 flex-shrink-0 z-20 safe-area-top max-h-16 md:max-h-20">
-          <button onClick={() => navigate('/chats')} className="md:hidden text-gray-500 hover:text-red-500 transition-colors text-lg">
+          <button onClick={() => navigate('/chats')} className="md:hidden text-gray-500 hover:text-rose-500 transition-colors text-lg">
             <i className="fa-solid fa-chevron-left"></i>
           </button>
           {chatUser ? (
@@ -1158,7 +1158,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                       console.log('[DEBUG ChatRoom] Call notification sent via WebSocket');
                     }
                   }}
-                  className="px-3 py-1 rounded-md bg-red-500 text-white text-sm font-semibold"
+                  className="px-3 py-1 rounded-md bg-rose-500 text-white text-sm font-semibold"
                 >
                   Confirm
                 </button>
@@ -1205,7 +1205,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         {loading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+              <div className="w-12 h-12 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
               <p className="text-gray-500 text-sm">Loading...</p>
             </div>
           </div>
@@ -1215,7 +1215,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             {loadingSuggestions ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                  <div className="w-12 h-12 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
                   <p className="text-gray-500 text-sm">Loading suggestions...</p>
                 </div>
               </div>
@@ -1232,10 +1232,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             ) : (
               <>
                 {/* Header - Positioned at Top */}
-                <div className="w-full mb-4 pb-3 border-b-2 border-gradient-to-r from-red-500 to-pink-500 px-6 pt-6">
+                <div className="w-full mb-4 pb-3 border-b-2 border-gradient-to-r from-rose-500 to-pink-500 px-6 pt-6">
                   <div className="space-y-3">
                     <div>
-                      <h2 className="text-3xl font-bold bg-gradient-to-r from-red-600 via-pink-500 to-red-600 bg-clip-text text-transparent">
+                      <h2 className="text-3xl font-bold bg-gradient-to-r from-rose-600 via-pink-500 to-rose-600 bg-clip-text text-transparent">
                         Discover New Connections
                       </h2>
                       <p className="text-base text-gray-600 font-medium">Find your match among our community</p>
@@ -1248,7 +1248,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         placeholder="Search profiles by name, location, interests..."
                         value={discoverySearch}
                         onChange={(e) => handleDiscoverySearch(e.target.value)}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 text-sm"
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100 text-sm"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                         <i className="fa-solid fa-magnifying-glass"></i>
@@ -1325,7 +1325,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                                 )}
                               </>
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-red-400 to-pink-500 text-white">
+                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-rose-400 to-pink-500 text-white">
                                 <i className="fa-solid fa-user text-4xl"></i>
                               </div>
                             )}
@@ -1344,7 +1344,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                                 </h3>
                                 {user.location && (
                                   <p className="text-xs text-gray-600 mt-0.5 flex items-center gap-1">
-                                    <i className="fa-solid fa-location-dot text-red-500 text-xs"></i>
+                                    <i className="fa-solid fa-location-dot text-rose-500 text-xs"></i>
                                     <span>{user.location}</span>
                                   </p>
                                 )}
@@ -1358,7 +1358,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                               {user.interests && user.interests.length > 0 && (
                                 <div className="flex flex-wrap gap-1 pt-1 flex-shrink-0">
                                   {user.interests.slice(0, 3).map((interest, idx) => (
-                                    <span key={idx} className="px-2 py-0.5 bg-red-50 text-red-600 text-xs font-semibold rounded-full hover:bg-red-100 transition-colors">
+                                    <span key={idx} className="px-2 py-0.5 bg-rose-50 text-rose-600 text-xs font-semibold rounded-full hover:bg-rose-100 transition-colors">
                                       {interest}
                                     </span>
                                   ))}
@@ -1377,7 +1377,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                               </button>
                               <button
                                 onClick={() => navigate(`/chat/${user.id}`, { state: { matchedProfile: user } })}
-                                className="flex-1 px-3 py-1.5 bg-red-500 text-white rounded-md font-semibold hover:bg-red-600 transition-all duration-200 text-xs shadow-sm hover:shadow-md"
+                                className="flex-1 px-3 py-1.5 bg-rose-500 text-white rounded-md font-semibold hover:bg-rose-600 transition-all duration-200 text-xs shadow-sm hover:shadow-md"
                                 title="Send message"
                               >
                                 Message
@@ -1393,7 +1393,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                   {isLoadingMore && (
                     <div className="flex justify-center py-8 w-full">
                       <div className="text-center">
-                        <div className="w-8 h-8 border-4 border-red-200 border-t-red-500 rounded-full animate-spin mx-auto mb-2"></div>
+                        <div className="w-8 h-8 border-4 border-rose-200 border-t-rose-500 rounded-full animate-spin mx-auto mb-2"></div>
                         <p className="text-sm text-gray-500 font-medium">Loading more profiles...</p>
                       </div>
                     </div>
@@ -1444,7 +1444,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                             </button>
                             <button
                               onClick={() => handleDeleteMessage(msg.id)}
-                              className="p-2 text-gray-400 hover:text-red-500 text-sm transition-colors"
+                              className="p-2 text-gray-400 hover:text-rose-500 text-sm transition-colors"
                               title="Delete message"
                             >
                               <i className="fa-solid fa-trash"></i>
@@ -1584,7 +1584,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     </>
                   ) : selectedMedia.type === 'video' ? (
                     <>
-                      <i className="fa-solid fa-video text-red-500 flex-shrink-0"></i>
+                      <i className="fa-solid fa-video text-rose-500 flex-shrink-0"></i>
                       <span className="text-xs text-gray-600 truncate">{selectedMedia.name}</span>
                     </>
                   ) : selectedMedia.type === 'audio' ? (
@@ -1601,7 +1601,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 </div>
                 <button
                   onClick={handleRemoveMedia}
-                  className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                  className="text-gray-400 hover:text-rose-500 transition-colors flex-shrink-0"
                   title="Remove media"
                 >
                   <i className="fa-solid fa-times"></i>
@@ -1646,9 +1646,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         fileInputRef.current.click();
                       }
                     }}
-                    className="w-full text-left px-4 py-2 hover:bg-red-50 transition-colors flex items-center gap-3"
+                    className="w-full text-left px-4 py-2 hover:bg-rose-50 transition-colors flex items-center gap-3"
                   >
-                    <i className="fa-solid fa-video text-red-500 w-5"></i>
+                    <i className="fa-solid fa-video text-rose-500 w-5"></i>
                     <span className="text-sm text-gray-700">Video</span>
                   </button>
                   <button
@@ -1790,7 +1790,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                   {/* Recording UI - WhatsApp Style */}
                   <button
                     onClick={handleDiscardAudio}
-                    className="text-red-500 hover:text-red-600 flex-shrink-0 p-0 h-6 leading-6 flex items-center justify-center text-lg"
+                    className="text-rose-500 hover:text-rose-600 flex-shrink-0 p-0 h-6 leading-6 flex items-center justify-center text-lg"
                     title="Discard recording"
                   >
                     <i className="fa-solid fa-trash"></i>
@@ -1806,7 +1806,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                       {[...Array(20)].map((_, i) => (
                         <div
                           key={i}
-                          className="flex-1 bg-red-400 rounded-full opacity-70"
+                          className="flex-1 bg-rose-400 rounded-full opacity-70"
                           style={{
                             height: '6px',
                             animation: `waveform 0.6s ease-in-out infinite`,
@@ -1820,7 +1820,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                   {/* Stop Recording Button */}
                   <button
                     onClick={handleStopAudioRecording}
-                    className="text-red-500 hover:text-red-600 animate-pulse flex-shrink-0 p-0 rounded-full h-6 leading-6 flex items-center justify-center text-lg"
+                    className="text-rose-500 hover:text-rose-600 animate-pulse flex-shrink-0 p-0 rounded-full h-6 leading-6 flex items-center justify-center text-lg"
                     title="Stop recording"
                   >
                     <i className="fa-solid fa-circle"></i>
@@ -1872,7 +1872,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                       (inputText.trim() || selectedMedia || recordedAudio)
                         ? 'text-green-500 hover:text-green-600 hover:bg-green-50'
                         : isRecordingAudio
-                        ? 'text-red-500 animate-pulse hover:text-red-600 hover:bg-red-50'
+                        ? 'text-rose-500 animate-pulse hover:text-rose-600 hover:bg-rose-50'
                         : 'text-gray-500 hover:text-gray-600 hover:bg-gray-100'
                     }`}
                     disabled={!chatId || uploadingMedia}

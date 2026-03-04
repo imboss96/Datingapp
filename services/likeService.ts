@@ -75,12 +75,15 @@ export async function storeLike(userId: string, targetUserId: string): Promise<L
     const errorMessage = err.message || 'Failed to store like';
     const status = err.status || 500;
 
-    console.error(`[Like Service] Error storing like:`, {
-      message: errorMessage,
-      status,
-      targetUserId,
-      userId,
-    });
+    // Don't log "Already swiped" as an error - it's a normal case
+    if (!errorMessage.includes('Already swiped')) {
+      console.error(`[Like Service] Error storing like:`, {
+        message: errorMessage,
+        status,
+        targetUserId,
+        userId,
+      });
+    }
 
     throw {
       message: errorMessage,
@@ -135,12 +138,15 @@ export async function storeSuperLike(userId: string, targetUserId: string): Prom
     const errorMessage = err.message || 'Failed to store super like';
     const status = err.status || 500;
 
-    console.error(`[Like Service] Error storing super like:`, {
-      message: errorMessage,
-      status,
-      targetUserId,
-      userId,
-    });
+    // Don't log "Already swiped" as an error - it's a normal case
+    if (!errorMessage.includes('Already swiped')) {
+      console.error(`[Like Service] Error storing super like:`, {
+        message: errorMessage,
+        status,
+        targetUserId,
+        userId,
+      });
+    }
 
     throw {
       message: errorMessage,
@@ -173,12 +179,15 @@ export async function storePass(userId: string, targetUserId: string): Promise<v
     const errorMessage = err.message || 'Failed to store pass';
     const status = err.status || 500;
 
-    console.error(`[Like Service] Error storing pass:`, {
-      message: errorMessage,
-      status,
-      targetUserId,
-      userId,
-    });
+    // Don't log "Already swiped" as an error - it's a normal case
+    if (!errorMessage.includes('Already swiped')) {
+      console.error(`[Like Service] Error storing pass:`, {
+        message: errorMessage,
+        status,
+        targetUserId,
+        userId,
+      });
+    }
 
     throw {
       message: errorMessage,

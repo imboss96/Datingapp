@@ -80,7 +80,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       }
 
       return (
-        <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-pink-50 to-red-50 p-4">
+        <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-pink-50 to-rose-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-8 text-center">
             <div className="text-6xl mb-4">⚠️</div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">
@@ -95,7 +95,7 @@ class ErrorBoundary extends React.Component<Props, State> {
                 <summary className="font-semibold cursor-pointer mb-2">
                   Error Details (Development Only)
                 </summary>
-                <pre className="overflow-auto text-red-600 whitespace-pre-wrap break-words">
+                <pre className="overflow-auto text-rose-600 whitespace-pre-wrap break-words">
                   {this.state.error.toString()}
                 </pre>
                 {this.state.errorInfo && (
@@ -108,7 +108,7 @@ class ErrorBoundary extends React.Component<Props, State> {
 
             <button
               onClick={this.handleReset}
-              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition mb-3"
+              className="w-full bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-rose-600 transition mb-3"
             >
               Try Again
             </button>

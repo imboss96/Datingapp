@@ -158,7 +158,7 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
         <div className="p-4 space-y-4">
           {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 p-2 rounded text-xs flex items-center gap-2">
+            <div className="bg-rose-50 border border-rose-200 text-rose-600 p-2 rounded text-xs flex items-center gap-2">
               <i className="fa-solid fa-exclamation-circle text-sm"></i>
               {error}
             </div>
@@ -209,7 +209,7 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
                       )}
                       <button
                         onClick={() => handleRemovePaymentMethod(method.id)}
-                        className="px-2 py-1 text-red-600 hover:bg-red-50 rounded transition-colors text-xs"
+                        className="px-2 py-1 text-rose-600 hover:bg-rose-50 rounded transition-colors text-xs"
                       >
                         <i className="fa-solid fa-trash text-xs"></i>
                       </button>
@@ -376,7 +376,7 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
                     placeholder="you@example.com"
                     value={formData.payoneerEmail || ''}
                     onChange={(e) => setFormData({ ...formData, payoneerEmail: e.target.value })}
-                    className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                   />
                 </div>
               )}

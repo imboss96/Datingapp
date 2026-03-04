@@ -93,7 +93,7 @@ const OutgoingCall: React.FC<OutgoingCallProps> = ({
         {/* Cancel Button */}
         <button
           onClick={onCancel}
-          className="w-full py-4 bg-red-500 hover:bg-red-600 text-white font-black rounded-2xl transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
+          className="w-full py-4 bg-rose-500 hover:bg-rose-600 text-white font-black rounded-2xl transition-all active:scale-95 shadow-lg flex items-center justify-center gap-2"
         >
           <i className="fa-solid fa-phone-slash"></i>
           Cancel Call

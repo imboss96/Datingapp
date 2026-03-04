@@ -579,8 +579,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                   {paymentStep === 'SELECT_METHOD' && (
                     <>
                       {error && (
-                        <div className="p-3 mb-4 bg-red-50 border border-red-200 rounded-lg">
-                          <p className="text-xs text-red-700 font-medium">{error}</p>
+                        <div className="p-3 mb-4 bg-rose-50 border border-rose-200 rounded-lg">
+                          <p className="text-xs text-rose-700 font-medium">{error}</p>
                         </div>
                       )}
                       <div className="flex justify-between items-center mb-6">
@@ -611,12 +611,12 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                             onClick={() => setSelectedMethod(method.id)}
                             className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
                               selectedMethod === method.id
-                                ? 'border-red-500 bg-red-50/30'
+                                ? 'border-rose-500 bg-rose-50/30'
                                 : 'border-gray-100 hover:border-gray-200 bg-white'
                             }`}
                           >
                             <div className="flex items-center gap-4">
-                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${selectedMethod === method.id ? 'text-red-500' : 'text-gray-400'}`}>
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${selectedMethod === method.id ? 'text-rose-500' : 'text-gray-400'}`}>
                                 <i className={method.icon}></i>
                               </div>
                               <div className="text-left">
@@ -628,8 +628,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                                 )}
                               </div>
                             </div>
-                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedMethod === method.id ? 'border-red-500' : 'border-gray-200'}`}>
-                              {selectedMethod === method.id && <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>}
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedMethod === method.id ? 'border-rose-500' : 'border-gray-200'}`}>
+                              {selectedMethod === method.id && <div className="w-2.5 h-2.5 rounded-full bg-rose-500"></div>}
                             </div>
                           </button>
                         ))}
@@ -672,9 +672,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         <p className="text-sm text-gray-700 max-w-[240px] mb-4">{lipanaMessage}</p>
                       )}
                       <div className="relative w-20 h-20 mb-6">
-                        <div className="absolute inset-0 border-4 border-red-100 rounded-full"></div>
-                        <div className="absolute inset-0 border-4 border-red-500 rounded-full border-t-transparent animate-spin"></div>
-                        <div className="absolute inset-0 flex items-center justify-center text-red-500">
+                        <div className="absolute inset-0 border-4 border-rose-100 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-rose-500 rounded-full border-t-transparent animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center text-rose-500">
                           <i className="fa-solid fa-shield-halved text-2xl"></i>
                         </div>
                       </div>
@@ -735,7 +735,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
             <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center">
               <div className="relative">
                 <img src={user.images[0]} className="w-24 h-24 rounded-full border-4 border-white object-cover shadow-xl" alt="Me" />
-                <button className="absolute bottom-0 right-0 w-8 h-8 bg-white rounded-full flex items-center justify-center text-red-500 shadow-md hover:scale-110 transition-transform">
+                <button className="absolute bottom-0 right-0 w-8 h-8 bg-white rounded-full flex items-center justify-center text-rose-500 shadow-md hover:scale-110 transition-transform">
                   <i className="fa-solid fa-camera text-xs"></i>
                 </button>
               </div>
@@ -950,13 +950,13 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
               <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Logout</h4>
               <button 
                 onClick={() => setShowLogoutConfirm(true)}
-                className="w-full flex items-center justify-between p-4 bg-red-50 rounded-2xl hover:bg-red-100 active:bg-red-100 transition-colors border border-red-200"
+                className="w-full flex items-center justify-between p-4 bg-rose-50 rounded-2xl hover:bg-rose-100 active:bg-rose-100 transition-colors border border-rose-200"
               >
-                <div className="flex items-center gap-4 text-red-700">
-                  <i className="fa-solid fa-door-open text-sm text-red-500 w-5 text-center"></i>
+                <div className="flex items-center gap-4 text-rose-700">
+                  <i className="fa-solid fa-door-open text-sm text-rose-500 w-5 text-center"></i>
                   <span className="text-sm font-semibold">Logout</span>
                 </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-red-400"></i>
+                <i className="fa-solid fa-chevron-right text-[10px] text-rose-400"></i>
               </button>
             </div>
             </div>
@@ -974,8 +974,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                   
                   <div className="p-6 space-y-4">
                     <div className="text-center">
-                      <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i className="fa-solid fa-door-open text-3xl text-red-500"></i>
+                      <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i className="fa-solid fa-door-open text-3xl text-rose-500"></i>
                       </div>
                       <h3 className="text-lg font-bold text-gray-900 mb-2">Sign Out?</h3>
                       <p className="text-sm text-gray-600 mb-6">You'll need to login again to access your account. Are you sure you want to logout?</p>
@@ -990,7 +990,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       </button>
                       <button
                         onClick={handleSignOut}
-                        className="flex-1 px-4 py-3 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 active:bg-red-700 transition-colors text-sm"
+                        className="flex-1 px-4 py-3 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 active:bg-rose-700 transition-colors text-sm"
                       >
                         Yes, Logout
                       </button>
@@ -1099,13 +1099,13 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                             <i className="fa-solid fa-check text-green-500 text-sm"></i>
                           )}
                           {usernameStatus === 'taken' && (
-                            <i className="fa-solid fa-times text-red-500 text-sm"></i>
+                            <i className="fa-solid fa-times text-rose-500 text-sm"></i>
                           )}
                         </div>
                       </div>
                       <p className={`text-xs mt-1 ${
                         usernameStatus === 'available' ? 'text-green-600' :
-                        usernameStatus === 'taken' ? 'text-red-600' :
+                        usernameStatus === 'taken' ? 'text-rose-600' :
                         'text-gray-500'
                       }`}>
                         {usernameStatus === 'available' && '✓ Username available'}
@@ -1185,8 +1185,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
 
                     {/* Error Message */}
                     {error && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-xs text-red-700 font-medium">{error}</p>
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                        <p className="text-xs text-rose-700 font-medium">{error}</p>
                       </div>
                     )}
 
@@ -1263,8 +1263,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
 
                     {/* Error Message */}
                     {error && (
-                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                        <p className="text-xs text-red-700 font-medium">{error}</p>
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                        <p className="text-xs text-rose-700 font-medium">{error}</p>
                       </div>
                     )}
 
@@ -1324,7 +1324,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                     {/* Report & Block */}
                     <div className="pt-4 border-t border-gray-200">
                       <p className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wide">Account Safety</p>
-                      <button className="w-full px-4 py-2 text-xs border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors font-medium">
+                      <button className="w-full px-4 py-2 text-xs border border-rose-300 text-rose-700 rounded-lg hover:bg-rose-50 transition-colors font-medium">
                         View Blocked Users (0)
                       </button>
                     </div>
