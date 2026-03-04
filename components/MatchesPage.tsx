@@ -90,20 +90,10 @@ const MatchesPage: React.FC<MatchesPageProps> = ({ currentUserId }) => {
   const handleStartChat = (matchId: string) => {
     const match = matches.find(m => m.id === matchId);
     if (match?.matchedUser?.id) {
-      (async () => {
-        try {
-          const chat = await apiClient.createOrGetChat(match.matchedUser.id);
-          const chatId = chat?.id || chat?._id;
-          if (chatId) {
-            navigate(`/chat/${chatId}`, { state: { matchedProfile: match.matchedUser } });
-          } else {
-            showAlert('Error', 'Failed to create chat');
-          }
-        } catch (err) {
-          console.error('[Matches] Failed to create/get chat:', err);
-          showAlert('Error', 'Failed to open chat');
-        }
-      })();
+      // Navigate with userId prefixed with "new-" to indicate new chat
+      // This way we don't create the chat until first message is sent
+      console.log('[Matches] Opening new chat with:', match.matchedUser.name);
+      navigate(`/chat/new-${match.matchedUser.id}`, { state: { matchedProfile: match.matchedUser } });
     }
   };
 

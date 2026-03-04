@@ -59,20 +59,9 @@ export const MatchNotificationCenter: React.FC<MatchNotificationCenterProps> = (
 
   const handleSayHello = () => {
     if (notification?.matchedWith.id) {
-      (async () => {
-        try {
-          const chat = await apiClient.createOrGetChat(notification.matchedWith.id);
-          const chatId = chat?.id || chat?._id;
-          if (chatId) {
-            window.location.href = `/#/chat/${chatId}`;
-          } else {
-            window.location.href = `/chats?userId=${notification.matchedWith.id}`;
-          }
-        } catch (err) {
-          console.error('[MatchNotificationCenter] Failed to create/get chat:', err);
-          window.location.href = `/chats?userId=${notification.matchedWith.id}`;
-        }
-      })();
+      // Navigate without creating chat - let it be created on first message
+      console.log('[MatchNotificationCenter] Opening new chat with:', notification.matchedWith.name);
+      window.location.href = `/#/chat/new-${notification.matchedWith.id}`;
     }
   };
 
