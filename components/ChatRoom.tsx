@@ -1075,7 +1075,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-8 md:w-11 h-8 md:h-11 rounded-full border border-gray-100 shadow-sm object-cover flex-shrink-0" alt="User" />
                 <div className="flex-1 min-w-0 text-left">
                   <h3 className="font-bold text-gray-900 text-xs md:text-lg leading-tight truncate">
-                    {chatUser.name}
+                    {chatUser.username || chatUser.name}
                     <VerificationBadge verified={chatUser.isPhotoVerified || (chatUser as any).photoVerificationStatus === 'approved'} size="sm" />
                   </h3>
                   <div className="flex items-center gap-1 md:gap-2 flex-wrap">
