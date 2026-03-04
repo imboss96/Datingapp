@@ -325,7 +325,7 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   // ── Navigation ──────────────────────────────────────────────────────────────
 
   const openChat = useCallback((chatId: string, otherUser: UserProfile | null) => {
-    navigate(`/chat/${otherUser?.id ?? chatId}`, { state: { matchedProfile: otherUser } });
+    navigate(`/chat/${chatId}`, { state: { matchedProfile: otherUser } });
   }, [navigate]);
 
   const handleChatClick = (e: React.MouseEvent, chatId: string, otherUser: UserProfile | null) => {
