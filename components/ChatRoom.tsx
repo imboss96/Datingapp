@@ -1432,12 +1432,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                     className={`flex ${isMe ? 'justify-end' : 'justify-start'} mb-2`}
                   >
                     <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                      {/* Sender name label */}
-                      {!isMe && (
-                        <p className="text-2xs font-bold mb-0.5 px-2 text-blue-700" style={{fontSize: '0.625rem'}}>
-                          {chatUser?.name || 'User'}
-                        </p>
-                      )}
                       <div className={`flex items-center gap-2 group ${isMe ? 'justify-end' : 'justify-start'}`}>
                         {isMe && (
                           <div className="opacity-0 group-hover:opacity-100 flex gap-2 transition-opacity order-first mr-2">
