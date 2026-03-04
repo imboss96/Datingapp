@@ -275,10 +275,8 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
     const silent = initialChats.length > 0 && !isCacheStale();
     loadData(silent);
 
-    // Set up periodic refresh every 30 seconds (professional standard for chat)
-    const refreshInterval = setInterval(() => loadData(true), 30_000);
-    
-    return () => clearInterval(refreshInterval);
+    // No auto-refresh - manual refresh only via user interaction
+    return () => {};
   }, [loadData]);
 
   // Re-fetch silently when a new WebSocket message arrives

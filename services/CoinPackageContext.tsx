@@ -37,10 +37,8 @@ export const CoinPackageProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       setLoading(true);
       setError(null);
-      console.log('[DEBUG CoinPackageContext] Fetching coin packages...');
       
       const response = await apiClient.getPublicCoinPackages();
-      console.log('[DEBUG CoinPackageContext] Response:', response);
 
       if (response.success && response.packages && Array.isArray(response.packages)) {
         const formattedPackages: CoinPackage[] = response.packages.map((pkg: any) => ({
@@ -51,36 +49,23 @@ export const CoinPackageProvider: React.FC<{ children: React.ReactNode }> = ({ c
           popular: pkg.displayOrder === 2
         }));
         
-        console.log('[DEBUG CoinPackageContext] Formatted packages:', formattedPackages);
         setCoinPackages(formattedPackages);
       } else {
-        console.warn('[WARNING CoinPackageContext] Invalid response structure:', response);
         setError('Invalid package data received');
       }
     } catch (err) {
       const errorMsg = (err as any).message || 'Failed to fetch coin packages';
-      console.error('[ERROR CoinPackageContext] Failed to fetch:', errorMsg, err);
       setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch on mount and set up interval
+  // Fetch on mount only
   useEffect(() => {
-    console.log('[DEBUG CoinPackageContext] Provider mounted, initial fetch...');
     fetchCoinPackages();
-
-    // Refetch every 10 seconds for real-time updates
-    const interval = setInterval(() => {
-      console.log('[DEBUG CoinPackageContext] 10-second refresh interval triggered');
-      fetchCoinPackages();
-    }, 10000);
-
-    return () => {
-      console.log('[DEBUG CoinPackageContext] Provider unmounting, clearing interval');
-      clearInterval(interval);
-    };
+    // No auto-refresh - manual refresh or WebSocket updates only
+    return () => {};
   }, []);
 
   const value: CoinPackageContextType = {

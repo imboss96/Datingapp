@@ -456,7 +456,7 @@ const App: React.FC = () => {
     return () => { cancelled = true; };
   }, []);
 
-  // Unread count polling
+  // Unread count - fetch on user load, then rely on WebSocket for real-time updates
   useEffect(() => {
     if (!currentUser?.id) { setTotalUnreadCount(0); return; }
     const fetchUnreadCount = async () => {
@@ -470,12 +470,13 @@ const App: React.FC = () => {
           setTotalUnreadCount(total);
         }
       } catch (err) {
-        console.error('[DEBUG App] Failed to fetch unread count:', err);
+        // Silent fail - WebSocket will provide real-time updates
       }
     };
+    // Fetch once on load
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 3000);
-    return () => clearInterval(interval);
+    // No polling - rely on WebSocket for real-time updates
+    return () => {};
   }, [currentUser?.id]);
 
   // ✅ Debounced live location tracking — updates every 5s after movement stops

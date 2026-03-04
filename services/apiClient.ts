@@ -208,8 +208,8 @@ class APIClient {
     }
   }
 
-  async getAllUsers() {
-    return this.request('/users');
+  async getAllUsers(limit: number = 100000) {
+    return this.request(`/users?limit=${limit}`);
   }
 
   // ✅ UPDATED: now accepts lat/lon to enable geo-based profile fetching
@@ -820,6 +820,45 @@ class APIClient {
   async getChatActivityLogs(chatId: string) {
     return this.request(`/moderation/activity/chat/${chatId}`, {
       method: 'GET',
+    });
+  }
+
+  // ==================== Like Tracking ====================
+  
+  async recordLike(profileUserId: string, likeType: 'like' | 'superlike' = 'like') {
+    return this.request('/likes', {
+      method: 'POST',
+      body: JSON.stringify({ profileUserId, likeType }),
+    });
+  }
+
+  async getLikeStats(profileUserId: string) {
+    return this.request(`/likes/${profileUserId}/stats`, {
+      method: 'GET',
+    });
+  }
+
+  async checkHasLiked(profileUserId: string) {
+    return this.request(`/likes/${profileUserId}/check`, {
+      method: 'GET',
+    });
+  }
+
+  async getGivenLikes() {
+    return this.request('/likes/given/user', {
+      method: 'GET',
+    });
+  }
+
+  async getReceivedLikes() {
+    return this.request('/likes/received/user', {
+      method: 'GET',
+    });
+  }
+
+  async unlikeProfile(profileUserId: string) {
+    return this.request(`/likes/${profileUserId}`, {
+      method: 'DELETE',
     });
   }
 }

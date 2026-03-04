@@ -1,6 +1,7 @@
 import express from 'express';
 import User from '../models/User.js';
 import Match from '../models/Match.js';
+import Like from '../models/Like.js';
 import PhotoVerification from '../models/PhotoVerification.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -80,7 +81,7 @@ router.get('/', async (req, res) => {
     const {
       lat,
       lon,
-      limit = 50,
+      limit = 100000,
       skip = 0,
       minAge,
       maxAge,
@@ -139,7 +140,7 @@ router.get('/', async (req, res) => {
           near,
           { $project: { passwordHash: 0, email: 0, googleId: 0, facebookId: 0, tiktokId: 0 } },
           { $skip: Number(skip) },
-          { $limit: Math.min(Number(limit), 200) }
+          { $limit: Math.min(Number(limit), 100000) }
         ];
 
         const users = await User.aggregate(pipeline);
@@ -170,7 +171,7 @@ router.get('/', async (req, res) => {
     }
 
     // Fallback: paginated find with projection
-    let users = await User.find(q).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 200));
+    let users = await User.find(q).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 100000));
     console.log('[DEBUG Backend] Fallback query executed, returning', users.length, 'users');
     
     // FIX 4: If query with exclusion returns 0 and we were excluding seen, retry without exclusion
@@ -180,7 +181,7 @@ router.get('/', async (req, res) => {
       const fallbackQ = { ...q };
       delete fallbackQ.id; // Remove the $nin exclusion filter
       fallbackQ.id = { $ne: req.userId }; // Just exclude the current user
-      users = await User.find(fallbackQ).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 200));
+      users = await User.find(fallbackQ).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 100000));
       console.log('[DEBUG Backend] Fallback without exclusion returned', users.length, 'users');
     }
     
@@ -324,6 +325,43 @@ router.post('/:userId/swipe', authMiddleware, async (req, res) => {
 
     const { interestMatch, ageMatch, mutualInterests } = calculateCompatibility(currentUser, targetUser);
     console.log(`[Swipe] ${req.params.userId} ${action}s ${targetUserId}. Interest: ${interestMatch}%, Age: ${ageMatch}%`);
+
+    // Record like or superlike in the Like model
+    if (action === 'like' || action === 'superlike') {
+      try {
+        // Check if like already exists
+        const existingLike = await Like.findOne({
+          profileUserId: targetUserId,
+          likerUserId: req.params.userId
+        });
+
+        if (!existingLike) {
+          // Create new like record
+          const like = new Like({
+            id: uuidv4(),
+            profileUserId: targetUserId,
+            likerUserId: req.params.userId,
+            likeType: action
+          });
+          await like.save();
+          console.log(`[Like Recorded] ${req.params.userId} ${action}d ${targetUserId}`);
+        } else if (existingLike.likeType !== action) {
+          // Update like type if different
+          existingLike.likeType = action;
+          await existingLike.save();
+          console.log(`[Like Updated] ${req.params.userId} changed to ${action} for ${targetUserId}`);
+        } else {
+          console.log(`[Like Exists] ${req.params.userId} already ${action}d ${targetUserId}`);
+        }
+      } catch (likeErr) {
+        console.error('[ERROR] Failed to record like:', likeErr.message, { 
+          profileUserId: targetUserId, 
+          likerUserId: req.params.userId,
+          action
+        });
+        // Don't fail the swipe if like recording fails
+      }
+    }
 
     // Check for mutual like (match) - both must like each other
     const isMutualLike = (action === 'like' || action === 'superlike') && targetUser.swipes.includes(req.params.userId);

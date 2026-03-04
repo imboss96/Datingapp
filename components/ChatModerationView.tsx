@@ -197,10 +197,7 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     if (currentUserId) {
       fetchEarningsAndChats();
       
-      // Refresh earnings every 30 seconds
-      const interval = setInterval(fetchEarningsAndChats, 30000);
-      
-      // Check for daily reset at 12:00 hrs
+      // Check for daily reset at 12:00 hrs (only on load)
       const checkDailyReset = () => {
         const now = new Date();
         const today = new Date(now);
@@ -215,12 +212,8 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
       };
       
       checkDailyReset();
-      const dailyCheckInterval = setInterval(checkDailyReset, 60000); // Check every minute
-      
-      return () => {
-        clearInterval(interval);
-        clearInterval(dailyCheckInterval);
-      };
+      // No auto-refresh intervals - manual refresh only
+      return () => {};
     }
   }, [currentUserId, lastEarningsReset]);
 
@@ -285,10 +278,8 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     };
 
     refreshMessages();
-    const interval = setInterval(refreshMessages, 5000); // Refresh every 5 seconds
-    return () => {
-      clearInterval(interval);
-    };
+    // No auto-refresh - user manually refreshes via buttons or WebSocket updates provide real-time data
+    return () => {};
   }, [selectedChatId]);
 
   // Fetch unreplied chats count and moderated chats
@@ -316,9 +307,8 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
     };
 
     fetchUnrepliedChats();
-    const interval = setInterval(fetchUnrepliedChats, 10000); // Refresh every 10 seconds
-    
-    return () => clearInterval(interval);
+    // No auto-refresh - relies on WebSocket for real-time unreplied chat updates
+    return () => {};
   }, [selectedChatId, messages]);
 
   // Handle selecting a chat from unreplied chats list

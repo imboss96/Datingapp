@@ -5,6 +5,7 @@ import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
 import { useWebSocketContext } from '../services/WebSocketProvider';
 import { formatLastSeen } from '../services/lastSeenUtils';
+import { useLikeStats } from '../services/useLikeHooks';
 import MediaRenderer from './MediaRenderer';
 import VideoCallRoom from './VideoCallRoom';
 import IncomingCall from './IncomingCall';
@@ -17,6 +18,38 @@ interface ChatRoomProps {
   currentUser: UserProfile;
   onDeductCoin: () => void;
 }
+
+// ═══ Discovery Like Stats Component ═══════════════════════════════════════════
+
+interface DiscoveryLikeStatsProps {
+  profileUserId: string;
+}
+
+const DiscoveryLikeStats: React.FC<DiscoveryLikeStatsProps> = ({ profileUserId }) => {
+  const { stats, loading } = useLikeStats(profileUserId);
+
+  if (loading || !stats) return null;
+
+  const totalLikes = stats.totalLikes + stats.totalSuperLikes;
+  if (totalLikes === 0) return null;
+
+  return (
+    <div className="flex gap-2 pt-2 flex-wrap flex-shrink-0">
+      {stats.totalLikes > 0 && (
+        <div className="flex items-center gap-1 px-2 py-1 bg-red-50 rounded-full text-xs font-semibold text-red-600">
+          <i className="fa-solid fa-heart text-red-400" />
+          <span>{stats.totalLikes}</span>
+        </div>
+      )}
+      {stats.totalSuperLikes > 0 && (
+        <div className="flex items-center gap-1 px-2 py-1 bg-yellow-50 rounded-full text-xs font-semibold text-yellow-600">
+          <i className="fa-solid fa-star text-yellow-400" />
+          <span>{stats.totalSuperLikes}</span>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const { showAlert, showConfirm } = useAlert();
@@ -621,7 +654,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           } else {
             // Fallback: load user profile by ID
             try {
-              const allUsers = await apiClient.getAllUsers();
+              const allUsers = await apiClient.getAllUsers(100000);
               const user = (allUsers || []).find((u: UserProfile | null) => u && (u as any).id === actualId);
               if (user) {
                 setChatUser(user);
@@ -669,7 +702,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         } else {
           try {
             console.log('[DEBUG ChatRoom] Fetching user profile for ID:', actualId);
-            const allUsers = await apiClient.getAllUsers();
+            const allUsers = await apiClient.getAllUsers(100000);
             const user = (allUsers || []).find((u: UserProfile | null) => u && (u as any).id === actualId);
             if (user) {
               console.log('[DEBUG ChatRoom] Found user:', user.name);
@@ -695,27 +728,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     loadChat();
   }, [id, location.state, currentUser?.id]);
 
-  // Poll for new messages every 2 seconds
+  // Load messages on mount
   useEffect(() => {
     if (!chatId) return;
 
-    const pollMessages = async () => {
+    const loadMessages = async () => {
       try {
         const chatData = await apiClient.getChat(chatId);
         setMessages(chatData.messages || []);
       } catch (err) {
-        console.error('[ERROR ChatRoom] Failed to poll messages:', err);
+        console.error('[ERROR ChatRoom] Failed to load messages:', err);
       }
     };
 
-    pollMessages();
-    pollIntervalRef.current = setInterval(pollMessages, 2000);
-
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-    };
+    loadMessages();
+    // No auto-refresh polling - WebSocket provides real-time message delivery
+    return () => {};
   }, [chatId]);
 
   useEffect(() => {
@@ -777,7 +805,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 
     try {
       setLoadingSearchResults(true);
-      const allUsers = await apiClient.getAllUsers();
+      // Request all available users from database for comprehensive search results
+      const allUsers = await apiClient.getAllUsers(100000);
       const lowerQuery = query.toLowerCase();
       
       let filtered = (allUsers || [])
@@ -801,7 +830,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           const distB = calculateDistance(currentUserLat, currentUserLon, (b as any).latitude, (b as any).longitude);
           return distA - distB;
         })
-        .slice(0, 20);
+        .slice(0, 100);
 
       setDiscoverySearchResults(filtered);
     } catch (err) {
@@ -812,51 +841,47 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     }
   };
   useEffect(() => {
-    if (!id) {
-      const loadSuggestions = async () => {
-        try {
-          setLoadingSuggestions(true);
-          const allUsers = await apiClient.getAllUsers();
-          console.log('[DEBUG ChatRoom] Loaded all users:', allUsers?.length || 0);
-          
-          // Sort by distance from current user
-          const currentUserLat = (currentUser as any).latitude;
-          const currentUserLon = (currentUser as any).longitude;
-          
-          const sorted = (allUsers || [])
-            .filter((u: UserProfile | null) => u && u.id !== currentUser.id)
-            .sort((a: any, b: any) => {
-              const distA = calculateDistance(currentUserLat, currentUserLon, (a as any).latitude, (a as any).longitude);
-              const distB = calculateDistance(currentUserLat, currentUserLon, (b as any).latitude, (b as any).longitude);
-              return distA - distB;
-            });
-          
-          // Store sorted users in ref (lazy load from this)
-          allUsersRef.current = sorted;
-          
-          // Load first batch only
-          const firstBatch = sorted.slice(0, profilesPerPage);
-          setDisplayedProfiles(firstBatch);
-          setProfilesPage(0);
-          setHasMoreProfiles(sorted.length > profilesPerPage);
-          
-          console.log('[DEBUG ChatRoom] Initialized FYP with:', firstBatch.length, 'profiles. Total available:', sorted.length);
-        } catch (err) {
-          console.error('[ERROR ChatRoom] Failed to load suggestions:', err);
-          setDisplayedProfiles([]);
-          allUsersRef.current = [];
-        } finally {
-          setLoadingSuggestions(false);
-        }
-      };
-      loadSuggestions();
-    } else {
-      setDisplayedProfiles([]);
-      allUsersRef.current = [];
-      setProfilesPage(0);
-      setHasMoreProfiles(true);
-    }
-  }, [id, currentUser.id]);
+    // Always load discovery users for the discovery section (search and browse)
+    // This should work regardless of whether a chat is open or not
+    const loadSuggestions = async () => {
+      try {
+        setLoadingSuggestions(true);
+        // Load all available users from database for comprehensive discovery feed
+        const allUsers = await apiClient.getAllUsers(100000);
+        console.log('[DEBUG ChatRoom] Loaded all users:', allUsers?.length || 0);
+        
+        // Sort by distance from current user
+        const currentUserLat = (currentUser as any).latitude;
+        const currentUserLon = (currentUser as any).longitude;
+        
+        const sorted = (allUsers || [])
+          .filter((u: UserProfile | null) => u && u.id !== currentUser.id)
+          .sort((a: any, b: any) => {
+            const distA = calculateDistance(currentUserLat, currentUserLon, (a as any).latitude, (a as any).longitude);
+            const distB = calculateDistance(currentUserLat, currentUserLon, (b as any).latitude, (b as any).longitude);
+            return distA - distB;
+          });
+        
+        // Store sorted users in ref (lazy load from this)
+        allUsersRef.current = sorted;
+        
+        // Load first batch only
+        const firstBatch = sorted.slice(0, profilesPerPage);
+        setDisplayedProfiles(firstBatch);
+        setProfilesPage(0);
+        setHasMoreProfiles(sorted.length > profilesPerPage);
+        
+        console.log('[DEBUG ChatRoom] Initialized FYP with:', firstBatch.length, 'profiles. Total available:', sorted.length);
+      } catch (err) {
+        console.error('[ERROR ChatRoom] Failed to load suggestions:', err);
+        setDisplayedProfiles([]);
+        allUsersRef.current = [];
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+    loadSuggestions();
+  }, [currentUser.id]);
 
   useEffect(() => {
     const markAsRead = async () => {
@@ -1364,6 +1389,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                                   ))}
                                 </div>
                               )}
+
+                              {/* Like Stats */}
+                              <DiscoveryLikeStats profileUserId={user.id} />
                             </div>
 
                             {/* Action Buttons */}

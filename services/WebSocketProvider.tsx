@@ -65,7 +65,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('[WS onmessage] Received message type:', data.type, 'Full data:', data);
 
           // Dispatch global event so ChatList and other components can react
           if (data.type === 'new_message') {
@@ -75,13 +74,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
             window.dispatchEvent(new CustomEvent('ws:typing', { detail: data }));
           }
           if (data.type === 'call_incoming') {
-            console.log('[WS onmessage] Dispatching ws:call_incoming event with data:', data);
             const event = new CustomEvent('ws:call_incoming', { detail: data });
             window.dispatchEvent(event);
-            console.log('[WS onmessage] ws:call_incoming event dispatched');
           }
           if (data.type === 'call_busy' || data.type === 'call_unavailable') {
-            console.log(`[WS onmessage] Call notification (${data.type}):`, data);
             window.dispatchEvent(new CustomEvent('ws:call_notification', { detail: data }));
           }
           if (data.type === 'call_offer' || data.type === 'call_answer' || data.type === 'ice_candidate' || data.type === 'call_end') {
@@ -91,16 +87,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
           // Notify all registered handlers
           messageHandlersRef.current.forEach(handler => {
             try { handler(data); } catch (err) {
-              console.error('[WS] Handler error:', err);
+              // Silent handler error
             }
           });
         } catch (err) {
-          console.error('[WS] Failed to parse message:', err);
+          // Silent parse error
         }
       };
 
       ws.onerror = (error) => {
-        console.error('[WS] Error:', error);
         isConnectingRef.current = false;
       };
 
@@ -115,7 +110,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
         // Exponential backoff: 3s → 6s → 12s → max 30s
         const delay = Math.min(reconnectDelayRef.current, 30000);
         reconnectDelayRef.current = delay * 2;
-        console.log(`[WS] Disconnected. Reconnecting in ${delay / 1000}s...`);
 
         reconnectTimeoutRef.current = setTimeout(() => {
           if (isMountedRef.current) connect();
@@ -123,7 +117,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({ userId, ch
       };
 
     } catch (err) {
-      console.error('[WS] Connection error:', err);
       isConnectingRef.current = false;
     }
   }, [userId, cleanup]);

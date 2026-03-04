@@ -5,6 +5,7 @@ import apiClient from '../services/apiClient';
 import { useAlert } from '../services/AlertContext';
 import { calculateDistance, DISTANCE_RANGES, getDistanceRangeLabel } from '../services/distanceUtils';
 import { storeLike, storeSuperLike, storePass } from '../services/likeService';
+import { useLikeStats } from '../services/useLikeHooks';
 import MatchModal from './MatchModal';
 import UserProfileModal from './UserProfileModal';
 import SearchSuggestions from './SearchSuggestions';
@@ -151,7 +152,9 @@ const ActionButton: React.FC<{
   coinColor?: string;
   title?: string;
   glowColor?: string;
-}> = ({ onClick, icon, color, hoverBg, size = 'sm', coinCost, coinColor = 'amber', title, glowColor = 'gray' }) => {
+  likeCount?: number;
+  superlikeCount?: number;
+}> = ({ onClick, icon, color, hoverBg, size = 'sm', coinCost, coinColor = 'amber', title, glowColor = 'gray', likeCount, superlikeCount }) => {
   const sizeClasses = size === 'lg' 
     ? 'w-16 h-16 md:w-20 md:h-20 text-2xl md:text-3xl' 
     : 'w-14 h-14 md:w-16 md:h-16 text-xl md:text-2xl';
@@ -209,6 +212,16 @@ const ActionButton: React.FC<{
           1
         </span>
       )}
+      {superlikeCount !== undefined && superlikeCount > 0 && (
+        <span className="absolute -bottom-2 -right-2 bg-purple-500 text-white text-[11px] font-black w-7 h-7 rounded-full flex items-center justify-center border-2 border-white shadow-lg">
+          {superlikeCount > 999 ? '999+' : superlikeCount}
+        </span>
+      )}
+      {likeCount !== undefined && likeCount > 0 && !superlikeCount && (
+        <span className="absolute -bottom-2 -right-2 bg-pink-500 text-white text-[11px] font-black w-7 h-7 rounded-full flex items-center justify-center border-2 border-white shadow-lg">
+          {likeCount > 999 ? '999+' : likeCount}
+        </span>
+      )}
     </button>
   );
 };
@@ -258,6 +271,10 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   useEffect(() => () => {
     if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
   }, []);
+
+  // ── Hooks (must be called before any early returns) ────────────────────────
+  const currentProfile = profiles[currentIndex] || null;
+  const { stats: likeStats } = useLikeStats(currentProfile?.id || null);
 
   // ── Distance / match helpers ──────────────────────────────────────────────
 
@@ -554,8 +571,10 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const handleLike = useCallback(async () => {
     const profile = profiles[currentIndex];
     if (!profile?.id) return;
+    console.log(`[SwiperScreen] Liking profile: ${profile.id}`);
     try {
       const res = await storeLike(currentUser.id, profile.id);
+      console.log(`[SwiperScreen] Like response:`, res);
       if (res.matched && res.matchedUser) {
         setMatchedUser(res.matchedUser as any);
         setInterestMatch(res.interestMatch || 0);
@@ -818,9 +837,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   // ── Current profile ────────────────────────────────────────────────────
 
-  const profile    = profiles[currentIndex];
-  const matchScore = getMatchScore(profile);
-  const distance   = getDistance(profile);
+  const matchScore = getMatchScore(currentProfile);
+  const distance   = getDistance(currentProfile);
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -956,9 +974,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               {!imgLoaded && <ProfileImageSkeleton />}
 
               {/* Image progress indicator bars */}
-              {profile.images && profile.images.length > 1 && (
+              {currentProfile?.images && currentProfile?.images.length > 1 && (
                 <div className="absolute top-0 left-0 right-0 flex gap-1 px-3 pt-3 z-20 pointer-events-none">
-                  {profile.images.map((_, idx) => (
+                  {currentProfile?.images.map((_, idx) => (
                     <div 
                       key={idx}
                       className="h-1 flex-1 rounded-full transition-all bg-white/40"
@@ -971,7 +989,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               )}
 
               {/* Left tap zone */}
-              {profile.images && profile.images.length > 1 && (
+              {currentProfile?.images && currentProfile?.images.length > 1 && (
                 <div 
                   onClick={(e) => {
                     e.stopPropagation();
@@ -982,7 +1000,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               )}
 
               {/* Right tap zone */}
-              {profile.images && profile.images.length > 1 && (
+              {currentProfile?.images && currentProfile?.images.length > 1 && (
                 <div 
                   onClick={(e) => {
                     e.stopPropagation();
@@ -992,32 +1010,32 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                 />
               )}
 
-              {profile.images?.[currentImageIndex] ? (
+              {currentProfile?.images?.[currentImageIndex] ? (
                 (() => {
-                  const imageUrl = validateImageUrl(profile.images[currentImageIndex]);
+                  const imageUrl = validateImageUrl(currentProfile?.images?.[currentImageIndex]);
                   if (!imageUrl) {
-                    console.warn(`[SwiperScreen] No valid image URL for profile ${profile.id} at index ${currentImageIndex}`);
+                    console.warn(`[SwiperScreen] No valid image URL for profile ${currentProfile?.id} at index ${currentImageIndex}`);
                     return (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
                         <div className="text-6xl mb-4">📷</div>
-                        <h2 className="text-3xl font-bold text-white text-center mb-2">{profile.name}</h2>
-                        <p className="text-xl text-white/80 font-semibold mb-4">{profile.age}</p>
-                        <p className="text-sm text-white/60 text-center max-w-xs mb-6">{profile.location}</p>
+                        <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
+                        <p className="text-xl text-white/80 font-semibold mb-4">{currentProfile?.age}</p>
+                        <p className="text-sm text-white/60 text-center max-w-xs mb-6">{currentProfile?.location}</p>
                         <p className="text-xs text-white/50 text-center">Image data unavailable</p>
                       </div>
                     );
                   }
                   return (
                     <img
-                      key={`${profile.id}-${currentImageIndex}`}
+                      key={`${currentProfile?.id}-${currentImageIndex}`}
                       src={imageUrl}
-                      alt={`${profile.name} - photo ${currentImageIndex + 1}`}
+                      alt={`${currentProfile?.name} - photo ${currentImageIndex + 1}`}
                       onLoad={() => {
-                        console.log('[SwiperScreen] Image loaded for profile:', profile.id, 'index:', currentImageIndex);
+                        console.log('[SwiperScreen] Image loaded for profile:', currentProfile?.id, 'index:', currentImageIndex);
                         setImgLoaded(true);
                       }}
                       onError={(e) => {
-                        console.warn('[SwiperScreen] Failed to load image for profile:', profile.id, 'URL:', imageUrl, 'Error:', e);
+                        console.warn('[SwiperScreen] Failed to load image for profile:', currentProfile?.id, 'URL:', imageUrl, 'Error:', e);
                         setImgLoaded(true); // show fallback anyway
                       }}
                       className="w-full h-full object-cover select-none"
@@ -1030,9 +1048,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
                   <div className="text-6xl mb-4">👤</div>
-                  <h2 className="text-3xl font-bold text-white text-center mb-2">{profile.name}</h2>
-                  <p className="text-xl text-white/80 font-semibold mb-4">{profile.age}</p>
-                  <p className="text-sm text-white/60 text-center max-w-xs mb-6">{profile.location}</p>
+                  <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
+                  <p className="text-xl text-white/80 font-semibold mb-4">{currentProfile?.age}</p>
+                  <p className="text-sm text-white/60 text-center max-w-xs mb-6">{currentProfile?.location}</p>
                   <p className="text-xs text-white/50 text-center">No photos available</p>
                 </div>
               )}
@@ -1066,11 +1084,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                 <div className="flex items-end gap-3 mb-2">
                   <div className="flex-1 min-w-0">
                     <h2 className="text-4xl md:text-5xl font-black tracking-tight truncate">
-                      {profile.username || profile.name}
+                      {currentProfile?.username || currentProfile?.name}
                     </h2>
-                    <p className="text-xl md:text-2xl font-semibold text-white/90">{profile.age}</p>
+                    <p className="text-xl md:text-2xl font-semibold text-white/90">{currentProfile?.age}</p>
                   </div>
-                  {profile.isPremium && (
+                  {currentProfile?.isPremium && (
                     <span className="premium-gradient px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[10px] md:text-xs font-black uppercase tracking-widest text-white shadow-lg flex-shrink-0">
                       Premium
                     </span>
@@ -1093,16 +1111,16 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
                 <div className="flex items-center gap-1.5 text-xs md:text-sm text-gray-200 mb-2 md:mb-3">
                   <i className="fa-solid fa-location-arrow text-[9px] md:text-[10px]" />
-                  <span className="font-medium truncate">{profile.location}</span>
+                  <span className="font-medium truncate">{currentProfile?.location}</span>
                 </div>
 
-                {profile.bio && (
-                  <p className="text-xs md:text-sm line-clamp-2 text-gray-100 mb-3 md:mb-4 leading-relaxed">{profile.bio}</p>
+                {currentProfile?.bio && (
+                  <p className="text-xs md:text-sm line-clamp-2 text-gray-100 mb-3 md:mb-4 leading-relaxed">{currentProfile?.bio}</p>
                 )}
 
                 {/* Interests pills */}
                 <div className="flex flex-wrap gap-1.5 md:gap-2">
-                  {profile.interests.slice(0, 6).map(interest => (
+                  {currentProfile?.interests?.slice(0, 6).map(interest => (
                     <span
                       key={interest}
                       className={`px-3 py-1 md:px-3.5 md:py-1.5 rounded-full text-[9px] md:text-xs font-semibold transition-colors ${
@@ -1125,7 +1143,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                     View Profile
                   </button>
                   <button
-                    onClick={() => navigate(`/chat/${profile.id}`, { state: { matchedProfile: profile } })}
+                    onClick={() => navigate(`/chat/${currentProfile?.id}`, { state: { matchedProfile: currentProfile } })}
                     className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-lg ring-1 ring-white/50 py-2.5 rounded-full text-white font-semibold text-sm transition-all flex items-center justify-center gap-2"
                   >
                     <i className="fa-solid fa-message text-sm" />
@@ -1167,6 +1185,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               coinColor="purple"
               glowColor="purple"
               size="sm"
+              superlikeCount={likeStats?.totalSuperLikes}
             />
             <ActionButton
               onClick={handleLike}
@@ -1176,15 +1195,16 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               size="lg"
               title="Like"
               glowColor="pink"
+              likeCount={likeStats?.totalLikes}
             />
           </div>
         </div>
       </div>
 
       {/* Profile Modal */}
-      {showProfileModal && profile && (
+      {showProfileModal && currentProfile && (
         <UserProfileModal
-          user={profile}
+          user={currentProfile}
           onClose={() => setShowProfileModal(false)}
         />
       )}

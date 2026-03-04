@@ -47,6 +47,7 @@ export async function storeLike(userId: string, targetUserId: string): Promise<L
     console.log(`[Like Service] Storing like from ${userId} to ${targetUserId}`);
 
     const response = await apiClient.recordSwipe(userId, targetUserId, 'like');
+    console.log(`[Like Service] recordSwipe response:`, response);
 
     if (response.matched && response.matchedUser) {
       console.log(`[Like Service] ✨ MATCH! ${response.message}`);

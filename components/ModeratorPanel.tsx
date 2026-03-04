@@ -75,6 +75,9 @@ const ModeratorPanel: React.FC = () => {
   const [userSuspendedFilter, setUserSuspendedFilter] = useState<string>('');
   const [actioningUserId, setActioningUserId] = useState<string | null>(null);
   const [confirmationModal, setConfirmationModal] = useState<{ isOpen: boolean; userId: string | null; action: 'suspend' | 'unsuspend' | null; reason: string }>({ isOpen: false, userId: null, action: null, reason: '' });
+  const [userCurrentPage, setUserCurrentPage] = useState<number>(1);
+  const [userTotalCount, setUserTotalCount] = useState<number>(0);
+  const usersPerPage = 50;
   
   // Coin Packages Management
   const [coinPackages, setCoinPackages] = useState<any[]>([
@@ -387,23 +390,8 @@ const ModeratorPanel: React.FC = () => {
       fetchMessageStats();
     }
     
-    // Set up auto-refresh based on active tab
-    const refreshInterval = setInterval(() => {
-      if (activeTab === 'PENDING') {
-        fetchRepliedChats();
-      } else if (activeTab === 'CHATS') {
-        fetchChats();
-      } else if (activeTab === 'STALLED') {
-        fetchStalledChats();
-      } else if (activeTab === 'USERS') {
-        fetchAllUsers();
-      } else if (activeTab === 'SUPPORT') {
-        fetchContactMessages();
-        fetchMessageStats();
-      }
-    }, 10000);
-
-    return () => clearInterval(refreshInterval);
+    // No auto-refresh - user manually refreshes via buttons
+    return () => {};
   }, [activeTab]);
 
   const fetchChats = async () => {
@@ -561,12 +549,14 @@ const ModeratorPanel: React.FC = () => {
   };
 
   // Fetch all users for management
-  const fetchAllUsers = async () => {
+  const fetchAllUsers = async (page: number = 1) => {
     try {
       setLoadingUsers(true);
+      setUserCurrentPage(page);
 
-      // Build query string for filters
-      const params: any = {};
+      // Build query params for single page
+      const skip = (page - 1) * usersPerPage;
+      const params: any = { limit: usersPerPage, skip };
       if (searchQuery.trim()) params.search = searchQuery;
       if (userRoleFilter) params.role = userRoleFilter;
       if (userAccountTypeFilter) params.accountType = userAccountTypeFilter;
@@ -574,11 +564,13 @@ const ModeratorPanel: React.FC = () => {
 
       const query = new URLSearchParams(params).toString();
       const response = await apiClient.get(
-        `/moderation/users/all${query ? `?${query}` : ''}`,
+        `/moderation/users/all?${query}`,
       );
 
-      // Backend returns { success, users, total, ... }
-      setAllUsers((response as any).users || []);
+      const { users = [], total = 0 } = response as any;
+      setAllUsers(users);
+      setUserTotalCount(total);
+      console.log(`[DEBUG ModeratorPanel] Page ${page}: Loaded ${users.length} users (Total: ${total})`);
     } catch (error) {
       console.error('[ERROR ModeratorPanel] Failed to fetch users:', error);
       setAllUsers([]);
@@ -2081,7 +2073,7 @@ const ModeratorPanel: React.FC = () => {
               <div>
                 <label className="text-xs font-bold text-gray-600 mb-1 block">&nbsp;</label>
                 <button 
-                  onClick={() => fetchAllUsers()}
+                  onClick={() => fetchAllUsers(1)}
                   disabled={loadingUsers}
                   className="w-full py-2 px-3 bg-pink-600 text-white text-xs font-bold rounded-lg hover:bg-pink-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                 >
@@ -2100,6 +2092,31 @@ const ModeratorPanel: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {/* Pagination Info */}
+            {userTotalCount > 0 && (
+              <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <div className="text-xs text-blue-700 font-bold">
+                  Page <span className="text-blue-900">{userCurrentPage}</span> of <span className="text-blue-900">{Math.ceil(userTotalCount / usersPerPage)}</span>&nbsp;•&nbsp;<span className="text-blue-900">{userTotalCount.toLocaleString()}</span> total users
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => fetchAllUsers(Math.max(1, userCurrentPage - 1))}
+                    disabled={userCurrentPage === 1 || loadingUsers}
+                    className="px-3 py-1.5 text-xs font-bold bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-all"
+                  >
+                    <i className="fa-solid fa-chevron-left"></i> Previous
+                  </button>
+                  <button
+                    onClick={() => fetchAllUsers(userCurrentPage + 1)}
+                    disabled={userCurrentPage >= Math.ceil(userTotalCount / usersPerPage) || loadingUsers}
+                    className="px-3 py-1.5 text-xs font-bold bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-all"
+                  >
+                    Next <i className="fa-solid fa-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Users List */}
             {loadingUsers ? (

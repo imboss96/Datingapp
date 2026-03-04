@@ -36,8 +36,8 @@ const PhotoVerificationReviewPanel: React.FC = () => {
   // Fetch pending photos
   useEffect(() => {
     fetchPendingPhotos();
-    const interval = setInterval(fetchPendingPhotos, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
+    // No auto-refresh - user manually refreshes via button or WebSocket updates provide real-time notifications
+    return () => {};
   }, []);
 
   const fetchPendingPhotos = async () => {

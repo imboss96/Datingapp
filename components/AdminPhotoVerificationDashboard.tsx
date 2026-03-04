@@ -42,7 +42,6 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
   const [reviewNotes, setReviewNotes] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [filterStatus, setFilterStatus] = useState<'pending' | 'all'>('pending');
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
   const rejectionReasons = [
     'No face detected',
@@ -73,17 +72,9 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchVerifications();
-    
-    // Auto-refresh every 30 seconds if enabled
-    let interval: NodeJS.Timeout | null = null;
-    if (autoRefreshEnabled) {
-      interval = setInterval(fetchVerifications, 30000);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [autoRefreshEnabled]);
+    // No auto-refresh - manual refresh only via button
+    return () => {};
+  }, []);
 
   // Analyze selected verification photo
   const handleAnalyzePhoto = async () => {
@@ -168,21 +159,12 @@ const AdminPhotoVerificationDashboard: React.FC = () => {
             <p className="text-blue-50 mt-1">Review and approve user verification photos</p>
           </div>
           <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={autoRefreshEnabled}
-                onChange={(e) => setAutoRefreshEnabled(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-sm">Auto-refresh (30s)</span>
-            </label>
             <button
               onClick={fetchVerifications}
               disabled={loading}
-              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-semibold transition-colors disabled:opacity-50"
+              className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
             >
-              <i className="fa-solid fa-refresh mr-2"></i>
+              <i className={`fa-solid fa-rotate-right ${loading ? 'animate-spin' : ''}`}></i>
               Refresh
             </button>
           </div>
