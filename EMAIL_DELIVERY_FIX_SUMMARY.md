@@ -215,7 +215,7 @@ Invoke-WebRequest -Uri "http://localhost:5000/api/lipana/test-payment-method/str
 
 ## Brevo Configuration Reference
 
-- **API Key:** `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`
+- **API Key:** `<set in .env file - not shown for security>`
 - **API URL:** `https://api.brevo.com/v3`
 - **Template 7:** Premium Upgrade
 - **Template 8:** Coin Purchase
