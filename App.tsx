@@ -23,6 +23,7 @@ import TermsPage from './components/TermsPage';
 import PrivacyPage from './components/PrivacyPage';
 import CookiePolicyPage from './components/CookiePolicyPage';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import ModalPreview from './components/ModalPreview';
 import { WebSocketProvider } from './services/WebSocketProvider';
 import { AlertProvider } from './services/AlertContext';
 import { NotificationProvider } from './services/NotificationContext';
@@ -351,6 +352,7 @@ const AppContent: React.FC<{
           {(isAdmin || isModerator) && (
             <Route path="/moderator" element={<div className="flex-1 overflow-y-auto"><ModeratorChatPanel /></div>} />
           )}
+          <Route path="/modal-preview" element={<ModalPreview />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
 

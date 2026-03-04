@@ -253,6 +253,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [maxDistance,      setMaxDistance]      = useState<number>(DISTANCE_RANGES.THOUSAND_KM);
   const [showDistanceFilter, setShowDistanceFilter] = useState(false);
   const [imgLoaded,        setImgLoaded]        = useState(false);
+  const [failedImages,     setFailedImages]     = useState<Set<string>>(new Set());
+  const [swipedProfiles,   setSwipedProfiles]   = useState<Set<string>>(new Set());
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -267,13 +269,45 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   useEffect(() => { profilesLengthRef.current = profiles.length; }, [profiles]);
   useEffect(() => { isLoadingMoreRef.current  = isLoadingMore;   }, [isLoadingMore]);
 
+  // Load swiped profiles from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('swipedProfiles');
+    if (saved) {
+      try {
+        setSwipedProfiles(new Set(JSON.parse(saved)));
+        console.log('[SwiperScreen] Loaded swiped profiles from localStorage:', JSON.parse(saved).length);
+      } catch (err) {
+        console.error('[SwiperScreen] Failed to load swiped profiles:', err);
+      }
+    }
+  }, []);
+
+  // Save swiped profiles to localStorage whenever it changes
+  useEffect(() => {
+    if (swipedProfiles.size > 0) {
+      localStorage.setItem('swipedProfiles', JSON.stringify(Array.from(swipedProfiles)));
+      console.log('[SwiperScreen] Saved swiped profiles to localStorage:', swipedProfiles.size);
+    }
+  }, [swipedProfiles]);
+
   // Cleanup on unmount
   useEffect(() => () => {
     if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
   }, []);
 
   // ── Hooks (must be called before any early returns) ────────────────────────
-  const currentProfile = profiles[currentIndex] || null;
+  
+  // Filter out already swiped profiles
+  const filteredProfiles = useMemo(() => {
+    if (swipedProfiles.size === 0) return profiles;
+    const filtered = profiles.filter(p => !swipedProfiles.has(p.id));
+    if (filtered.length < profiles.length) {
+      console.log(`[SwiperScreen] Filtered out ${profiles.length - filtered.length} already swiped profiles`);
+    }
+    return filtered;
+  }, [profiles, swipedProfiles]);
+
+  const currentProfile = filteredProfiles[currentIndex] || null;
   const { stats: likeStats } = useLikeStats(currentProfile?.id || null);
 
   // ── Distance / match helpers ──────────────────────────────────────────────
@@ -481,17 +515,6 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
   }, [currentIndex, profiles]);
 
-  // Reset image loaded state and image index on profile change
-  useEffect(() => {
-    setImgLoaded(false);
-    setCurrentImageIndex(0); // Reset to first image when changing profiles
-    // if the profile has no image, consider it loaded so skeleton hides
-    const profile = profiles[currentIndex];
-    if (profile && (!profile.images || profile.images.length === 0)) {
-      setImgLoaded(true);
-    }
-  }, [currentIndex, profiles]);
-
   // ── Load more in background when approaching end ──────────────────────────────────
   // This loads profiles silently without interrupting the swipe experience
 
@@ -521,28 +544,30 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   }, [currentBatch, maxDistance, fetchProfileBatch]);
 
   // ── Reset image state when profile changes ────────────────────────────────
-  
+  // Only single useEffect to avoid duplicate renders and flickering
   useEffect(() => {
-    // Reset to first image and clear loaded state when switching profiles
     setCurrentImageIndex(0);
     setImgLoaded(false);
+    setFailedImages(new Set()); // Reset failed images when switching profiles
   }, [currentIndex]);
 
   // ── Image Carousel Navigation ──────────────────────────────────────────────
 
   const goToNextImage = useCallback(() => {
-    const profile = profiles[currentIndex];
+    const profile = currentProfile;
     if (profile?.images && currentImageIndex < profile.images.length - 1) {
       setCurrentImageIndex(currentImageIndex + 1);
       setImgLoaded(false);
+      setFailedImages(new Set()); // Reset failed images when navigating
       console.log('[SwiperScreen] Next image:', currentImageIndex + 1);
     }
-  }, [currentIndex, currentImageIndex, profiles]);
+  }, [currentImageIndex, currentProfile]);
 
   const goToPrevImage = useCallback(() => {
     if (currentImageIndex > 0) {
       setCurrentImageIndex(currentImageIndex - 1);
       setImgLoaded(false);
+      setFailedImages(new Set()); // Reset failed images when navigating
       console.log('[SwiperScreen] Previous image:', currentImageIndex - 1);
     }
   }, [currentImageIndex]);
@@ -569,12 +594,14 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   }, [loadMoreIfNeeded]);
 
   const handleLike = useCallback(async () => {
-    const profile = profiles[currentIndex];
+    const profile = currentProfile;
     if (!profile?.id) return;
     console.log(`[SwiperScreen] Liking profile: ${profile.id}`);
     try {
       const res = await storeLike(currentUser.id, profile.id);
       console.log(`[SwiperScreen] Like response:`, res);
+      // Mark profile as swiped
+      setSwipedProfiles(prev => new Set([...prev, profile.id]));
       if (res.matched && res.matchedUser) {
         setMatchedUser(res.matchedUser as any);
         setInterestMatch(res.interestMatch || 0);
@@ -584,37 +611,44 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     } catch (err: any) {
       // Silently handle "Already swiped" errors - just advance to next profile
       if (err.message?.includes('Already swiped') || err.status === 400) {
-        // Profile already swiped, skip to next one silently
+        // Profile already swiped, mark it and skip
+        setSwipedProfiles(prev => new Set([...prev, profile.id]));
       } else {
         console.error('[SwiperScreen] Failed to record like:', err);
         showAlert('Error', err.message || 'Failed to save like');
       }
     }
     advance(currentIndex + 1);
-  }, [profiles, currentIndex, currentUser.id, advance, showAlert]);
+  }, [currentProfile, currentUser.id, advance, showAlert, currentIndex]);
 
   const handlePass = useCallback(async () => {
-    const profile = profiles[currentIndex];
+    const profile = currentProfile;
     if (profile?.id) {
       try {
         await storePass(currentUser.id, profile.id);
+        // Mark profile as swiped
+        setSwipedProfiles(prev => new Set([...prev, profile.id]));
       } catch (err: any) {
         // Silent fail for pass action - non-critical
-        // "Already swiped" errors are expected and handled by advancing to next
+        if (err.message?.includes('Already swiped') || err.status === 400) {
+          setSwipedProfiles(prev => new Set([...prev, profile.id]));
+        }
       }
     }
     advance(currentIndex + 1);
-  }, [profiles, currentIndex, currentUser.id, advance]);
+  }, [currentProfile, currentUser.id, advance, currentIndex]);
 
   const handleSuperLike = useCallback(async () => {
     if (!currentUser.isPremium && currentUser.coins < 1) {
       showAlert('Out of Coins', 'Top up in your profile to keep swiping.');
       return;
     }
-    const profile = profiles[currentIndex];
+    const profile = currentProfile;
     if (profile?.id) {
       try {
         const res = await storeSuperLike(currentUser.id, profile.id);
+        // Mark profile as swiped
+        setSwipedProfiles(prev => new Set([...prev, profile.id]));
         if (res.matched && res.matchedUser) {
           setMatchedUser(res.matchedUser as any);
           setInterestMatch(res.interestMatch || 0);
@@ -624,7 +658,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       } catch (err: any) {
         // Silently handle "Already swiped" errors - just advance to next profile
         if (err.message?.includes('Already swiped') || err.status === 400) {
-          // Profile already super liked, skip to next one silently
+          // Profile already super liked, mark it and skip
+          setSwipedProfiles(prev => new Set([...prev, profile.id]));
         } else {
           console.error('[SwiperScreen] Failed to record super like:', err);
           showAlert('Error', err.message || 'Failed to save super like');
@@ -633,7 +668,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
     if (!currentUser.isPremium) onDeductCoin();
     advance(currentIndex + 1);
-  }, [profiles, currentIndex, currentUser, onDeductCoin, showAlert, advance]);
+  }, [currentProfile, currentUser, onDeductCoin, showAlert, advance, currentIndex]);
 
   // Handle retry on fetch error
   const handleRetry = useCallback(async () => {
@@ -771,13 +806,17 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     </div>
   );
 
-  if (profiles.length === 0) return (
+  if (filteredProfiles.length === 0) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-blue-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-users text-4xl text-blue-500" />
       </div>
-      <h2 className="text-2xl font-bold text-gray-800">No profiles available</h2>
-      <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">There are no other users in your area yet. Check back later!</p>
+      <h2 className="text-2xl font-bold text-gray-800">No new profiles available</h2>
+      <p className="text-gray-500 mt-2 max-w-xs leading-relaxed">
+        {swipedProfiles.size > 0 
+          ? 'You\'ve reviewed everyone! Check back later for new profiles.' 
+          : 'There are no other users in your area yet. Check back later!'}
+      </p>
       <button
         onClick={() => window.location.reload()}
         className="mt-6 px-10 py-3 spark-gradient text-white rounded-full font-bold shadow-xl active:scale-95 transition-transform"
@@ -811,7 +850,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   // Don't show full-screen loading state - let user keep swiping while we load in background
   // Just show a subtle indicator at the top instead
 
-  if (currentIndex >= profiles.length) return (
+  if (currentIndex >= filteredProfiles.length) return (
     <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-white md:bg-gray-50">
       <div className="bg-rose-50 p-6 rounded-full mb-4 shadow-inner">
         <i className="fa-solid fa-location-dot text-4xl text-rose-500" />
@@ -1013,36 +1052,62 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               {currentProfile?.images?.[currentImageIndex] ? (
                 (() => {
                   const imageUrl = validateImageUrl(currentProfile?.images?.[currentImageIndex]);
-                  if (!imageUrl) {
-                    console.warn(`[SwiperScreen] No valid image URL for profile ${currentProfile?.id} at index ${currentImageIndex}`);
+                  const imageCacheKey = `${currentProfile?.id}-${currentImageIndex}`;
+                  const isFailed = failedImages.has(imageCacheKey);
+                  
+                  if (!imageUrl || isFailed) {
+                    console.warn(`[SwiperScreen] ${isFailed ? 'Failed to load' : 'No valid'} image URL for profile ${currentProfile?.id} at index ${currentImageIndex}`);
                     return (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
                         <div className="text-6xl mb-4">📷</div>
                         <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
                         <p className="text-xl text-white/80 font-semibold mb-4">{currentProfile?.age}</p>
                         <p className="text-sm text-white/60 text-center max-w-xs mb-6">{currentProfile?.location}</p>
-                        <p className="text-xs text-white/50 text-center">Image data unavailable</p>
+                        <p className="text-xs text-white/50 text-center">{isFailed ? 'Image failed to load' : 'Image data unavailable'}</p>
                       </div>
                     );
                   }
+                  
                   return (
-                    <img
-                      key={`${currentProfile?.id}-${currentImageIndex}`}
-                      src={imageUrl}
-                      alt={`${currentProfile?.name} - photo ${currentImageIndex + 1}`}
-                      onLoad={() => {
-                        console.log('[SwiperScreen] Image loaded for profile:', currentProfile?.id, 'index:', currentImageIndex);
-                        setImgLoaded(true);
-                      }}
-                      onError={(e) => {
-                        console.warn('[SwiperScreen] Failed to load image for profile:', currentProfile?.id, 'URL:', imageUrl, 'Error:', e);
-                        setImgLoaded(true); // show fallback anyway
-                      }}
-                      className="w-full h-full object-cover select-none"
-                      loading="eager"
-                      decoding="sync"
-                      style={{ visibility: imgLoaded ? 'visible' : 'hidden', width: '100%', height: '100%' }}
-                    />
+                    <div className="relative w-full h-full bg-gradient-to-br from-slate-700 to-slate-800">
+                      {/* Loading skeleton - always visible as background */}
+                      {!imgLoaded && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-slate-700 animate-pulse">
+                          <div className="text-white/40">
+                            <div className="animate-spin h-12 w-12 border-4 border-white/10 border-t-white/40 rounded-full mx-auto mb-2"></div>
+                            <p className="text-sm">Loading...</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Image - fades in when loaded */}
+                      <img
+                        key={imageCacheKey}
+                        src={imageUrl}
+                        alt={`${currentProfile?.name} - photo ${currentImageIndex + 1}`}
+                        onLoad={() => {
+                          console.log('[SwiperScreen] Image loaded successfully:', imageCacheKey);
+                          setImgLoaded(true);
+                        }}
+                        onError={() => {
+                          console.warn('[SwiperScreen] Image failed to load:', imageCacheKey, 'URL:', imageUrl);
+                          // Mark this image as failed and don't try again for this profile/index combo
+                          setFailedImages(prev => new Set([...prev, imageCacheKey]));
+                          setImgLoaded(true); // Allow UI to show error state
+                        }}
+                        className="w-full h-full object-cover select-none transition-opacity duration-500"
+                        loading="eager"
+                        decoding="async"
+                        style={{ 
+                          opacity: imgLoaded ? 1 : 0,
+                          width: '100%', 
+                          height: '100%',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0
+                        }}
+                      />
+                    </div>
                   );
                 })()
               ) : (

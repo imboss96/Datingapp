@@ -30,7 +30,7 @@ async function startTunnel() {
     console.log(`║ Webhook URL:         ${webhookUrl}`);
     console.log('║                                                                ║');
     console.log('║ Use this in Lipana Dashboard:                                 ║');
-    console.log(`║ → Webhooks → Webhook URL                                       ║');
+    console.log('║ → Webhooks → Webhook URL                                       ║');
     console.log('║                                                                ║');
     console.log('║ ngrok Dashboard:     http://localhost:4040                     ║');
     console.log('║ Ctrl+C to stop tunnel                                         ║');

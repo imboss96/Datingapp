@@ -33,7 +33,7 @@ const MatchModal: React.FC<MatchModalProps> = ({ isOpen, matchedUser, interestMa
   const confettiColors = ['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#FF6B9D'];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
 
       {/* Confetti */}
       {showConfetti && (
@@ -53,140 +53,156 @@ const MatchModal: React.FC<MatchModalProps> = ({ isOpen, matchedUser, interestMa
         </div>
       )}
 
-      {/* Modal */}
-      <div className="relative bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden">
+      {/* Instagram-Style Neon Card */}
+      <div className="relative bg-gradient-to-b from-gray-900 to-black rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden"
+           style={{
+             border: '2px solid #E91E63',
+             boxShadow: '0 0 30px rgba(233, 30, 99, 0.5), 0 0 60px rgba(233, 30, 99, 0.3)',
+           }}>
 
-        {/* Header */}
-        <div className="bg-gradient-to-r from-red-500 via-pink-500 to-red-500 p-8 text-center relative overflow-hidden">
-          <div className="absolute inset-0 opacity-20">
-            {['♥', '♥', '♥', '♥', '♥'].map((heart, i) => (
-              <span
-                key={i}
-                className="absolute text-4xl"
-                style={{
-                  left: `${i * 20 + 5}%`,
-                  top: `${(i % 3) * 30 + 10}%`,
-                  animation: `heartBeat 1.5s ease-in-out infinite`,
-                  animationDelay: `${i * 0.2}s`,
-                }}
-              >
-                <i className="fa-solid fa-heart text-red-500" />
-              </span>
-            ))}
+        {/* It's a Match Header */}
+        <div className="relative px-6 pt-6 pb-4 text-center border-b border-pink-500/30">
+          <div className="text-4xl mb-2 animate-pulse">
+            <i className="fa-solid fa-heart text-pink-500" />
           </div>
-          <div className="relative z-10">
-            <div className="text-6xl mb-4"><i className="fa-solid fa-heart text-red-500" /></div>
-            <h2 className="text-white text-3xl font-black mb-2 tracking-wider">IT'S A MATCH!</h2>
-            <p className="text-white/90 text-sm font-medium">
-              You and <span className="font-bold">{displayName(matchedUser)}</span> like each other!
-            </p>
-          </div>
+          <h2 className="text-white text-2xl font-black tracking-wider" style={{ color: '#E91E63' }}>
+            IT'S A MATCH!
+          </h2>
+          <p className="text-gray-400 text-xs mt-1 font-medium">
+            You both like each other
+          </p>
         </div>
 
         {/* Body */}
-        <div className="p-8">
+        <div className="px-6 py-6 space-y-6">
 
-          {/* Avatar */}
-          {(matchedUser.profilePicture || matchedUser.images?.[0]) && (
-            <div className="mb-6 text-center">
-              <div className="relative inline-block">
-                <img
-                  src={matchedUser.profilePicture || matchedUser.images[0]}
-                  alt={matchedUser.username || matchedUser.name}
-                  className="w-40 h-40 rounded-full mx-auto object-cover border-4 border-pink-500 shadow-lg"
-                />
-                <div className="absolute -bottom-2 -right-2 bg-red-500 text-white p-3 rounded-full shadow-lg">
-                  <i className="fa-solid fa-heart text-xl" />
-                </div>
+          {/* Profile Photo in Circle with Initials */}
+          <div className="flex flex-col items-center">
+            <div className="relative mb-4">
+              {/* Circular Profile Photo */}
+              <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-pink-500 shadow-lg"
+                   style={{ boxShadow: '0 0 20px rgba(233, 30, 99, 0.6)' }}>
+                {matchedUser.profilePicture || matchedUser.images?.[0] ? (
+                  <img
+                    src={matchedUser.profilePicture || matchedUser.images[0]}
+                    alt={displayName(matchedUser)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+                    <span className="text-5xl font-black text-white">
+                      {displayName(matchedUser)?.charAt(0)?.toUpperCase()}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {/* Heart Badge */}
+              <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-pink-500 rounded-full flex items-center justify-center shadow-lg border-2 border-black">
+                <i className="fa-solid fa-heart text-white text-lg" />
               </div>
             </div>
-          )}
 
-          {/* Name */}
-          <h3 className="text-center text-2xl font-black text-gray-900 mb-1">
-            {displayName(matchedUser)}
-          </h3>
-
-          {/* Age & Location */}
-          <div className="text-center mb-6">
-            <p className="text-gray-600 text-sm font-semibold">{matchedUser.age} years old</p>
-            {matchedUser.location && (
-              <p className="text-gray-500 text-xs flex items-center justify-center gap-1 mt-2">
-                <i className="fa-solid fa-map-pin text-red-500" />
-                {matchedUser.location}
-              </p>
-            )}
-          </div>
-
-          {/* Interest Match */}
-          <div className="bg-gradient-to-r from-pink-50 to-red-50 rounded-2xl p-5 mb-6 border border-pink-200 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-gray-800 font-bold flex items-center gap-2">
-                <i className="fa-solid fa-fire text-red-500" />
-                Interest Compatibility
-              </span>
-              <span className="text-3xl font-black text-red-500">{interestMatch}%</span>
-            </div>
-            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-red-400 to-pink-500 h-3 rounded-full transition-all duration-1000 shadow-lg"
-                style={{ width: `${interestMatch}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-600 mt-2 text-center font-medium">
-              {interestMatch >= 80 ? <span className="flex items-center justify-center gap-1"><i className="fa-solid fa-fire text-red-500" /> Perfect match!</span> : interestMatch >= 60 ? <span className="flex items-center justify-center gap-1"><i className="fa-solid fa-thumbs-up text-green-500" /> Great connection!</span> : <span className="flex items-center justify-center gap-1"><i className="fa-solid fa-comments text-blue-500" /> Good potential!</span>}
+            {/* Name and Subtitle */}
+            <h3 className="text-2xl font-black text-white text-center">
+              {displayName(matchedUser)}, {matchedUser.age}
+            </h3>
+            <p className="text-gray-400 text-sm font-medium mt-1">
+              {matchedUser.location || 'Location not specified'}
             </p>
           </div>
 
-          {/* Bio */}
-          {matchedUser.bio && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-              <p className="text-sm text-gray-700 leading-relaxed">"{matchedUser.bio}"</p>
-            </div>
-          )}
-
-          {/* Interests */}
-          {matchedUser.interests?.length > 0 && (
-            <div className="mb-6">
-              <p className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
-                <i className="fa-solid fa-star text-yellow-500" />
+          {/* Stats Section */}
+          <div className="grid grid-cols-3 gap-3 py-4 border-y border-pink-500/30">
+            <div className="text-center">
+              <div className="text-2xl font-black text-pink-500">
+                {matchedUser.interests?.length || 0}
+              </div>
+              <div className="text-xs text-gray-400 font-medium mt-1">
+                <i className="fa-solid fa-star mr-1" />
                 Interests
-              </p>
+              </div>
+            </div>
+            <div className="text-center border-l border-r border-pink-500/30">
+              <div className="text-2xl font-black text-pink-500">
+                {interestMatch}%
+              </div>
+              <div className="text-xs text-gray-400 font-medium mt-1">
+                <i className="fa-solid fa-fire mr-1" />
+                Match
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-black text-pink-500">
+                ✨
+              </div>
+              <div className="text-xs text-gray-400 font-medium mt-1">
+                Premium
+              </div>
+            </div>
+          </div>
+
+          {/* Instagram Handle */}
+          <div className="text-center space-y-1">
+            <p className="text-gray-400 text-xs">Instagram Handle</p>
+            <p className="text-white text-sm font-bold">
+              @{matchedUser.username || matchedUser.name?.toLowerCase().replace(/\s+/g, '')}
+            </p>
+          </div>
+
+          {/* Interests as Pills */}
+          {matchedUser.interests?.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-gray-400 text-xs font-medium">Interests</p>
               <div className="flex flex-wrap gap-2">
-                {matchedUser.interests.slice(0, 6).map((interest, i) => (
-                  <span key={i} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-xs font-bold">
-                    {interest}
+                {matchedUser.interests.slice(0, 5).map((interest, i) => (
+                  <span key={i} className="px-3 py-1.5 bg-pink-500/20 text-pink-300 rounded-full text-xs font-bold border border-pink-500/40 hover:border-pink-500/80 transition-all">
+                    #{interest}
                   </span>
                 ))}
-                {matchedUser.interests.length > 6 && (
-                  <span className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-full text-xs font-bold">
-                    +{matchedUser.interests.length - 6} more
+                {matchedUser.interests.length > 5 && (
+                  <span className="px-3 py-1.5 bg-gray-800 text-gray-400 rounded-full text-xs font-bold border border-gray-700">
+                    +{matchedUser.interests.length - 5}
                   </span>
                 )}
               </div>
             </div>
           )}
 
+          {/* Bio */}
+          {matchedUser.bio && (
+            <div className="bg-black/50 border border-pink-500/20 rounded-lg p-3">
+              <p className="text-gray-300 text-xs leading-relaxed italic">
+                "{matchedUser.bio}"
+              </p>
+            </div>
+          )}
+
           {/* Action Buttons */}
-          <div className="flex gap-3 mt-8">
+          <div className="grid grid-cols-2 gap-3 mt-6">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2"
+              className="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 border border-gray-700 hover:border-gray-600"
             >
-              <i className="fa-solid fa-arrow-left" />
-              Keep Swiping
+              <i className="fa-solid fa-arrow-left text-lg" />
+              <span className="hidden sm:inline">Keep<br />Swiping</span>
             </button>
             <button
               onClick={onMessage}
-              className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold rounded-2xl transition-all shadow-lg hover:shadow-xl active:scale-95 flex items-center justify-center gap-2"
+              className="px-4 py-3 font-bold rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 text-white border-2 border-pink-500 hover:border-pink-400"
+              style={{
+                background: 'linear-gradient(135deg, #E91E63 0%, #EC407A 100%)',
+                boxShadow: '0 0 15px rgba(233, 30, 99, 0.4)',
+              }}
             >
-              <i className="fa-solid fa-message" />
-              Message Now
+              <i className="fa-solid fa-message text-lg" />
+              <span className="hidden sm:inline">Message<br />Now</span>
             </button>
           </div>
 
-          <p className="text-center text-xs text-gray-500 mt-4 font-medium">
-            <i className="fa-solid fa-comments text-blue-500 mr-1" /> Send your first message and start a conversation!
+          {/* Footer Message */}
+          <p className="text-center text-xs text-gray-500 font-medium">
+            <i className="fa-solid fa-star text-pink-500 mr-1" />
+            Start your conversation now!
           </p>
         </div>
       </div>
@@ -195,9 +211,12 @@ const MatchModal: React.FC<MatchModalProps> = ({ isOpen, matchedUser, interestMa
         @keyframes confettiFall {
           to { transform: translateY(100vh) rotate(360deg); opacity: 0; }
         }
-        @keyframes heartBeat {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.3); }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        .animate-pulse {
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
       `}</style>
     </div>

@@ -58,6 +58,7 @@ const userSchema = new mongoose.Schema({
   // Auth
   resetToken: { type: String, sparse: true },
   resetTokenExpiry: { type: Date },
+  signupMethod: { type: String, enum: ['email', 'google', 'facebook', 'tiktok'], default: 'email' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
   // Email verification

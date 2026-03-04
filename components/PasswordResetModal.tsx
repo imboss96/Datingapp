@@ -20,6 +20,9 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
 
   // Form states
   const [email, setEmail] = useState(userEmail);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +116,9 @@ const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
   const handleClose = () => {
     // Reset form states
     setEmail(userEmail);
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
     onClose();
   };
 

@@ -5,6 +5,7 @@ import { UserProfile, UserRole, VerificationStatus } from '../types';
 import apiClient from '../services/apiClient';
 import PasswordResetModal from './PasswordResetModal';
 import AccountSuspendedPage from './AccountSuspendedPage';
+import GoogleSignupBanner from './GoogleSignupBanner';
 // ...existing code...
 
 interface LoginPageProps {
@@ -385,6 +386,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
           Sign Up
         </button>
       </div>
+
+      {/* Google Signup Banner - Show in signup mode */}
+      {mode === 'signup' && (
+        <div className="mb-8">
+          <GoogleSignupBanner variant="compact" />
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">

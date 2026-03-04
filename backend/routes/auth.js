@@ -300,11 +300,13 @@ router.post('/google', async (req, res) => {
         coins: 10,
         isPremium: false,
         role: 'USER',
+        signupMethod: 'google',
       });
       await user.save();
     } else if (!user.googleId) {
       // Link Google account to existing email user
       user.googleId = googleId;
+      user.signupMethod = 'google';
       if (profilePicture && !user.profilePicture) {
         user.profilePicture = profilePicture;
       }
@@ -877,6 +879,13 @@ router.post('/request-password-reset', async (req, res) => {
     if (!user) {
       // Don't reveal if email exists for security reasons
       return res.json({ message: 'If email exists, a reset link will be sent' });
+    }
+
+    // Check if user signed up with Google or other social auth
+    if (user.signupMethod === 'google' || user.googleId) {
+      return res.status(403).json({ 
+        error: 'You signed up with Google. Please use Google Sign-In to access your account.' 
+      });
     }
 
     // Generate reset token (valid for 15 minutes)
