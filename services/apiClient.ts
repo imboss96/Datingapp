@@ -289,18 +289,36 @@ class APIClient {
   async createOrGetChat(otherUserId: string, initialMessage?: { text?: string; media?: any }) {
     const body: any = { otherUserId };
     
-    // ✅ If initial message provided, include it OR skip validation
+    // ✅ If initial message provided, include it
     if (initialMessage) {
       body.initialMessage = initialMessage;
     } else {
-      // ✅ Skip message validation only if this is a lookup call (not creation)
+      // ✅ Skip message validation only for lookup (will return 404 if chat doesn't exist yet)
       body.skipMessageValidation = true;
     }
     
-    return this.request('/chats/create-or-get', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    try {
+      const response = await this.request('/chats/create-or-get', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      return response;
+    } catch (err: any) {
+      // ✅ If chat doesn't exist yet and we're just looking it up, return null instead of error
+      if (err.status === 404 && body.skipMessageValidation) {
+        console.log('[DEBUG] Chat does not exist yet for user:', otherUserId);
+        return { chatNotCreatedYet: true };  // Indicate chat should be created when first message is sent
+      }
+      throw err;
+    }
+  }
+
+  async getOrCreateChatWithMessage(otherUserId: string, messageText: string, media?: any) {
+    const initialMessage = { 
+      text: messageText,
+      media: media || undefined 
+    };
+    return this.createOrGetChat(otherUserId, initialMessage);
   }
 
   async sendMessage(chatId: string, text: string) {

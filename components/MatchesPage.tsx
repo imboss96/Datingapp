@@ -93,7 +93,10 @@ const MatchesPage: React.FC<MatchesPageProps> = ({ currentUserId }) => {
       (async () => {
         try {
           const chat = await apiClient.createOrGetChat(match.matchedUser.id);
-          const chatId = chat?.id || chat?._id;
+          
+          // ✅ Handle both existing chats and new chats that don't exist yet
+          const chatId = chat?.id || chat?._id || (chat?.chatNotCreatedYet ? match.matchedUser.id : null);
+          
           if (chatId) {
             navigate(`/chat/${chatId}`, { state: { matchedProfile: match.matchedUser } });
           } else {

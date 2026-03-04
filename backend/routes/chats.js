@@ -249,7 +249,13 @@ router.post('/create-or-get', async (req, res) => {
     let isNewChat = false;
 
     if (!chat) {
-      console.log('[DEBUG] No existing chat found, creating new one');
+      // ✅ CRITICAL FIX: Don't create chat if we're just looking it up (skipMessageValidation = true)
+      if (req.body.skipMessageValidation) {
+        console.log('[DEBUG] Chat not found and skipMessageValidation=true. Not creating empty chat.');
+        return res.status(404).json({ error: 'Chat does not exist yet', notFound: true });
+      }
+
+      console.log('[DEBUG] No existing chat found, creating new one with initial message');
       // ✅ DUPLICATE PREVENTION: Use findOneAndUpdate with proper indexing
       try {
         chat = await Chat.findOneAndUpdate(
@@ -259,7 +265,14 @@ router.post('/create-or-get', async (req, res) => {
               id: uuidv4(),
               participants,
               participantsKey,
-              messages: [],
+              messages: initialMessage ? [{
+                id: uuidv4(),
+                senderId: req.userId,
+                text: initialMessage.text || '',
+                media: initialMessage.media || null,
+                timestamp: Date.now(),
+                isFlagged: false,
+              }] : [],
               lastUpdated: Date.now(),
               requestStatus: 'accepted', // Default to accepted (can be changed by user later)
               requestInitiator: req.userId,
@@ -272,7 +285,7 @@ router.post('/create-or-get', async (req, res) => {
           { upsert: true, new: true, setDefaultsOnInsert: true }
         );
         isNewChat = true;
-        console.log('[DEBUG] Created new chat:', chat.id, 'with participantsKey:', chat.participantsKey);
+        console.log('[DEBUG] Created new chat:', chat.id, 'with participantsKey:', chat.participantsKey, 'messages:', chat.messages.length);
       } catch (upsertErr) {
         // ✅ Handle duplicate key error (E11000) - another request created it simultaneously
         if (upsertErr.code === 11000) {
@@ -307,6 +320,38 @@ router.post('/create-or-get', async (req, res) => {
     if (!chat.lastMessageTime && chat.messages && chat.messages.length > 0) {
       chat.lastMessageTime = chat.messages[chat.messages.length - 1].timestamp;
     }
+    
+    // ✅ If this is an existing chat AND an initial message was provided, add it as a new message
+    if (!isNewChat && initialMessage && (initialMessage.text?.trim() || initialMessage.media)) {
+      const msg = {
+        id: uuidv4(),
+        senderId: req.userId,
+        text: (initialMessage.text || '').trim(),
+        timestamp: Date.now(),
+        isFlagged: false,
+      };
+      if (initialMessage.media) msg.media = initialMessage.media;
+      
+      chat.messages.push(msg);
+      chat.lastUpdated = Date.now();
+      chat.lastMessageTime = Date.now();
+      
+      // Update unread for other participants
+      if (!chat.unreadCounts) chat.unreadCounts = new Map();
+      if (!chat.lastOpened) chat.lastOpened = new Map();
+      
+      chat.participants.forEach(p => {
+        if (p === req.userId) {
+          if (!chat.lastOpened) chat.lastOpened = new Map();
+          chat.lastOpened.set(p, Date.now());
+          chat.unreadCounts.set(p, 0);
+        } else {
+          const current = chat.unreadCounts.get(p) || 0;
+          chat.unreadCounts.set(p, current + 1);
+        }
+      });
+    }
+    
     await chat.save();
 
     res.json({ ...chat.toObject(), isNewChat });
