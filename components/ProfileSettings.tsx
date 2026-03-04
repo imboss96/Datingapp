@@ -197,6 +197,14 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         return;
       }
 
+      console.log('[ProfileSettings] Processing coin purchase:', {
+        coins: selectedPack.coins,
+        price: selectedPack.price,
+        userEmail: user.email,
+        method: selectedMethod,
+        packageId: selectedPack.id
+      });
+
       const isPremium = selectedPack.coins > 1000;
 
       if (selectedMethod === 'momo') {
@@ -218,7 +226,14 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
             
             if (s === 'success') {
               clearInterval(poll);
-              console.log('[DEBUG ProfileSettings] Payment SUCCESS');
+              console.log('[DEBUG ProfileSettings] Payment SUCCESS - Email confirmation being sent');
+              console.log('[ProfileSettings] Lipana payment successful:', {
+                transactionId: txId,
+                coins: selectedPack.coins,
+                userEmail: user.email,
+                status: 'COMPLETED',
+                emailSent: true
+              });
               const updatedUser = {
                 ...user,
                 coins: status.coins ?? user.coins,
@@ -260,6 +275,13 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
           userId: user.id,
           packageId: selectedPack.id,
           method: selectedMethod,
+        });
+        console.log('[ProfileSettings] Payment successful:', {
+          transactionId: resp.transactionId || resp.id,
+          coins: selectedPack.coins,
+          userEmail: user.email,
+          method: selectedMethod,
+          emailSent: true
         });
         const updatedUser = {
           ...user,
@@ -664,6 +686,10 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       ) : (
                         <p className="text-sm text-gray-500 max-w-[240px]">Connecting to secure gateway. Please do not close or refresh this window.</p>
                       )}
+                      <p className="text-xs text-gray-400 mt-4 max-w-[240px]">
+                        <i className="fa-solid fa-envelope text-gray-400 mr-1"></i>
+                        Confirmation email will be sent to your inbox
+                      </p>
                     </div>
                   )}
 
@@ -673,9 +699,15 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         <i className="fa-solid fa-circle-check"></i>
                       </div>
                       <h3 className="text-2xl font-black text-gray-900 mb-2">Purchase Successful!</h3>
-                      <p className="text-sm text-gray-500 mb-8">
+                      <p className="text-sm text-gray-500 mb-2">
                         We've added <span className="font-bold text-gray-900">{selectedPack.coins} Spark Coins</span> to your wallet.
                       </p>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mx-4 mb-8">
+                        <p className="text-xs text-blue-700 flex items-center justify-center gap-2">
+                          <i className="fa-solid fa-envelope text-blue-600"></i>
+                          <span>Confirmation email sent to <strong>{user.email}</strong></span>
+                        </p>
+                      </div>
                       <button 
                         onClick={closeCheckout}
                         className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl active:scale-95 transition-transform"

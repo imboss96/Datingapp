@@ -8,6 +8,8 @@ import {
   sendPasswordResetEmail,
   sendWelcomeEmail,
   sendEmailVerificationEmail,
+  sendCoinPurchaseEmail,
+  sendPremiumUpgradeEmail,
   subscribeToNewsletter
 } from './brevoService.js';
 
@@ -70,6 +72,48 @@ export const sendEmailVerificationAutomation = async (email, verificationToken) 
     }
   } catch (error) {
     console.error('[EmailAutomation] Error in email verification automation:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send coin purchase confirmation email
+ */
+export const sendCoinPurchaseEmailAutomation = async (email, userName, coins, price, transactionId) => {
+  try {
+    console.log('[EmailAutomation] Sending coin purchase email to:', email, 'Coins:', coins);
+    const result = await sendCoinPurchaseEmail(email, userName, coins, price, transactionId);
+
+    if (result.success) {
+      console.log('[EmailAutomation] Coin purchase email sent successfully - Message ID:', result.messageId);
+      return { success: true, messageId: result.messageId };
+    } else {
+      console.error('[EmailAutomation] Failed to send coin purchase email:', result.error);
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('[EmailAutomation] Error in coin purchase email automation:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send premium membership upgrade confirmation email
+ */
+export const sendPremiumUpgradeEmailAutomation = async (email, userName, planDuration, price) => {
+  try {
+    console.log('[EmailAutomation] Sending premium upgrade email to:', email, 'Plan:', planDuration);
+    const result = await sendPremiumUpgradeEmail(email, userName, planDuration, price);
+
+    if (result.success) {
+      console.log('[EmailAutomation] Premium upgrade email sent successfully - Message ID:', result.messageId);
+      return { success: true, messageId: result.messageId };
+    } else {
+      console.error('[EmailAutomation] Failed to send premium upgrade email:', result.error);
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    console.error('[EmailAutomation] Error in premium upgrade email automation:', error);
     return { success: false, error: error.message };
   }
 };

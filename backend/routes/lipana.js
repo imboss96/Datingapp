@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import { Lipana } from '@lipana/sdk';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -7,6 +8,8 @@ import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 import CoinPackage from '../models/CoinPackage.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { completePaymentWithEmail, validatePaymentData } from '../utils/paymentHelper.js';
+import { sendCoinPurchaseEmail, sendPremiumUpgradeEmail } from '../utils/email.js';
 
 // Lazy-load Lipana SDK to ensure environment variables are available
 let lipanaClient = null;
@@ -357,7 +360,7 @@ router.get('/status/:txId', async (req, res) => {
       // Update user coins/premium
       console.log(`[LIPANA /status] Updating user ${tx.userId}...`);
       try {
-        const user = await User.findOne({ _id: tx.userId }).lean();
+        const user = await User.findOne({ _id: new mongoose.Types.ObjectId(tx.userId) }).lean();
         if (user) {
           const before = {
             coins: user.coins || 0,
@@ -374,6 +377,20 @@ router.get('/status/:txId', async (req, res) => {
           
           await User.updateOne({ _id: tx.userId }, user);
           console.log(`[LIPANA /status] User saved successfully`);
+
+          // Send confirmation email
+          try {
+            if (tx.type === 'PREMIUM_UPGRADE') {
+              await sendPremiumUpgradeEmail(user.email, user.name, 'Premium Plan', tx.price || '$4.99');
+              console.log(`[LIPANA /status] Premium upgrade email sent to: ${user.email}`);
+            } else {
+              await sendCoinPurchaseEmail(user.email, user.name, tx.amount, tx.price || '$2.99', tx.lipanaTransactionId);
+              console.log(`[LIPANA /status] Coin purchase email sent to: ${user.email}`);
+            }
+          } catch (emailErr) {
+            console.warn(`[LIPANA /status] Email sending failed (non-blocking):`, emailErr.message);
+            // Don't fail the transaction if email fails
+          }
         } else {
           console.warn(`[LIPANA /status] User ${tx.userId} not found for update`);
         }
@@ -548,7 +565,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       console.log(`[LIPANA /webhook] Transaction saved with status COMPLETED:`, { txId: tx.id, status: tx.status });
       
       try {
-        const user = await User.findOne({ _id: tx.userId });
+        const user = await User.findOne({ _id: new mongoose.Types.ObjectId(tx.userId) });
         if (user) {
           if (tx.type === 'PREMIUM_UPGRADE') {
             user.isPremium = true;
@@ -559,6 +576,19 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
           }
           await user.save();
           console.log(`[LIPANA /webhook] User saved successfully`);
+
+          // Send confirmation email
+          try {
+            if (tx.type === 'PREMIUM_UPGRADE') {
+              await sendPremiumUpgradeEmail(user.email, user.name, 'Premium Plan', tx.price || '$4.99');
+              console.log(`[LIPANA /webhook] Premium upgrade email sent to: ${user.email}`);
+            } else {
+              await sendCoinPurchaseEmail(user.email, user.name, tx.amount, tx.price, tx.id);
+              console.log(`[LIPANA /webhook] Coin purchase email sent to: ${user.email}`);
+            }
+          } catch (emailErr) {
+            console.warn(`[LIPANA /webhook] Email sending failed (non-blocking):`, emailErr.message);
+          }
         }
       } catch (userErr) {
         console.warn(`[LIPANA /webhook] Could not update user:`, userErr.message);
@@ -586,6 +616,190 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       stack: err.stack,
     });
     res.status(500).end();
+  }
+});
+
+router.post('/test-payment', async (req, res) => {
+  console.log(`[LIPANA /test-payment] === TEST PAYMENT (NO LIPANA) ==== `);
+  
+  try {
+    const { userId, packageId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userId' });
+    }
+    if (!packageId) {
+      return res.status(400).json({ error: 'Missing packageId' });
+    }
+
+    // Find package
+    let pkg = null;
+    let pkgNumber = null;
+    if (packageId.startsWith('coins_')) {
+      pkgNumber = parseInt(packageId.replace('coins_', ''));
+    }
+
+    if (pkgNumber) {
+      const coinPkg = await CoinPackage.findOne({ coins: pkgNumber, isActive: true }).lean();
+      if (coinPkg) {
+        pkg = {
+          coins: coinPkg.coins,
+          price: `$${coinPkg.price.toFixed(2)}`,
+          isPremium: false,
+          ...coinPkg
+        };
+      }
+    }
+
+    if (!pkg && PACKAGES[packageId]) {
+      pkg = PACKAGES[packageId];
+    }
+
+    if (!pkg) {
+      return res.status(400).json({ error: 'Invalid package id' });
+    }
+
+    // Create transaction with COMPLETED status (skip payment)
+    const txId = uuidv4();
+    const tx = new Transaction({
+      id: txId,
+      userId,
+      type: pkg.isPremium ? 'PREMIUM_UPGRADE' : 'COIN_PURCHASE',
+      amount: pkg.coins || 0,
+      price: pkg.price,
+      method: 'test',
+      status: 'COMPLETED',
+      lipanaTransactionId: `test-${txId}`,
+    });
+    await tx.save();
+    console.log(`[LIPANA /test-payment] Transaction created (test):`, { txId, status: tx.status });
+
+    // Update user
+    console.log(`[LIPANA /test-payment] User lookup - received userId:`, userId, `type:`, typeof userId);
+    const ObjectId = mongoose.Types.ObjectId;
+    const userObjectId = new ObjectId(userId);
+    console.log(`[LIPANA /test-payment] ObjectId created:`, userObjectId);
+    
+    // Use raw database connection since Mongoose model has issues
+    const db = mongoose.connection.db;
+    const userDoc = await db.collection('users').findOne({ _id: userObjectId });
+    console.log(`[LIPANA /test-payment] User found:`, userDoc ? 'YES' : 'NO');
+    
+    if (!userDoc) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update coins locally then save via raw collection
+    if (pkg.isPremium) {
+      await db.collection('users').updateOne({ _id: userObjectId }, { $set: { isPremium: true } });
+      console.log(`[LIPANA /test-payment] User ${userId} marked as premium`);
+    } else {
+      const newCoins = (userDoc.coins || 0) + pkg.coins;
+      await db.collection('users').updateOne({ _id: userObjectId }, { $set: { coins: newCoins } });
+      console.log(`[LIPANA /test-payment] User ${userId} received ${pkg.coins} coins (total: ${newCoins})`);
+    }
+
+    // Send confirmation email with proper error handling
+    let emailSent = false;
+    let emailError = null;
+    try {
+      if (pkg.isPremium) {
+        await sendPremiumUpgradeEmail(userDoc.email, userDoc.name, 'Premium Plan', pkg.price);
+        console.log(`[LIPANA /test-payment] Premium upgrade email sent to: ${userDoc.email}`);
+      } else {
+        await sendCoinPurchaseEmail(userDoc.email, userDoc.name, pkg.coins, pkg.price, tx.id);
+        console.log(`[LIPANA /test-payment] Coin purchase email sent to: ${userDoc.email}`);
+      }
+      emailSent = true;
+    } catch (emailErr) {
+      emailError = emailErr.message;
+      console.error(`[LIPANA /test-payment] Email error:`, emailErr.message);
+      // Don't fail the payment - email is non-critical
+    }
+
+    res.json({
+      ok: true,
+      transactionId: txId,
+      message: 'Test payment processed successfully' + (emailSent ? ' and confirmation email sent' : ''),
+      emailSent: emailSent,
+      emailError: emailError
+    });
+
+  } catch (err) {
+    console.error(`[LIPANA /test-payment] ERROR:`, err.message, err.stack);
+    res.status(500).json({ error: err.message || 'Failed to process test payment' });
+  }
+});
+
+// Multi-method test endpoint: Process payment with any payment method
+router.post('/test-payment-method/:method', async (req, res) => {
+  const startTime = Date.now();
+  const { method } = req.params;
+  const { userId, packageId } = req.body;
+
+  console.log(`\n${'='.repeat(80)}`);
+  console.log(`[LIPANA /test-payment-method/${method}] ► PAYMENT REQUEST`);
+  console.log(`  User: ${userId}`);
+  console.log(`  Package: ${packageId}`);
+  console.log(`  Method: ${method}`);
+
+  try {
+    // Validate input
+    const validation = validatePaymentData({ userId, packageId, method });
+    if (!validation.isValid) {
+      console.log(`[LIPANA /test-payment-method/${method}] ✗ Validation:`, validation.errors);
+      return res.status(400).json({ error: validation.errors.join('; ') });
+    }
+
+    // Create transaction
+    const txId = uuidv4();
+    const tx = new Transaction({
+      id: txId,
+      userId,
+      type: 'COIN_PURCHASE', // Will be updated by paymentHelper if premium
+      amount: 0,
+      price: '0',
+      method: method,
+      status: 'PENDING'
+    });
+    await tx.save();
+
+    // Complete payment immediately (don't wait for email)
+    const result = await completePaymentWithEmail({
+      userId,
+      packageId,
+      method,
+      transactionId: txId
+    });
+
+    if (!result.success) {
+      console.log(`[LIPANA /test-payment-method/${method}] ✗ Payment:`, result.error);
+      return res.status(400).json({ ok: false, error: result.error });
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[LIPANA /test-payment-method/${method}] ✓ Complete (${duration}ms)`);
+    console.log(`${'='.repeat(80)}\n`);
+
+    // Send response immediately
+    res.json({
+      ok: true,
+      success: true,
+      transactionId: txId,
+      method: method,
+      message: `✓ Payment processed via ${method}`,
+      ...result
+    });
+
+    // Log any email failures asynchronously without blocking
+    if (!result.emailSent && result.emailError) {
+      console.warn(`[LIPANA /test-payment-method/${method}] Email failed (async): ${result.emailError}`);
+    }
+
+  } catch (err) {
+    console.error(`[LIPANA /test-payment-method/${method}] ✗ ERROR:`, err.message, err.stack);
+    console.log(`${'='.repeat(80)}\n`);
+    res.status(500).json({ error: err.message });
   }
 });
 

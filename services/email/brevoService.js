@@ -12,6 +12,8 @@ const getConfig = () => ({
   passwordResetTemplateId: parseInt(process.env.BREVO_PASSWORD_RESET_TEMPLATE_ID) || 1,
   emailVerificationTemplateId: parseInt(process.env.BREVO_EMAIL_VERIFICATION_TEMPLATE_ID) || 2,
   welcomeEmailTemplateId: parseInt(process.env.BREVO_WELCOME_EMAIL_TEMPLATE_ID) || 3,
+  premiumUpgradeTemplateId: parseInt(process.env.BREVO_PREMIUM_UPGRADE_TEMPLATE_ID) || 7,
+  coinPurchaseTemplateId: parseInt(process.env.BREVO_COIN_PURCHASE_TEMPLATE_ID) || 8,
   newsletterListId: parseInt(process.env.BREVO_NEWSLETTER_LIST_ID) || 4,
 });
 
@@ -20,8 +22,15 @@ const getConfig = () => ({
  */
 export const sendTransactionalEmail = async (emailData) => {
   try {
-    const { apiKey } = getConfig();
+    const config = getConfig();
+    const { apiKey } = config;
     const { email, subject, htmlContent, textContent, senderEmail, senderName } = emailData;
+    
+    console.log('[Brevo] sendTransactionalEmail START');
+    console.log('  Email:', email);
+    console.log('  Subject:', subject);
+    console.log('  API Key present:', !!apiKey);
+    console.log('  API Key first 20 chars:', apiKey ? apiKey.substring(0, 20) + '...' : 'MISSING');
 
     const payload = {
       sender: {
@@ -34,6 +43,7 @@ export const sendTransactionalEmail = async (emailData) => {
       textContent: textContent || htmlContent.replace(/<[^>]*>/g, '')
     };
 
+    console.log('  Sending to Brevo API...');
     const response = await fetch(`${BREVO_API_URL}/smtp/email`, {
       method: 'POST',
       headers: {
@@ -44,17 +54,23 @@ export const sendTransactionalEmail = async (emailData) => {
       body: JSON.stringify(payload)
     });
 
+    console.log('  Response status:', response.status);
+    console.log('  Response ok:', response.ok);
+
     if (!response.ok) {
       const error = await response.json();
+      console.error('  API Error:', error);
       throw new Error(`Brevo API error: ${error.message || response.statusText}`);
     }
 
     const result = await response.json();
-    console.log('[Brevo] Email sent successfully:', result.messageId);
-
+    console.log('[✓Brevo] Email sent successfully');
+    console.log('  Message ID:', result.messageId);
     return { success: true, messageId: result.messageId };
   } catch (error) {
-    console.error('[Brevo] Failed to send email:', error);
+    console.error('[✗Brevo] Failed to send email');
+    console.error('  Error message:', error.message);
+    console.error('  Error:', error);
     return { success: false, error: error.message };
   }
 };
@@ -254,6 +270,128 @@ export const sendEmailVerificationEmail = async (email, verificationToken) => {
     return { success: true, messageId: result.messageId };
   } catch (error) {
     console.error('[Brevo] Failed to send email verification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send premium upgrade confirmation email
+ */
+export const sendPremiumUpgradeEmail = async (email, userName, planDuration, price) => {
+  try {
+    const config = getConfig();
+    const { apiKey, premiumUpgradeTemplateId, frontendUrl } = config;
+    
+    console.log('[Brevo] sendPremiumUpgradeEmail START');
+    console.log('  Email:', email);
+    console.log('  User:', userName);
+    console.log('  Template ID:', premiumUpgradeTemplateId);
+    console.log('  API Key present:', !!apiKey);
+
+    const payload = {
+      to: [{ email }],
+      templateId: premiumUpgradeTemplateId,
+      params: {
+        USER_NAME: userName || email.split('@')[0],
+        USER_EMAIL: email,
+        PLAN_DURATION: planDuration || '1 month',
+        PRICE: price || '$4.99',
+        UPGRADE_DATE: new Date().toLocaleDateString(),
+        PROFILE_LINK: `${frontendUrl}/#/profile`,
+        PREMIUM_FEATURES: 'Unlimited likes, priority matching, and more!'
+      }
+    };
+
+    console.log('  Sending to Brevo API...');
+    const response = await fetch(`${BREVO_API_URL}/smtp/email`, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    console.log('  Response status:', response.status);
+    console.log('  Response ok:', response.ok);
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('  API Error:', error);
+      throw new Error(`Brevo API error: ${error.message || response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('[✓Brevo] Premium upgrade email sent successfully');
+    console.log('  Message ID:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[✗Brevo] Failed to send premium upgrade email');
+    console.error('  Error message:', error.message);
+    console.error('  Error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send coin purchase confirmation email
+ */
+export const sendCoinPurchaseEmail = async (email, userName, coins, price, transactionId) => {
+  try {
+    const config = getConfig();
+    const { apiKey, coinPurchaseTemplateId, frontendUrl } = config;
+    
+    console.log('[Brevo] sendCoinPurchaseEmail START');
+    console.log('  Email:', email);
+    console.log('  User:', userName);
+    console.log('  Coins:', coins);
+    console.log('  Template ID:', coinPurchaseTemplateId);
+    console.log('  API Key present:', !!apiKey);
+
+    const payload = {
+      to: [{ email }],
+      templateId: coinPurchaseTemplateId,
+      params: {
+        USER_NAME: userName || email.split('@')[0],
+        USER_EMAIL: email,
+        COINS: coins || '50',
+        PRICE: price || '$2.99',
+        TRANSACTION_ID: transactionId || 'N/A',
+        PURCHASE_DATE: new Date().toLocaleDateString(),
+        SHOP_LINK: `${frontendUrl}/#/shop`,
+        COINS_BALANCE: coins || '0'
+      }
+    };
+
+    console.log('  Sending to Brevo API...');
+    const response = await fetch(`${BREVO_API_URL}/smtp/email`, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    console.log('  Response status:', response.status);
+    console.log('  Response ok:', response.ok);
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('  API Error:', error);
+      throw new Error(`Brevo API error: ${error.message || response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('[✓Brevo] Coin purchase email sent successfully');
+    console.log('  Message ID:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[✗Brevo] Failed to send coin purchase email');
+    console.error('  Error message:', error.message);
+    console.error('  Error:', error);
     return { success: false, error: error.message };
   }
 };

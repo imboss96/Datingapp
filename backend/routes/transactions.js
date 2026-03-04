@@ -9,12 +9,93 @@ import User from '../models/User.js';
 import CoinPackage from '../models/CoinPackage.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { PACKAGES } from './lipana.js';
+import { completePaymentWithEmail, validatePaymentData } from '../utils/paymentHelper.js';
 
 const router = Router();
 
 // simple sanity check
 router.get('/', (req, res) => {
   res.json({ message: 'Transactions endpoint working.' });
+});
+
+// Test endpoint: List all available payment methods
+router.get('/test-methods', (req, res) => {
+  const methods = [
+    { id: 'stripe', name: 'Stripe (Card)', emoji: '💳' },
+    { id: 'paypal', name: 'PayPal', emoji: '🅿️' },
+    { id: 'apple_pay', name: 'Apple Pay', emoji: '🍎' },
+    { id: 'google_pay', name: 'Google Pay', emoji: 'G' },
+    { id: 'lipana', name: 'Lipana (M-Pesa)', emoji: '📱' },
+    { id: 'crypto', name: 'Cryptocurrency', emoji: '₿' },
+    { id: 'bank_transfer', name: 'Bank Transfer', emoji: '🏦' }
+  ];
+  console.log('[TRANSACTIONS /test-methods] Available methods:', methods);
+  res.json({ ok: true, methods });
+});
+
+// Test endpoint: Simulate payment with any method
+router.post('/test-payment/:method', async (req, res) => {
+  const startTime = Date.now();
+  const { method } = req.params;
+  const { userId, packageId } = req.body;
+
+  try {
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[TRANSACTIONS /test-payment/${method}] ► PAYMENT REQUEST`);
+    console.log(`  User: ${userId}`);
+    console.log(`  Package: ${packageId}`);
+    console.log(`  Method: ${method}`);
+
+    // Validate input
+    const validation = validatePaymentData({ userId, packageId, method });
+    if (!validation.isValid) {
+      console.log(`[TRANSACTIONS /test-payment/${method}] ✗ Validation failed:`, validation.errors);
+      return res.status(400).json({ error: validation.errors.join('; ') });
+    }
+
+    // Find or create transaction
+    const tx = new Transaction({
+      id: uuidv4(),
+      userId,
+      type: 'COIN_PURCHASE', // Will be updated by paymentHelper if premium
+      amount: 0,
+      price: '0',
+      method: method,
+      status: 'PENDING'
+    });
+    await tx.save();
+
+    // Complete payment with email
+    const result = await completePaymentWithEmail({
+      userId,
+      packageId,
+      method,
+      transactionId: tx.id
+    });
+
+    if (!result.success) {
+      console.log(`[TRANSACTIONS /test-payment/${method}] ✗ Payment failed:`, result.error);
+      return res.status(400).json({ ok: false, error: result.error });
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[TRANSACTIONS /test-payment/${method}] ✓ Complete (${duration}ms)`);
+    console.log(`${'='.repeat(80)}\n`);
+
+    res.json({
+      ok: true,
+      success: true,
+      transactionId: tx.id,
+      method: method,
+      message: `✓ Payment processed via ${method}`,
+      ...result
+    });
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(`[TRANSACTIONS /test-payment/${method}] ✗ ERROR:`, err.message);
+    console.log(`${'='.repeat(80)}\n`);
+    res.status(500).json({ error: err.message || 'Payment test failed' });
+  }
 });
 
 // frontend calls this for non-Lipana (dummy) payments
@@ -86,6 +167,38 @@ router.post('/purchase', async (req, res) => {
         else user.coins = (user.coins || 0) + coins;
         await User.updateOne({ _id: userId }, user);
         console.log('[DEBUG transactions.purchase] User updated with coins:', { userId, coins: user.coins });
+
+        // Send confirmation email
+        try {
+          if (isPremium) {
+            // Get plan duration from packageId
+            const planMap = {
+              'premium_1m': { duration: '1 Month', price: '$4.99' },
+              'premium_3m': { duration: '3 Months', price: '$12.99' },
+              'premium_6m': { duration: '6 Months', price: '$19.99' },
+              'premium_12m': { duration: '12 Months', price: '$29.99' }
+            };
+            const planInfo = planMap[packageId] || { duration: 'Premium', price };
+            const emailResult = await sendPremiumUpgradeEmail(user.email, user.name, planInfo.duration, planInfo.price);
+            console.log('[DEBUG transactions.purchase] Email result:', emailResult);
+            if (emailResult.success) {
+              console.log('[DEBUG transactions.purchase] Premium upgrade email sent to:', user.email);
+            } else {
+              console.warn('[DEBUG transactions.purchase] Premium email failed:', emailResult.error);
+            }
+          } else {
+            const emailResult = await sendCoinPurchaseEmail(user.email, user.name, coins, price, tx.id);
+            console.log('[DEBUG transactions.purchase] Email result:', emailResult);
+            if (emailResult.success) {
+              console.log('[DEBUG transactions.purchase] Coin purchase email sent to:', user.email);
+            } else {
+              console.warn('[DEBUG transactions.purchase] Coin purchase email failed:', emailResult.error);
+            }
+          }
+        } catch (emailErr) {
+          console.warn('[WARN transactions.purchase] Email sending failed (non-blocking):', emailErr.message);
+          // Don't fail the transaction if email fails
+        }
       }
     } catch (userErr) {
       // user not found or update failed; that's ok for testing

@@ -286,10 +286,20 @@ class APIClient {
     return this.request(`/chats/${chatId}`);
   }
 
-  async createOrGetChat(otherUserId: string) {
+  async createOrGetChat(otherUserId: string, initialMessage?: { text?: string; media?: any }) {
+    const body: any = { otherUserId };
+    
+    // ✅ If initial message provided, include it OR skip validation
+    if (initialMessage) {
+      body.initialMessage = initialMessage;
+    } else {
+      // ✅ Skip message validation only if this is a lookup call (not creation)
+      body.skipMessageValidation = true;
+    }
+    
     return this.request('/chats/create-or-get', {
       method: 'POST',
-      body: JSON.stringify({ otherUserId }),
+      body: JSON.stringify(body),
     });
   }
 

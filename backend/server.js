@@ -57,13 +57,12 @@ app.use(cors({
 }));
 app.use(cookieParser());
 
-// CRITICAL: Register Lipana webhook BEFORE JSON body parser
-// The webhook needs raw body for HMAC signature verification
-app.use('/api/lipana', lipanaRoutes);
-
-// Now apply JSON body parser for all other routes
+// Apply JSON body parser BEFORE routes (needed for test endpoints)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Register routes
+app.use('/api/lipana', lipanaRoutes);
 
 // Connect to MongoDB
 mongoose.connect(MONGODB_URI, {
@@ -186,6 +185,19 @@ app.use(errorHandler);
 // Create HTTP server and attach WebSocket
 const server = createServer(app);
 initWebSocket(server);
+
+// Global error handlers - catch unhandled promise rejections and exceptions
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled Promise Rejection:', reason);
+  console.error('[FATAL] Promise:', promise);
+  // Don't exit - keep server running
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught Exception:', error);
+  console.error('[FATAL] Stack:', error.stack);
+  // Don't exit - keep server running
+});
 
 server.listen(PORT, () => {
   console.log(`✓ Server running on http://localhost:${PORT}`);

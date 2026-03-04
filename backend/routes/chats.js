@@ -188,7 +188,15 @@ router.get('/requests/pending', async (req, res) => {
 // Create or get chat with user
 router.post('/create-or-get', async (req, res) => {
   try {
-    const { otherUserId } = req.body;
+    const { otherUserId, initialMessage } = req.body;
+    
+    // ✅ NEW VALIDATION: Don't create chat without initial message or explicit flag
+    const hasValidMessage = initialMessage && (initialMessage.text?.trim() || initialMessage.media);
+    if (!hasValidMessage && !req.body.skipMessageValidation) {
+      console.log('[DEBUG] Rejecting create-or-get without initial message');
+      return res.status(400).json({ error: 'Cannot create chat without initial message content' });
+    }
+    
     const participants = getSortedParticipants(req.userId, otherUserId);
 
     console.log('[DEBUG] create-or-get chat. User:', req.userId, 'Other:', otherUserId, 'Participants:', participants);
@@ -207,18 +215,22 @@ router.post('/create-or-get', async (req, res) => {
     if (existingChats.length > 1) {
       console.log('[WARN] Found', existingChats.length, 'chats with same participants. Consolidating...');
       
-      // Sort by lastUpdated, keep the latest
+      // ✅ DEDUPLICATION: Sort by lastUpdated, keep the latest one
       existingChats.sort((a, b) => b.lastUpdated - a.lastUpdated);
       const chatToKeep = existingChats[0];
       const chatsToDelete = existingChats.slice(1);
 
-      // Merge all messages from other chats into the latest one
+      // Merge all messages from other chats into the latest one, avoiding duplicates
+      const messageIds = new Set(chatToKeep.messages.map(m => m.id));
       for (const oldChat of chatsToDelete) {
         if (oldChat.messages && oldChat.messages.length > 0) {
-          chatToKeep.messages.push(...oldChat.messages);
-          chatToKeep.messages.sort((a, b) => a.timestamp - b.timestamp);
+          const newMessages = oldChat.messages.filter(m => !messageIds.has(m.id));
+          chatToKeep.messages.push(...newMessages);
+          newMessages.forEach(m => messageIds.add(m.id));
         }
       }
+      // Re-sort all messages by timestamp
+      chatToKeep.messages.sort((a, b) => a.timestamp - b.timestamp);
 
       // Ensure participantsKey is set
       chatToKeep.participantsKey = participantsKey;
@@ -238,7 +250,7 @@ router.post('/create-or-get', async (req, res) => {
 
     if (!chat) {
       console.log('[DEBUG] No existing chat found, creating new one');
-      // Ensure no duplicate key error by checking again
+      // ✅ DUPLICATE PREVENTION: Use findOneAndUpdate with proper indexing
       try {
         chat = await Chat.findOneAndUpdate(
           { participantsKey },
@@ -249,7 +261,7 @@ router.post('/create-or-get', async (req, res) => {
               participantsKey,
               messages: [],
               lastUpdated: Date.now(),
-              requestStatus: 'pending',
+              requestStatus: 'accepted', // Default to accepted (can be changed by user later)
               requestInitiator: req.userId,
               requestInitiatorFirstMessage: false,
               blockedBy: [],
@@ -262,14 +274,15 @@ router.post('/create-or-get', async (req, res) => {
         isNewChat = true;
         console.log('[DEBUG] Created new chat:', chat.id, 'with participantsKey:', chat.participantsKey);
       } catch (upsertErr) {
+        // ✅ Handle duplicate key error (E11000) - another request created it simultaneously
         if (upsertErr.code === 11000) {
-          console.log('[WARN] Duplicate key error during upsert, refetching...');
+          console.log('[WARN] Duplicate key error during upsert (E11000), refetching existing chat...');
           chat = await Chat.findOne({ participantsKey });
           if (!chat) {
             throw new Error('Failed to create or retrieve chat after duplicate key error');
           }
           isNewChat = false;
-          console.log('[DEBUG] Retrieved chat after duplicate key error:', chat.id);
+          console.log('[DEBUG] Retrieved existing chat created by concurrent request:', chat.id);
         } else {
           throw upsertErr;
         }
@@ -509,10 +522,17 @@ router.post('/:chatId/upload', upload.single('file'), async (req, res) => {
 // Send message (with optional media)
 router.post('/:chatId/messages', async (req, res) => {
   try {
-    const { text, media } = req.body;
+    let { text, media } = req.body;
     const { chatId } = req.params;
     
     console.log('[DEBUG] Sending message to chat:', chatId, 'from user:', req.userId, 'has media:', !!media);
+    
+    // ✅ VALIDATION: Check message is NOT empty before doing anything
+    const trimmedText = (text || '').trim();
+    if (!trimmedText && !media) {
+      console.log('[DEBUG] Rejecting empty message - no text or media');
+      return res.status(400).json({ error: 'Message must have text or media' });
+    }
     
     const chat = await Chat.findOne({ id: chatId });
 
@@ -526,9 +546,8 @@ router.post('/:chatId/messages', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    if (!text && !media) {
-      return res.status(400).json({ error: 'Message must have text or media' });
-    }
+    // ✅ Use trimmed text for the message
+    text = trimmedText;
 
     const message = {
       id: uuidv4(),
