@@ -641,23 +641,26 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           chatData = await apiClient.getChat(actualId);
           console.log('[DEBUG ChatRoom] Loaded chat by chatId:', chatData.id);
         } catch (err: any) {
-          console.log('[DEBUG ChatRoom] Not a chatId, attempting createOrGet with userId:', actualId);
-          chatData = await apiClient.createOrGetChat(actualId);
-          console.log('[DEBUG ChatRoom] Chat created/retrieved successfully via createOrGet:', chatData?.id);
+          console.log('[DEBUG ChatRoom] Chat not found for ID:', actualId, '- will create on first message send');
+          // Don't create chat here - wait until first message is sent
+          // Just load the user profile for display
         }
 
-        if (!chatData || !chatData.id) {
-          throw new Error('Failed to create or load chat');
-        }
+        if (chatData && chatData.id) {
+          setChatId(chatData.id);
+          setMessages(chatData.messages || []);
 
-        setChatId(chatData.id);
-        setMessages(chatData.messages || []);
-
-        try {
-          await apiClient.markAllMessagesAsRead(chatData.id);
-          console.log('[DEBUG ChatRoom] Marked all messages as read for chat:', chatData.id);
-        } catch (err) {
-          console.warn('[WARN ChatRoom] Failed to mark messages as read:', err);
+          try {
+            await apiClient.markAllMessagesAsRead(chatData.id);
+            console.log('[DEBUG ChatRoom] Marked all messages as read for chat:', chatData.id);
+          } catch (err) {
+            console.warn('[WARN ChatRoom] Failed to mark messages as read:', err);
+          }
+        } else {
+          // Chat doesn't exist yet - that's OK, user can open the conversation
+          // and send first message which will create the chat
+          setChatId(null);
+          setMessages([]);
         }
 
         if ((location.state as any)?.matchedProfile) {
