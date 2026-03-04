@@ -75,7 +75,7 @@ const extractCoordinates = (coords: any): { lat: number; lon: number } | null =>
   return null;
 };
 
-// Helper to validate and optimize Cloudinary image URLs
+// Helper to validate and optimize Cloudinary image URLs with retry logic
 const validateImageUrl = (url: string | undefined): string | null => {
   if (!url || typeof url !== 'string') return null;
   if (!url.trim()) return null;
@@ -97,13 +97,14 @@ const validateImageUrl = (url: string | undefined): string | null => {
           /res\.cloudinary\.com\/([^/]+)\/image\/upload\//,
           `res.cloudinary.com/${cloudName}/image/upload/q_auto,w_600,f_auto/`
         );
+        console.log('[SwiperScreen] Optimized Cloudinary URL:', cloudinaryOptimized);
         return cloudinaryOptimized;
       }
     }
     
     return trimmed;
   } catch (err) {
-    console.warn('[SwiperScreen] Invalid image URL:', url);
+    console.warn('[SwiperScreen] Invalid image URL:', url, 'Error:', err);
     return null;
   }
 };
@@ -293,6 +294,12 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
       const others = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
       console.log('[SwiperScreen] After filtering current user:', others.length, 'profiles');
+      
+      // Debug: log profiles with missing images
+      const withoutImages = others.filter(p => !p.images || p.images.length === 0);
+      if (withoutImages.length > 0) {
+        console.warn('[SwiperScreen] Profiles without images:', withoutImages.map(p => ({ id: p.id, name: p.name })));
+      }
 
       // Apply distance filter on client-side
       let distanceFiltered = currentUser.coordinates && distance < Number.MAX_SAFE_INTEGER
@@ -470,6 +477,14 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       }
     }
   }, [currentBatch, maxDistance, fetchProfileBatch]);
+
+  // ── Reset image state when profile changes ────────────────────────────────
+  
+  useEffect(() => {
+    // Reset to first image and clear loaded state when switching profiles
+    setCurrentImageIndex(0);
+    setImgLoaded(false);
+  }, [currentIndex]);
 
   // ── Image Carousel Navigation ──────────────────────────────────────────────
 
@@ -946,13 +961,14 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                 (() => {
                   const imageUrl = validateImageUrl(profile.images[currentImageIndex]);
                   if (!imageUrl) {
+                    console.warn(`[SwiperScreen] No valid image URL for profile ${profile.id} at index ${currentImageIndex}`);
                     return (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
-                        <div className="text-6xl mb-4">👤</div>
+                        <div className="text-6xl mb-4">📷</div>
                         <h2 className="text-3xl font-bold text-white text-center mb-2">{profile.name}</h2>
                         <p className="text-xl text-white/80 font-semibold mb-4">{profile.age}</p>
                         <p className="text-sm text-white/60 text-center max-w-xs mb-6">{profile.location}</p>
-                        <div className="w-20 h-1 bg-white/30 rounded-full"></div>
+                        <p className="text-xs text-white/50 text-center">Image data unavailable</p>
                       </div>
                     );
                   }
@@ -965,12 +981,14 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                         console.log('[SwiperScreen] Image loaded for profile:', profile.id, 'index:', currentImageIndex);
                         setImgLoaded(true);
                       }}
-                      onError={() => {
-                        console.warn('[SwiperScreen] Failed to load image for profile:', profile.id, 'URL:', imageUrl);
-                        setImgLoaded(true); // show skeleton fallback anyway
+                      onError={(e) => {
+                        console.warn('[SwiperScreen] Failed to load image for profile:', profile.id, 'URL:', imageUrl, 'Error:', e);
+                        setImgLoaded(true); // show fallback anyway
                       }}
                       className="w-full h-full object-cover select-none"
-                      style={{ visibility: 'visible' }}
+                      loading="eager"
+                      decoding="sync"
+                      style={{ visibility: imgLoaded ? 'visible' : 'hidden', width: '100%', height: '100%' }}
                     />
                   );
                 })()
@@ -980,7 +998,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   <h2 className="text-3xl font-bold text-white text-center mb-2">{profile.name}</h2>
                   <p className="text-xl text-white/80 font-semibold mb-4">{profile.age}</p>
                   <p className="text-sm text-white/60 text-center max-w-xs mb-6">{profile.location}</p>
-                  <div className="w-20 h-1 bg-white/30 rounded-full"></div>
+                  <p className="text-xs text-white/50 text-center">No photos available</p>
                 </div>
               )}
 
