@@ -864,18 +864,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 </div>
               )}
 
-              {/* Privacy & Safety Button */}
-              <button 
-                onClick={() => { setError(null); setOpenModal('privacy'); }}
-                className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 active:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-4 text-gray-700">
-                  <i className="fa-solid fa-shield-check text-sm text-gray-400 w-5 text-center"></i>
-                  <span className="text-sm font-semibold">Privacy & Safety</span>
-                </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
-              </button>
-
               {/* Purchase History Button */}
               <button 
                 onClick={() => { 
@@ -889,18 +877,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 <div className="flex items-center gap-4 text-gray-700">
                   <i className="fa-solid fa-credit-card text-sm text-gray-400 w-5 text-center"></i>
                   <span className="text-sm font-semibold">Purchase History</span>
-                </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
-              </button>
-
-              {/* Help Center Button */}
-              <button 
-                onClick={() => { setError(null); setOpenModal('help'); }}
-                className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 active:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-4 text-gray-700">
-                  <i className="fa-solid fa-circle-question text-sm text-gray-400 w-5 text-center"></i>
-                  <span className="text-sm font-semibold">Help Center</span>
                 </div>
                 <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
               </button>
@@ -1090,59 +1066,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
               </div>
             )}
 
-            {/* Privacy & Safety Modal */}
-            {openModal === 'privacy' && (
-              <div className="fixed inset-0 backdrop-blur-md flex items-end md:items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-md max-h-[90vh] overflow-y-auto">
-                  <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
-                    <h2 className="text-lg font-bold text-gray-900">Privacy & Safety</h2>
-                    <button onClick={() => setOpenModal(null)} className="text-gray-500 hover:text-gray-700">
-                      <i className="fa-solid fa-times text-lg"></i>
-                    </button>
-                  </div>
-                  
-                  <div className="p-6 space-y-4">
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-yellow-800"><strong>Safety Tip:</strong> Never share personal info or links in messages.</p>
-                    </div>
-
-                    {/* Profile Visibility */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Profile Visibility</label>
-                      <div className="space-y-2">
-                        <label className="flex items-center p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                          <input type="radio" name="visibility" defaultChecked className="w-4 h-4 text-rose-500" />
-                          <span className="ml-2 text-sm text-gray-900">Public - Visible to everyone</span>
-                        </label>
-                        <label className="flex items-center p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                          <input type="radio" name="visibility" className="w-4 h-4 text-rose-500" />
-                          <span className="ml-2 text-sm text-gray-900">Private - Only visible to matches</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Report & Block */}
-                    <div className="pt-4 border-t border-gray-200">
-                      <p className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wide">Account Safety</p>
-                      <button className="w-full px-4 py-2 text-xs border border-rose-300 text-rose-700 rounded-lg hover:bg-rose-50 transition-colors font-medium">
-                        View Blocked Users (0)
-                      </button>
-                    </div>
-
-                    {/* Buttons */}
-                    <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200">
-                      <button
-                        onClick={() => setOpenModal(null)}
-                        className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 transition-colors text-sm"
-                      >
-                        Done
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Purchase History Modal */}
             {openModal === 'purchases' && (
               <div className="fixed inset-0 backdrop-blur-md flex items-end md:items-center justify-center z-50 p-4">
@@ -1210,35 +1133,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         ))}
                       </div>
                     )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Help Center Modal */}
-            {openModal === 'help' && (
-              <div className="fixed inset-0 backdrop-blur-md flex items-end md:items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-md max-h-[90vh] overflow-y-auto">
-                  <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
-                    <h2 className="text-lg font-bold text-gray-900">Help Center</h2>
-                    <button onClick={() => setOpenModal(null)} className="text-gray-500 hover:text-gray-700">
-                      <i className="fa-solid fa-times text-lg"></i>
-                    </button>
-                  </div>
-                  
-                  <div className="p-6 space-y-3">
-                    <a href="#" className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <p className="text-sm font-medium text-gray-900">How do I verify my profile?</p>
-                    </a>
-                    <a href="#" className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <p className="text-sm font-medium text-gray-900">How do coins work?</p>
-                    </a>
-                    <a href="#" className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <p className="text-sm font-medium text-gray-900">How do I report someone?</p>
-                    </a>
-                    <a href="#" className="block p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <p className="text-sm font-medium text-gray-900">Contact Support</p>
-                    </a>
                   </div>
                 </div>
               </div>
