@@ -1312,11 +1312,23 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               )}
 
               {currentProfile?.images?.[currentImageIndex] && (
-                <img
-                  src={currentProfile?.images?.[currentImageIndex]}
-                  alt={currentProfile?.name}
-                  className="w-full h-full object-cover select-none"
-                />
+                isVideoUrl(currentProfile?.images?.[currentImageIndex]) ? (
+                  <video
+                    key={currentProfile?.images?.[currentImageIndex]}
+                    src={currentProfile?.images?.[currentImageIndex]}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="w-full h-full object-cover select-none"
+                  />
+                ) : (
+                  <img
+                    src={currentProfile?.images?.[currentImageIndex]}
+                    alt={currentProfile?.name}
+                    className="w-full h-full object-cover select-none"
+                  />
+                )
               )}
               
               {!currentProfile?.images?.[currentImageIndex] && (
