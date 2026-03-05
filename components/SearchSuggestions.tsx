@@ -3,34 +3,26 @@
  * Used in SwiperScreen for finding profiles by username or name
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { UserProfile } from '../types';
 
 interface SearchSuggestionsProps {
   query: string;
-  profiles: UserProfile[];
+  results: UserProfile[]; // Pre-filtered search results from database
   onSelectProfile: (profile: UserProfile) => void;
   onClose: () => void;
   isOpen: boolean;
+  loading?: boolean; // Loading state for search
 }
 
 const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   query,
-  profiles,
+  results,
   onSelectProfile,
   onClose,
   isOpen,
+  loading = false,
 }) => {
-  // Filter profiles based on query
-  const searchResults = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.trim().toLowerCase();
-    return profiles.filter(p =>
-      p.username?.toLowerCase().includes(q) ||
-      p.name?.toLowerCase().includes(q)
-    );
-  }, [query, profiles]);
-
   if (!isOpen || !query.trim()) return null;
 
   return (
@@ -49,7 +41,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             <div>
               <h2 className="text-lg font-bold text-gray-900">Search Results</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                {searchResults.length} profile{searchResults.length !== 1 ? 's' : ''} found
+                {loading ? 'Searching...' : `${results.length} profile${results.length !== 1 ? 's' : ''} found`}
               </p>
             </div>
             <button
@@ -63,7 +55,12 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
           {/* Results List */}
           <div className="flex-1 overflow-y-auto">
-            {searchResults.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center p-8 h-full text-center">
+                <div className="w-8 h-8 border-3 border-rose-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-gray-600 font-medium">Searching...</p>
+              </div>
+            ) : results.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-8 h-full text-center">
                 <i className="fa-solid fa-magnifying-glass text-4xl text-gray-300 mb-3" />
                 <p className="text-gray-600 font-medium">No profiles found</p>
@@ -73,7 +70,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {searchResults.map((profile, idx) => (
+                {results.map((profile) => (
                   <button
                     key={profile.id}
                     onClick={() => {
@@ -141,7 +138,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
           </div>
 
           {/* Footer with hint */}
-          {searchResults.length > 0 && (
+          {results.length > 0 && (
             <div className="border-t border-gray-100 p-3 bg-gray-50 text-center text-xs text-gray-500 rounded-b-3xl">
               Click on a profile to view and swipe
             </div>

@@ -34,7 +34,8 @@ async function findRealUsers() {
           console.log(`${i + 1}. ID: ${u._id}`);
           console.log(`   Email: ${u.email}`);
           console.log(`   Name: ${u.name}`);
-          console.log(`   Verified: ${u.isEmailVerified}\n`);
+          console.log(`   Verif
+            ied: ${u.isEmailVerified}\n`);
         });
       }
     } else {

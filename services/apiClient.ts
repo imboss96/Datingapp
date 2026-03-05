@@ -213,6 +213,23 @@ class APIClient {
     return this.request(`/users?limit=${limit}`);
   }
 
+  async searchUsers(query: string, limit: number = 100) {
+    if (!query.trim()) return [];
+    const q = query.trim().toLowerCase();
+    try {
+      const allUsers = await this.getAllUsers(1000);
+      const users = Array.isArray(allUsers) ? allUsers : allUsers.users || [];
+      // Filter users by username or name
+      return users.filter((u: any) => 
+        (u.username && u.username.toLowerCase().includes(q)) ||
+        (u.name && u.name.toLowerCase().includes(q))
+      ).slice(0, limit);
+    } catch (err) {
+      console.error('[apiClient] Search users failed:', err);
+      return [];
+    }
+  }
+
   // ✅ UPDATED: uses /users/discover endpoint with multi-factor scoring
   async getProfilesForSwiping(
     limit: number = 30,

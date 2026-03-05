@@ -30,8 +30,10 @@ interface Heart {
 
 // ═══ Constants ═════════════════════════════════════════════════════════════════
 
-const BATCH_SIZE        = 30;
-const PRELOAD_THRESHOLD = 20; // load next batch EARLY when this many profiles remain - background loading
+const BATCH_SIZE           = 30;
+const PRELOAD_THRESHOLD    = 5;  // load next batch EARLY when this many profiles remain - background loading
+const MEMORY_WINDOW_BEFORE = 2;  // keep 2 profiles behind current position
+const MEMORY_WINDOW_AFTER  = 3;  // keep 3 profiles ahead of current position
 
 // ═══ Helpers (outside component – never recreated) ═══════════════════════════
 // Note: calcMatchScore imported from services/matchingAlgorithm
@@ -281,6 +283,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [query,            setQuery]            = useState('');
   const [searchOpen,       setSearchOpen]       = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [searchResults,    setSearchResults]    = useState<UserProfile[]>([]);
+  const [searchLoading,    setSearchLoading]    = useState(false);
   const [maxDistance,      setMaxDistance]      = useState<number>(DISTANCE_RANGES.THOUSAND_KM);
   const [showDistanceFilter, setShowDistanceFilter] = useState(false);
   const [imgLoaded,        setImgLoaded]        = useState(false);
@@ -288,6 +292,16 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const [swipedProfiles,   setSwipedProfiles]   = useState<Set<string>>(new Set());
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showAllMembers,   setShowAllMembers]   = useState(false);
+  
+  // ── Drag / swipe animation state ────────────────────────
+  const [dragX,        setDragX]        = useState(0);
+  const [dragY,        setDragY]        = useState(0);
+  const [isDragging,   setIsDragging]   = useState(false);
+  const [flyDirection, setFlyDirection] = useState<'left' | 'right' | null>(null);
+  
+  // ── Memory management state ────────────────────────────
+  const [virtualIndex, setVirtualIndex] = useState(0); // absolute position in total swipe queue
+  const [profilesInMemory, setProfilesInMemory] = useState<number>(0); // count of profiles currently loaded
 
     // Function to reload only swipe profiles (not the whole page)
     const refreshProfilesOnly = useCallback(() => {
@@ -296,6 +310,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       setProfiles([]);
       setCurrentIndex(0);
       setCurrentBatch(0);
+      setVirtualIndex(0);
       matchScoreCache.current = {};
       // Optionally reset swipedProfiles if you want to allow re-swiping
       // setSwipedProfiles(new Set());
@@ -308,6 +323,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   // ── Refs ──────────────────────────────────────────────────────────────────
   const cardRef            = useRef<HTMLDivElement>(null);
   const touchStartX        = useRef(0);
+  const touchStartY        = useRef(0);
   const touchEndX          = useRef(0);
   const doubleTapTimeout   = useRef<NodeJS.Timeout | null>(null);
   const profilesLengthRef  = useRef(0); // always up-to-date profiles.length for async callbacks
@@ -345,6 +361,19 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   useEffect(() => () => {
     if (doubleTapTimeout.current) clearTimeout(doubleTapTimeout.current);
   }, []);
+
+  // Track memory usage (profiles in memory)
+  useEffect(() => {
+    setProfilesInMemory(profiles.length);
+    if (profiles.length > 0) {
+      console.log('[SwiperScreen] Memory status: ', {
+        profilesInMemory: profiles.length,
+        currentIndex: currentIndex,
+        virtualIndex: virtualIndex,
+        memoryWindow: `[${virtualIndex - MEMORY_WINDOW_BEFORE}, ${virtualIndex + MEMORY_WINDOW_AFTER}]`
+      });
+    }
+  }, [profiles, currentIndex, virtualIndex]);
 
   // ── Hooks (must be called before any early returns) ────────────────────────
   
@@ -423,6 +452,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       setProfiles([]);
       setCurrentIndex(0);
       setCurrentBatch(0);
+      setVirtualIndex(0);
       matchScoreCache.current = {};
 
       let initial: UserProfile[] = [];
@@ -468,15 +498,60 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
   }, [searchOpen, query]);
 
+  // Search all users in database when query changes
+  useEffect(() => {
+    let cancelled = false;
+    
+    const performSearch = async () => {
+      if (!query.trim()) {
+        setSearchResults([]);
+        setSearchLoading(false);
+        return;
+      }
+
+      setSearchLoading(true);
+      try {
+        const results = await apiClient.searchUsers(query);
+        if (!cancelled) {
+          console.log('[SwiperScreen] Search results:', results.length, 'profiles found');
+          setSearchResults(results);
+        }
+      } catch (err) {
+        console.error('[SwiperScreen] Search failed:', err);
+        if (!cancelled) setSearchResults([]);
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    };
+
+    // Debounce search by 300ms
+    const timeoutId = setTimeout(() => {
+      performSearch();
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [query, searchOpen]);
+
   // Handle profile selection from search
   const handleSelectFromSearch = useCallback((profile: UserProfile) => {
+    // First check if profile is already loaded in current profiles
     const profileIndex = profiles.findIndex(p => p.id === profile.id);
     if (profileIndex !== -1) {
+      // Profile already loaded, just navigate to it
       setCurrentIndex(profileIndex);
-      setSearchOpen(false);
-      setQuery('');
-      setShowSearchResults(false);
+      console.log('[SwiperScreen] Navigating to loaded profile at index:', profileIndex);
+    } else {
+      // Profile not in current batch, add it to the beginning and view it
+      setProfiles(prev => [profile, ...prev]);
+      setCurrentIndex(0);
+      console.log('[SwiperScreen] Added search result profile to view. Profile ID:', profile.id);
     }
+    setSearchOpen(false);
+    setQuery('');
+    setShowSearchResults(false);
   }, [profiles]);
 
   // Debug: log when index changes and what profile is being shown
@@ -527,22 +602,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   }, [currentBatch, fetchProfileBatch]);
 
   // ── Reset image state when profile changes ────────────────────────────────
-  // Only single useEffect to avoid duplicate renders and flickering
   useEffect(() => {
     setCurrentImageIndex(0);
-    setImgLoaded(false);
-    setFailedImages(new Set()); // Reset failed images when switching profiles
   }, [currentIndex]);
-
-  // ── Image load timeout — dismiss spinner if onLoad/onError never fire ─────
-  useEffect(() => {
-    if (imgLoaded) return; // already loaded, nothing to do
-    const timer = setTimeout(() => {
-      if (import.meta.env.DEV) console.warn('[SwiperScreen] Image load timeout — dismissing spinner');
-      setImgLoaded(true);
-    }, 8000);
-    return () => clearTimeout(timer);
-  }, [imgLoaded, currentIndex, currentImageIndex]);
 
   // ── Image Carousel Navigation ──────────────────────────────────────────────
 
@@ -550,8 +612,6 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     const profile = currentProfile;
     if (profile?.images && currentImageIndex < profile.images.length - 1) {
       setCurrentImageIndex(currentImageIndex + 1);
-      setImgLoaded(false);
-      setFailedImages(new Set()); // Reset failed images when navigating
       console.log('[SwiperScreen] Next image:', currentImageIndex + 1);
     }
   }, [currentImageIndex, currentProfile]);
@@ -559,8 +619,6 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const goToPrevImage = useCallback(() => {
     if (currentImageIndex > 0) {
       setCurrentImageIndex(currentImageIndex - 1);
-      setImgLoaded(false);
-      setFailedImages(new Set()); // Reset failed images when navigating
       console.log('[SwiperScreen] Previous image:', currentImageIndex - 1);
     }
   }, [currentImageIndex]);
@@ -579,12 +637,49 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goToNextImage, goToPrevImage]);
 
+  // ── Memory Cleanup: Remove profiles outside the memory window ──────────────
+
+  const cleanupOldProfiles = useCallback((newVirtualIndex: number) => {
+    setProfiles(prev => {
+      if (prev.length === 0) return prev;
+      
+      // Calculate which profiles to keep
+      // Keep: [newVirtualIndex - MEMORY_WINDOW_BEFORE] to [newVirtualIndex + MEMORY_WINDOW_AFTER]
+      const keepStartVirtual = Math.max(0, newVirtualIndex - MEMORY_WINDOW_BEFORE);
+      const keepEndVirtual = newVirtualIndex + MEMORY_WINDOW_AFTER;
+      
+      // The current profiles array spans from (virtualIndex - currentIndex) to (virtualIndex - currentIndex + profiles.length - 1)
+      const arrayStartVirtual = newVirtualIndex - currentIndex;
+      
+      // Find start and end indices in the current array
+      const removeFromStart = Math.max(0, keepStartVirtual - arrayStartVirtual);
+      const removeToEnd = prev.length - 1 - Math.max(0, keepEndVirtual - arrayStartVirtual);
+      
+      if (removeFromStart > 0) {
+        const removed = prev.slice(0, removeFromStart);
+        const newProfiles = prev.slice(removeFromStart);
+        
+        console.log('[SwiperScreen] Memory cleanup: removed', removed.length, 'profiles from start. Remaining:', newProfiles.length);
+        
+        // Update currentIndex since we shifted the array
+        setCurrentIndex(prev => Math.max(0, prev - removeFromStart));
+        
+        return newProfiles;
+      }
+      
+      return prev;
+    });
+  }, [currentIndex]);
+
   // ── Swipe actions ──────────────────────────────────────────────────────
 
   const advance = useCallback((nextIndex: number) => {
+    const newVirtualIndex = virtualIndex + 1;
+    setVirtualIndex(newVirtualIndex);
     setCurrentIndex(nextIndex);
     loadMoreIfNeeded(nextIndex);
-  }, [loadMoreIfNeeded]);
+    cleanupOldProfiles(newVirtualIndex);
+  }, [virtualIndex, loadMoreIfNeeded, cleanupOldProfiles]);
 
   const handleLike = useCallback(async () => {
     const profile = currentProfile;
@@ -673,6 +768,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     setProfiles([]);
     setCurrentIndex(0);
     setCurrentBatch(0);
+    setVirtualIndex(0);
     matchScoreCache.current = {};
     
     let initial: UserProfile[] = [];
@@ -705,13 +801,57 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    setIsDragging(true);
+    setFlyDirection(null);
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    touchEndX.current = e.changedTouches[0].clientX;
-    const diff = touchStartX.current - touchEndX.current;
-    if      (diff >  50) handlePass();
-    else if (diff < -50) handleLike();
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+    const dx = e.touches[0].clientX - touchStartX.current;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    setDragX(dx);
+    setDragY(dy * 0.3);  // subtle vertical follow
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    const THRESHOLD = 100;  // px before swipe commits
+    if (dragX > THRESHOLD) {
+      setFlyDirection('right');
+      setTimeout(() => {
+        setDragX(0); setDragY(0); setFlyDirection(null);
+        handleLike();  // existing function — unchanged
+      }, 350);
+    } else if (dragX < -THRESHOLD) {
+      setFlyDirection('left');
+      setTimeout(() => {
+        setDragX(0); setDragY(0); setFlyDirection(null);
+        handlePass();  // existing function — unchanged
+      }, 350);
+    } else {
+      setDragX(0);  // snap back to centre
+      setDragY(0);
+    }
+  };
+
+  // ── Desktop mouse drag support (testing in DevTools) ────────────────────────
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    touchStartX.current = e.clientX;
+    touchStartY.current = e.clientY;
+    setIsDragging(true);
+    setFlyDirection(null);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setDragX(e.clientX - touchStartX.current);
+    setDragY((e.clientY - touchStartY.current) * 0.3);
+  };
+
+  const handleMouseUp = () => {
+    handleTouchEnd();  // reuse the same threshold logic
   };
 
   // ── Double tap to like ──────────────────────────────────────────────────
@@ -888,6 +1028,22 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const scoreBreakdown = currentProfile ? getScoreBreakdown(currentProfile, currentUser) : null;
   const compatLabel    = getCompatibilityLabel(matchScore);
 
+  // ── Drag animation values ──────────────────────────────────────────────────
+  const rotate      = dragX * 0.08;            // tilt angle
+  const likeOpacity = Math.min( dragX / 100, 1);   // 0→1 as dragged right
+  const nopeOpacity = Math.min(-dragX / 100, 1);   // 0→1 as dragged left
+
+  let cardTransform  = `translateX(${dragX}px) translateY(${dragY}px) rotate(${rotate}deg)`;
+  let cardTransition = isDragging ? 'none' : 'transform 0.35s ease';
+
+  if (flyDirection === 'right') {
+    cardTransform  = 'translateX(120vw) rotate(30deg)';
+    cardTransition = 'transform 0.35s ease-in';
+  } else if (flyDirection === 'left') {
+    cardTransform  = 'translateX(-120vw) rotate(-30deg)';
+    cardTransition = 'transform 0.35s ease-in';
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -1009,9 +1165,15 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
           {/* ── Profile Card ── */}
           <div
             ref={cardRef}
+            style={{ transform: cardTransform, transition: cardTransition }}
             className="flex-1 relative cursor-pointer select-none mx-2 md:mx-0"
             onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
             onClick={handleCardTap}
           >
             {/* ── Mobile Navigation Buttons (visible on mobile only) ── */}
@@ -1047,8 +1209,31 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               boxShadow: '0 16px 48px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
             }}>
 
-              {/* Skeleton while image loads */}
-              {!imgLoaded && <ProfileImageSkeleton />}
+              {/* ── LIKE stamp ── */}
+              <div style={{
+                position: 'absolute', top: 40, left: 20, zIndex: 30,
+                border: '4px solid #22c55e', borderRadius: 8,
+                padding: '4px 14px',
+                color: '#22c55e', fontWeight: 900, fontSize: 32,
+                opacity: Math.max(0, likeOpacity),
+                transform: 'rotate(-15deg)',
+                pointerEvents: 'none',
+                fontFamily: 'Georgia, serif',
+                textShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              }}>LIKE</div>
+
+              {/* ── NOPE stamp ── */}
+              <div style={{
+                position: 'absolute', top: 40, right: 20, zIndex: 30,
+                border: '4px solid #ef4444', borderRadius: 8,
+                padding: '4px 14px',
+                color: '#ef4444', fontWeight: 900, fontSize: 32,
+                opacity: Math.max(0, nopeOpacity),
+                transform: 'rotate(15deg)',
+                pointerEvents: 'none',
+                fontFamily: 'Georgia, serif',
+                textShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              }}>NOPE</div>
 
               {/* Image progress indicator bars */}
               {currentProfile?.images && currentProfile?.images.length > 1 && (
@@ -1105,99 +1290,15 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                 />
               )}
 
-              {currentProfile?.images?.[currentImageIndex] ? (
-                (() => {
-                  const mediaUrl = currentProfile?.images?.[currentImageIndex];
-                  const isVideo = isVideoUrl(mediaUrl);
-                  const validatedUrl = isVideo ? validateVideoUrl(mediaUrl) : validateImageUrl(mediaUrl);
-                  const mediaCacheKey = `${currentProfile?.id}-${currentImageIndex}`;
-                  const isFailed = failedImages.has(mediaCacheKey);
-                  
-                  if (!validatedUrl || isFailed) {
-                    console.warn(`[SwiperScreen] ${isFailed ? 'Failed to load' : 'No valid'} media URL for profile ${currentProfile?.id} at index ${currentImageIndex}`);
-                    return (
-                      <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
-                        <div className="text-6xl mb-4">{isVideo ? <i className="fa-solid fa-video text-6xl" /> : <i className="fa-solid fa-camera text-6xl" />}</div>
-                        <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
-                        <p className="text-xl text-white/80 font-semibold mb-4">{currentProfile?.age}</p>
-                        <p className="text-sm text-white/60 text-center max-w-xs mb-6">{currentProfile?.location}</p>
-                        <p className="text-xs text-white/50 text-center">{isFailed ? 'Media failed to load' : 'Media data unavailable'}</p>
-                      </div>
-                    );
-                  }
-                  
-                  return (
-                    <div className="relative w-full h-full bg-gradient-to-br from-slate-700 to-slate-800">
-                      {/* Loading skeleton - always visible as background */}
-                      {!imgLoaded && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-slate-700 animate-pulse">
-                          <div className="text-white/40">
-                            <div className="animate-spin h-12 w-12 border-4 border-white/10 border-t-white/40 rounded-full mx-auto mb-2"></div>
-                            <p className="text-sm">Loading...</p>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Video - silent autoplay when loaded */}
-                      {isVideo ? (
-                        <video
-                          key={mediaCacheKey}
-                          src={validatedUrl}
-                          autoPlay
-                          muted
-                          loop
-                          playsInline
-                          onLoadedData={() => {
-                            console.log('[SwiperScreen] Video loaded successfully:', mediaCacheKey);
-                            setImgLoaded(true);
-                          }}
-                          onError={() => {
-                            console.warn('[SwiperScreen] Video failed to load:', mediaCacheKey, 'URL:', validatedUrl);
-                            setFailedImages(prev => new Set([...prev, mediaCacheKey]));
-                            setImgLoaded(true);
-                          }}
-                          className="w-full h-full object-cover select-none transition-opacity duration-500"
-                          style={{
-                            opacity: imgLoaded ? 1 : 0,
-                            width: '100%',
-                            height: '100%',
-                            position: 'absolute',
-                            top: 0,
-                            left: 0
-                          }}
-                        />
-                      ) : (
-                        /* Image - fades in when loaded */
-                        <img
-                          key={mediaCacheKey}
-                          src={validatedUrl}
-                          alt={`${currentProfile?.name} - photo ${currentImageIndex + 1}`}
-                          onLoad={() => {
-                            console.log('[SwiperScreen] Image loaded successfully:', mediaCacheKey);
-                            setImgLoaded(true);
-                          }}
-                          onError={() => {
-                            console.warn('[SwiperScreen] Image failed to load:', mediaCacheKey, 'URL:', validatedUrl);
-                            setFailedImages(prev => new Set([...prev, mediaCacheKey]));
-                            setImgLoaded(true);
-                          }}
-                          className="w-full h-full object-cover select-none transition-opacity duration-500"
-                          loading="eager"
-                          decoding="async"
-                          style={{
-                            opacity: imgLoaded ? 1 : 0,
-                            width: '100%',
-                            height: '100%',
-                            position: 'absolute',
-                            top: 0,
-                            left: 0
-                          }}
-                        />
-                      )}
-                    </div>
-                  );
-                })()
-              ) : (
+              {currentProfile?.images?.[currentImageIndex] && (
+                <img
+                  src={currentProfile?.images?.[currentImageIndex]}
+                  alt={currentProfile?.name}
+                  className="w-full h-full object-cover select-none"
+                />
+              )}
+              
+              {!currentProfile?.images?.[currentImageIndex] && (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
                   <div className="text-6xl mb-4"><i className="fa-solid fa-user text-6xl" /></div>
                   <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
@@ -1380,18 +1481,14 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       {/* Match Modal */}
       {matchedUser && (
         <MatchModal
-          isOpen={showMatchModal}
-          matchedUser={matchedUser}
-          interestMatch={interestMatch}
-          onClose={handleMatchModalClose}
-          onMessage={handleMatchMessage}
+          currentUserId={currentUser?.id}
         />
       )}
 
       {/* Search Suggestions Modal */}
       <SearchSuggestions
         query={query}
-        profiles={profiles}
+        results={searchResults}
         onSelectProfile={handleSelectFromSearch}
         onClose={() => {
           setSearchOpen(false);
@@ -1399,6 +1496,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
           setShowSearchResults(false);
         }}
         isOpen={showSearchResults}
+        loading={searchLoading}
       />
     </>
   );
