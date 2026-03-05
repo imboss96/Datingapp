@@ -5,6 +5,7 @@ import apiClient from '../services/apiClient';
 import { useCoinPackages } from '../services/CoinPackageContext';
 import PasswordResetModal from './PasswordResetModal';
 import PhotoVerificationModal from './PhotoVerificationModal';
+import EditProfileModal from './EditProfileModal';
 
 const spinnerStyles = `
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -1002,216 +1003,15 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
 
             {/* Edit Profile Modal */}
             {openModal === 'profile' && (
-              <div className="fixed inset-0 backdrop-blur-md flex items-end md:items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-t-3xl md:rounded-3xl w-full md:max-w-md max-h-[90vh] overflow-y-auto">
-                  <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
-                    <h2 className="text-lg font-bold text-gray-900">Edit Profile</h2>
-                    <button onClick={() => setOpenModal(null)} className="text-gray-500 hover:text-gray-700">
-                      <i className="fa-solid fa-times text-lg"></i>
-                    </button>
-                  </div>
-                  
-                  <div className="p-6 space-y-4">
-                    {/* Industry Recommendation */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                      <p className="text-xs text-blue-800"><strong>Pro Tip:</strong> Profiles with clear bio + verified photos get 3x more matches!</p>
-                    </div>
-
-                    {/* Profile Photos & Videos */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Profile Photos & Videos</label>
-                      
-                      {/* Upload File Input */}
-                      <div className="mb-3">
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*,video/*"
-                          onChange={handleImageUpload}
-                          disabled={uploading}
-                          className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-rose-500 transition-colors focus:outline-none bg-white text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">Drop photos or videos (JPG, PNG, MP4, WebM) • Max 5 per upload</p>
-                        
-                        {/* Upload Progress */}
-                        {uploading && uploadProgress > 0 && (
-                          <div className="mt-2">
-                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-rose-400 to-rose-500 transition-all duration-300"
-                                style={{ width: `${uploadProgress}%` }}
-                              />
-                            </div>
-                            <p className="text-xs text-gray-600 mt-1 text-center font-medium">{uploadProgress}% Uploading...</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Image Previews */}
-                      {editData.images.length > 0 && (
-                        <div>
-                          <p className="text-xs text-gray-700 font-semibold mb-2">Photos ({editData.images.length})</p>
-                          <div className="grid grid-cols-3 gap-2">
-                            {editData.images.map((img, idx) => (
-                              <div key={idx} className="relative group">
-                                <img
-                                  src={img}
-                                  alt={`Photo ${idx + 1}`}
-                                  className="w-full h-16 rounded-lg object-cover border-2 border-rose-200"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removeImage(idx)}
-                                  className="absolute -top-2 -right-2 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                >
-                                  <i className="fa-solid fa-times text-xs"></i>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Username Field */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Username (Unique identifier)</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={editData.username}
-                          onChange={(e) => {
-                            const newUsername = e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
-                            setEditData({...editData, username: newUsername});
-                            checkUsernameAvailability(newUsername);
-                          }}
-                          placeholder="Choose a unique username (3+ chars, a-z, 0-9, _)"
-                          minLength={3}
-                          maxLength={20}
-                          className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400 pr-10"
-                        />
-                        {/* Status indicator */}
-                        <div className="absolute right-3 top-3.5 flex items-center">
-                          {usernameStatus === 'checking' && (
-                            <i className="fa-solid fa-spinner fa-spin text-gray-400 text-sm"></i>
-                          )}
-                          {usernameStatus === 'available' && (
-                            <i className="fa-solid fa-check text-green-500 text-sm"></i>
-                          )}
-                          {usernameStatus === 'taken' && (
-                            <i className="fa-solid fa-times text-rose-500 text-sm"></i>
-                          )}
-                        </div>
-                      </div>
-                      <p className={`text-xs mt-1 ${
-                        usernameStatus === 'available' ? 'text-green-600' :
-                        usernameStatus === 'taken' ? 'text-rose-600' :
-                        'text-gray-500'
-                      }`}>
-                        {usernameStatus === 'available' && '✓ Username available'}
-                        {usernameStatus === 'taken' && '✗ Username already taken'}
-                        {!usernameStatus && editData.username.length > 0 && editData.username.length < 3 && 'Minimum 3 characters required'}
-                        {!usernameStatus && editData.username.length === 0 && 'Optional: Leave empty for no username'}
-                      </p>
-                    </div>
-
-                    {/* Bio Field */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Bio (Tell your story)</label>
-                      <textarea
-                        value={editData.bio}
-                        onChange={(e) => setEditData({...editData, bio: e.target.value})}
-                        placeholder="What makes you unique? (50-500 chars)"
-                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                        rows={3}
-                        maxLength={500}
-                      />
-                      <p className="text-xs text-gray-500 mt-1">{editData.bio.length}/500 characters</p>
-                    </div>
-
-                    {/* Age Field */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Age</label>
-                      <input
-                        type="number"
-                        min="18"
-                        max="120"
-                        value={editData.age}
-                        onChange={(e) => setEditData({...editData, age: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                      />
-                    </div>
-
-                    {/* Location Field */}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">Location</label>
-                      <input
-                        type="text"
-                        value={editData.location}
-                        onChange={(e) => setEditData({...editData, location: e.target.value})}
-                        placeholder="e.g., San Francisco, CA"
-                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
-                      />
-                    </div>
-
-                    {/* Interests Field */}
-                    <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-3 uppercase tracking-wide">Interests (Select at least 1)</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {interestsList.map((interest) => (
-                        <button
-                          key={interest}
-                          type="button"
-                          onClick={() => toggleInterest(interest)}
-                          className={`px-3 py-2 rounded-full font-medium text-xs transition ${
-                            editData.interests.includes(interest)
-                              ? 'bg-rose-500 text-white'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                        >
-                          {interest}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">{editData.interests.length} selected</p>
-                    </div>
-
-                    {/* Success Message */}
-                    {successMessage && (
-                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <p className="text-xs text-green-700 font-medium">{successMessage}</p>
-                      </div>
-                    )}
-
-                    {/* Error Message */}
-                    {error && (
-                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-                        <p className="text-xs text-rose-700 font-medium">{error}</p>
-                      </div>
-                    )}
-
-                    {/* Buttons */}
-                    <div className="flex gap-3 mt-6 pt-4 border-t border-gray-200">
-                      <button
-                        onClick={() => setOpenModal(null)}
-                        disabled={saving || uploading}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleSaveProfile}
-                        disabled={saving || uploading}
-                        className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 active:bg-rose-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                      >
-                        {saving && <div className="profile-spinner" />}
-                        {saving ? 'Saving...' : uploading ? 'Uploading...' : 'Save Profile'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+              <EditProfileModal
+                user={user}
+                onClose={() => setOpenModal(null)}
+                onSave={(updated) => {
+                  setUser(prev => ({ ...prev, ...updated }));
+                  setOpenModal(null);
+                }}
+              />
+)}
 
             {/* Notifications Modal */}
             {openModal === 'notifications' && (
