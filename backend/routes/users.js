@@ -194,7 +194,7 @@ router.get('/', async (req, res) => {
 });
 
 // Update user profile
-router.put('/:userId', async (req, res) => {
+router.put('/:userId', authMiddleware, async (req, res) => {
   try {
     console.log('[DEBUG Backend] PUT /users/:userId called');
     console.log('[DEBUG Backend] req.userId:', req.userId);

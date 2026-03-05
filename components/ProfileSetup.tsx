@@ -287,6 +287,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
   const [bio,               setBio]               = useState('');
   const [uploadedImages,    setUploadedImages]    = useState<string[]>(profilePicture ? [profilePicture] : []);
   const [uploadedVideos,    setUploadedVideos]    = useState<string[]>([]); // ✅ Videos for swiping
+  const [uploadingFiles,    setUploadingFiles]    = useState<Set<string>>(new Set()); // ✅ Track uploading files
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [loading,           setLoading]           = useState(false);
   const [error,             setError]             = useState('');
@@ -338,20 +339,55 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
+
+    Array.from(files).forEach(async (file) => {
+      const fileId = `${file.name}-${Date.now()}`;
       const isVideo = file.type.startsWith('video/');
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        if (isVideo) {
-          // Add to videos array (max 3 videos)
-          setUploadedVideos(prev => prev.length < 3 ? [...prev, dataUrl] : prev);
-        } else {
-          // Add to images array (max 6 images)
-          setUploadedImages(prev => prev.length < 6 ? [...prev, dataUrl] : prev);
+      const maxSize = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024; // 100MB for video, 10MB for image
+
+      if (file.size > maxSize) {
+        setError(`File too large. Max ${isVideo ? '100MB' : '10MB'}`);
+        return;
+      }
+
+      setUploadingFiles(prev => new Set([...prev, fileId]));
+
+      try {
+        // Upload to Cloudinary directly
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', 'datingapp_media'); // Create this preset in Cloudinary dashboard
+        formData.append('folder', isVideo ? 'datingapp/videos' : 'datingapp/photos');
+        formData.append('resource_type', isVideo ? 'video' : 'auto');
+
+        const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/${isVideo ? 'video' : 'image'}/upload`;
+        
+        const response = await fetch(cloudinaryUrl, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.statusText}`);
         }
-      };
-      reader.readAsDataURL(file);
+
+        const data = await response.json();
+        const url = data.secure_url;
+
+        if (isVideo) {
+          setUploadedVideos(prev => prev.length < 3 ? [...prev, url] : prev);
+        } else {
+          setUploadedImages(prev => prev.length < 6 ? [...prev, url] : prev);
+        }
+      } catch (err: any) {
+        setError(`Upload error: ${err.message}`);
+      } finally {
+        setUploadingFiles(prev => {
+          const updated = new Set(prev);
+          updated.delete(fileId);
+          return updated;
+        });
+      }
     });
   };
 
@@ -393,7 +429,14 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
   // ── Step 0: I am a ──────────────────────────────────────────────────────────
 
   if (step === 0) return (
-    <Shell {...shell} title="I am a" onContinue={goNext}>
+    <>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+      <Shell {...shell} title="I am a" onContinue={goNext}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 24 }}>
         {([
           { label: 'Woman',          value: 'Woman' as Gender },
@@ -446,6 +489,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
         })}
       </div>
     </Shell>
+    </>
   );
 
   // ── Step 1: Basics ──────────────────────────────────────────────────────────
@@ -560,16 +604,29 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
                 background: 'linear-gradient(135deg,#fff5f6,#fff0f4)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer',
-              }}>
+                opacity: uploadingFiles.size > 0 ? 0.6 : 1,
+              }}
+              disabled={uploadingFiles.size > 0}>
                 <div style={{
                   width: 44, height: 44, borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#FF4458,#FF7854)',
+                  background: uploadingFiles.size > 0 
+                    ? 'linear-gradient(135deg,#ccc,#bbb)' 
+                    : 'linear-gradient(135deg,#FF4458,#FF7854)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   boxShadow: '0 5px 14px rgba(255,68,88,0.38)',
                 }}>
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                    <path d="M9 3v12M3 9h12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-                  </svg>
+                  {uploadingFiles.size > 0 ? (
+                    <div style={{
+                      width: 18, height: 18,
+                      border: '2px solid #FF4458', borderTop: '2px solid #ccc',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                    }} />
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                      <path d="M9 3v12M3 9h12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+                    </svg>
+                  )}
                 </div>
               </button>
             );
