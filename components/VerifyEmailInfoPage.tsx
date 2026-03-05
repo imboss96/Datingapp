@@ -39,7 +39,6 @@ const VerifyEmailInfoPage: React.FC = () => {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendDone, setResendDone] = useState(false);
   const [showSuccessPrompt, setShowSuccessPrompt] = useState(justResent ? false : true);
-  const [startTime] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
 
   // Generate floating particles
@@ -67,18 +66,12 @@ const VerifyEmailInfoPage: React.FC = () => {
   const handleResend = async () => {
     if (resendCooldown > 0 || resendLoading) return;
 
-    const elapsed = Date.now() - startTime;
-    if (elapsed < 15 * 60 * 1000) {
-      setError('Please resend the verification email if you need a new code.');
-      return;
-    }
-
     setResendLoading(true);
     setError(null);
     try {
       await apiClient.requestEmailVerification(email);
       setResendDone(true);
-      setResendCooldown(60);
+      setResendCooldown(60); // 60 second cooldown to prevent spam
       setTimeout(() => setResendDone(false), 4000);
     } catch (err: any) {
       setError(err.message || 'Failed to resend verification email.');

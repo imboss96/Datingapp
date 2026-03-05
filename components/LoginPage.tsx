@@ -81,10 +81,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
           navigate('/verify-email-info', { state: { email, justResent: false } });
           return;
         } catch (err: any) {
-          if (err.message && err.message.includes('Email registered but not verified')) {
-            // If backend says email is registered but not verified, redirect and show resend
-            if (onClose) onClose();
-            navigate('/verify-email-info', { state: { email, justResent: true } });
+          // Check if email already exists but not verified
+          if (err.message && (err.message.includes('already registered but not verified') || err.message.includes('Email registered but not verified'))) {
+            // Direct user to login
+            setError('This email is already registered but not verified. Please log in instead, and we will send you a verification email.');
+            setMode('signin');
+            setLoading(false);
             return;
           }
           setError(err.message || 'Registration failed');
@@ -127,8 +129,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
         } catch (err: any) {
           console.log('[DEBUG LoginPage] Login error caught:', { message: err.message, code: err.code, status: err.status });
           
-          if (err.message && err.message.toLowerCase().includes('email not verified')) {
-            // Redirect to verify email info page and trigger resend
+          if (err.message && (err.message.toLowerCase().includes('email not verified') || err.message.includes('We have sent you a verification email'))) {
+            // Email not verified - redirect to verify email page with resend flag
             if (onClose) onClose();
             navigate('/verify-email-info', { state: { email, justResent: true } });
             return;

@@ -21,437 +21,325 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   otherUserId,
   isInitiator,
   isVideo,
-  onCallEnd
+  onCallEnd,
 }) => {
   const navigate = useNavigate();
   const { showAlert } = useAlert();
-  const [callDuration, setCallDuration] = useState(0);
-  const [isAudioOn, setIsAudioOn] = useState(true);
-  const [isVideoOn, setIsVideoOn] = useState(isVideo);
-  const [showCallInfo, setShowCallInfo] = useState(true);
-  const [callQuality, setCallQuality] = useState<'good' | 'moderate' | 'poor'>('good');
-  const [connectionStatus, setConnectionStatus] = useState('connecting');
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const [otherUserJoined, setOtherUserJoined] = useState(false);
+
+  const [callDuration,      setCallDuration]      = useState(0);
+  const [isAudioOn,         setIsAudioOn]          = useState(true);
+  const [isVideoOn,         setIsVideoOn]          = useState(isVideo);
+  const [connectionStatus,  setConnectionStatus]   = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [streamError,       setStreamError]        = useState<string | null>(null);
+  const [otherUserJoined,   setOtherUserJoined]    = useState(false);
   const [userJoinedAlertShown, setUserJoinedAlertShown] = useState(false);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const [isFavorited,       setIsFavorited]        = useState(false);
+
+  const localVideoRef  = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
-  const webRtcRef = useRef<any>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const webRtcRef      = useRef<any>(null);
 
-  // ── Replaced useWebSocket with useWebSocketContext ──
   const { sendMessage, addMessageHandler } = useWebSocketContext();
 
-  // Define endCall before callbacks that use it
+  // ── End call ──────────────────────────────────────────────────────────────────
+
   const endCall = useCallback(() => {
-    console.log('[VideoCallRoom] Ending call - duration:', callDuration, 'seconds');
-    
-    // Send call end signal with duration
     if (callDuration > 0) {
       sendMessage({
         type: 'call_end',
         to: otherUserId,
         duration: callDuration,
-        durationFormatted: `${Math.floor(callDuration / 60)}:${String(callDuration % 60).padStart(2, '0')}`
+        durationFormatted: `${Math.floor(callDuration / 60)}:${String(callDuration % 60).padStart(2, '0')}`,
       });
     }
-    
     webRtcRef.current?.hangUp();
     onCallEnd?.();
     navigate('/chats');
   }, [onCallEnd, navigate, callDuration, otherUserId, sendMessage]);
 
+  // ── WebRTC callbacks ──────────────────────────────────────────────────────────
+
   const handleConnectionStateChange = useCallback((state: RTCPeerConnectionState) => {
-    console.log('[VideoCallRoom] Connection state:', state);
     setConnectionStatus(
-      state === 'connected' ? 'connected' :
-      state === 'connecting' ? 'connecting' : 'disconnected'
+      state === 'connected'    ? 'connected'    :
+      state === 'connecting'   ? 'connecting'   : 'disconnected'
     );
   }, []);
 
   const handleRemoteStream = useCallback((stream: MediaStream) => {
-    console.log('[VideoCallRoom] Remote stream received:', {
-      streamId: stream.id,
-      tracks: stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled }))
-    });
-    
-    // Set video stream to video element
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = stream;
-      console.log('[VideoCallRoom] Remote stream set to video element');
-    } else {
-      console.warn('[VideoCallRoom] remoteVideoRef not available');
-    }
-    
-    // Also set audio stream to audio element for better audio playback
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream;
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length > 0 && remoteAudioRef.current) {
-      console.log('[VideoCallRoom] Setting remote audio tracks to audio element, count:', audioTracks.length);
-      // Enable all audio tracks
-      audioTracks.forEach(track => {
-        track.enabled = true;
-        console.log('[VideoCallRoom] Audio track enabled:', { id: track.id, enabled: track.enabled });
-      });
-      // Create a new stream with only audio tracks
-      const audioStream = new MediaStream(audioTracks);
-      remoteAudioRef.current.srcObject = audioStream;
-      console.log('[VideoCallRoom] Remote audio stream assigned');
-    } else {
-      console.log('[VideoCallRoom] No audio tracks found or remoteAudioRef not available');
+      audioTracks.forEach(t => { t.enabled = true; });
+      remoteAudioRef.current.srcObject = new MediaStream(audioTracks);
     }
   }, []);
 
-  const handleWebSocketMessage = useCallback((data: any) => {
-    console.log('[VideoCallRoom] WebSocket message:', data.type);
-    if (data.type === 'call_offer' && webRtcRef.current) {
-      webRtcRef.current.handleOffer(data.offer);
-    } else if (data.type === 'call_answer' && webRtcRef.current) {
-      webRtcRef.current.handleAnswer(data.answer);
-    } else if (data.type === 'ice_candidate' && webRtcRef.current) {
-      webRtcRef.current.handleICECandidate(data.candidate);
-    } else if (data.type === 'call_end') {
-      console.log('[VideoCallRoom] Remote user ended the call');
-      endCall();
-    } else if (data.type === 'call_rejected') {
-      console.log('[VideoCallRoom] Call was rejected by remote user');
-      showAlert('Call Rejected', 'The user declined your call.');
-      endCall();
-    }
-  }, [endCall, showAlert]);
-
   const handleRTCError = useCallback((error: Error) => {
-    console.error('[VideoCallRoom] WebRTC error:', error);
     setStreamError(error.message);
-    showAlert('Connection Error', 'Call connection error: ' + error.message);
-  }, [showAlert]);
+  }, []);
 
   const handleWSSignaling = useCallback((data: any) => {
-    const transformedData = {
-      ...data,
-      type: data.type.replace('send_', '')
-    };
-    console.log('[VideoCallRoom] Sending WebRTC signal:', transformedData.type);
-    sendMessage(transformedData);
+    sendMessage({ ...data, type: data.type.replace('send_', '') });
   }, [sendMessage]);
 
   const webRtcHook = useWebRTC({
     userId: currentUser.id,
-    otherUserId: otherUserId,
-    isInitiator: isInitiator,
+    otherUserId,
+    isInitiator,
     isVideoEnabled: isVideoOn,
     isAudioEnabled: isAudioOn,
     onRemoteStream: handleRemoteStream,
     onConnectionStateChange: handleConnectionStateChange,
     onError: handleRTCError,
-    wsMessageHandler: handleWSSignaling
+    wsMessageHandler: handleWSSignaling,
   });
 
-  useEffect(() => {
-    if (webRtcHook) {
-      webRtcRef.current = webRtcHook;
-      setIsInitialized(true);
-    }
-  }, [webRtcHook]);
+  useEffect(() => { if (webRtcHook) webRtcRef.current = webRtcHook; }, [webRtcHook]);
 
-  // Subscribe to WebSocket messages
-  useEffect(() => {
-    const unsubscribe = addMessageHandler(handleWebSocketMessage);
-    return unsubscribe;
-  }, [addMessageHandler, handleWebSocketMessage]);
-
-  // Send user joined notification and listen for other user joining
-  useEffect(() => {
-    // Send notification that this user joined the call
-    console.log('[VideoCallRoom] Sending user_joined_call notification');
-    sendMessage({
-      type: 'user_joined_call',
-      to: otherUserId,
-      fromName: currentUser.name || currentUser.username,
-      timestamp: new Date().toISOString()
-    });
-
-    // Listen for other user joining
-    const handleUserJoinedCall = (data: any) => {
-      if (data.type === 'user_joined_call' && data.from === otherUserId && !userJoinedAlertShown) {
-        console.log('[VideoCallRoom] Other user joined call:', data.fromName);
-        setOtherUserJoined(true);
-        setUserJoinedAlertShown(true);
-        showAlert('Connected', `${data.fromName} joined the call`);
-      }
-    };
-
-    const unsubscribe = addMessageHandler(handleUserJoinedCall);
-    return unsubscribe;
-  }, [otherUserId, currentUser, sendMessage, addMessageHandler, userJoinedAlertShown, showAlert]);
-
-  // Update local video stream
   useEffect(() => {
     if (webRtcHook?.localStream && localVideoRef.current) {
       localVideoRef.current.srcObject = webRtcHook.localStream;
     }
   }, [webRtcHook]);
 
-  // Call timer
+  // WebSocket handler
   useEffect(() => {
-    const interval = setInterval(() => setCallDuration(prev => prev + 1), 1000);
+    const handler = (data: any) => {
+      if      (data.type === 'call_offer'     && webRtcRef.current) webRtcRef.current.handleOffer(data.offer);
+      else if (data.type === 'call_answer'    && webRtcRef.current) webRtcRef.current.handleAnswer(data.answer);
+      else if (data.type === 'ice_candidate'  && webRtcRef.current) webRtcRef.current.handleICECandidate(data.candidate);
+      else if (data.type === 'call_end')       endCall();
+      else if (data.type === 'call_rejected') { showAlert('Call Rejected', 'The user declined your call.'); endCall(); }
+      else if (data.type === 'user_joined_call' && data.from === otherUserId && !userJoinedAlertShown) {
+        setOtherUserJoined(true);
+        setUserJoinedAlertShown(true);
+      }
+    };
+    return addMessageHandler(handler);
+  }, [addMessageHandler, endCall, showAlert, otherUserId, userJoinedAlertShown]);
+
+  // Send joined notification
+  useEffect(() => {
+    sendMessage({
+      type: 'user_joined_call',
+      to: otherUserId,
+      fromName: currentUser.name || currentUser.username,
+      timestamp: new Date().toISOString(),
+    });
+  }, []);
+
+  // Timer
+  useEffect(() => {
+    const interval = setInterval(() => setCallDuration(p => p + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Simulate network quality
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const qualities: ('good' | 'moderate' | 'poor')[] = ['good', 'good', 'moderate'];
-      setCallQuality(qualities[Math.floor(Math.random() * qualities.length)]);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const formatTime = (seconds: number) => {
-    const hours   = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs    = seconds % 60;
-    if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const ss = s % 60;
+    return `${m}:${String(ss).padStart(2, '0')}`;
   };
 
-  const getQualityIcon = () => {
-    switch (callQuality) {
-      case 'good':     return { icon: 'fa-signal', color: 'text-emerald-500' };
-      case 'moderate': return { icon: 'fa-signal', color: 'text-amber-500' };
-      case 'poor':     return { icon: 'fa-triangle-exclamation', color: 'text-red-500' };
-    }
-  };
+  const callerName = otherUser ? (otherUser.username || otherUser.name) : 'Calling...';
+  const callerPhoto = otherUser?.images?.[0];
 
-  const quality = getQualityIcon();
-  const hasLocalStream  = webRtcHook?.localStream;
-  const localTracks     = webRtcHook?.localStream?.getTracks() || [];
-  const hasVideoTrack   = localTracks.some((t: MediaStreamTrack) => t.kind === 'video');
-  const hasAudioTrack   = localTracks.some((t: MediaStreamTrack) => t.kind === 'audio');
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden flex items-center justify-center group">
-      {/* Debug Overlay - Remove in production */}
-      <div className="absolute top-2 left-2 z-50 bg-black/80 text-white text-xs p-2 rounded max-w-md font-mono">
-        <div>Local Stream: {hasLocalStream ? '✅' : '❌'}</div>
-        <div>Video Track: {hasVideoTrack ? '✅' : '❌'}</div>
-        <div>Audio Track: {hasAudioTrack ? '✅' : '❌'}</div>
-        <div>Status: {connectionStatus}</div>
-        <div>IsVideo: {isVideo ? 'Yes' : 'No'}</div>
-        <div>Browser: {navigator.userAgent.split(' ').slice(-2).join(' ')}</div>
-        {streamError && <div className="text-red-400 mt-2">Error: {streamError}</div>}
-      </div>
+    <div className="fixed inset-0 z-50 bg-black overflow-hidden flex flex-col">
 
-      {/* Error message if streams failed */}
-      {streamError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-40">
-          <div className="bg-white rounded-xl max-w-md p-6 shadow-2xl">
-            <div className="text-center">
-              <i className="fa-solid fa-exclamation-triangle text-4xl text-red-500 mb-4 block"></i>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Device Error</h2>
-              <p className="text-gray-600 mb-6">{streamError}</p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
-                <p className="text-sm font-bold text-blue-900 mb-2">To fix this:</p>
-                <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
-                  <li>Check browser permissions for camera/microphone</li>
-                  <li>Ensure device is plugged in and enabled</li>
-                  <li>Try a different browser (Chrome/Firefox recommended)</li>
-                  <li>Restart your browser</li>
-                  <li>If in RDP/VM, enable device redirection</li>
-                </ul>
-              </div>
-              <button
-                onClick={() => endCall()}
-                className="w-full px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition"
-              >
-                End Call
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Hidden audio element for remote audio playback */}
-      <audio ref={remoteAudioRef} autoPlay muted={false} />
-      
-      {/* Main Video Grid */}
-      <div className="absolute inset-0 grid grid-cols-1 md:grid-cols-2 gap-0">
-        {/* Remote Video */}
-        <div className="relative bg-gray-900 flex items-center justify-center">
-          {isVideo ? (
-            <>
-              <video ref={remoteVideoRef} autoPlay muted={false} playsInline className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50"></div>
-              <div className="absolute bottom-8 left-8 z-10">
-                <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-full border-4 border-emerald-500 overflow-hidden">
-                    <img src={otherUser?.images[0]} alt={otherUser?.username || otherUser?.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="text-white">
-                    <h3 className="text-xl font-bold">{displayName(otherUser)}</h3>
-                    <p className="text-sm text-gray-300">{otherUser?.location}</p>
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <audio ref={remoteAudioRef} autoPlay muted={false} />
-              <img
-                src={otherUser?.images[0] || 'https://via.placeholder.com/1920x1080?text=Voice+Call'}
-                alt="Remote user"
-                className="w-full h-full object-cover blur-sm"
-              />
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50 flex items-center justify-center">
-                <div className="text-center text-white">
-                  <div className="w-32 h-32 rounded-full border-4 border-emerald-500 overflow-hidden mx-auto mb-4">
-                    <img src={otherUser?.images[0]} alt={otherUser?.username || otherUser?.name} className="w-full h-full object-cover" />
-                  </div>
-                  <h2 className="text-3xl font-bold">{displayName(otherUser)}</h2>
-                  <p className="text-lg text-gray-300 mt-2">Voice Call</p>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Local Video */}
-        {isVideo && (
-          <div className="hidden md:flex relative bg-gray-900 items-center justify-center border-l border-gray-700">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-transparent"></div>
-            <div className="absolute top-8 right-8 z-10">
-              <div className="text-right text-white">
-                <div className="w-20 h-20 rounded-2xl border-4 border-blue-500 overflow-hidden mx-auto mb-2">
-                  <img src={currentUser.images[0]} alt={currentUser.username || currentUser.name} className="w-full h-full object-cover" />
-                </div>
-                <p className="text-xs font-bold">You</p>
-                {!isVideoOn && <p className="text-xs text-red-400 mt-1">Video off</p>}
-              </div>
-            </div>
-          </div>
+      {/* ── Full-screen background: remote video or blurred photo ── */}
+      <div className="absolute inset-0">
+        {isVideo ? (
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            muted={false}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          callerPhoto && (
+            <img
+              src={callerPhoto}
+              alt={callerName}
+              className="w-full h-full object-cover"
+              style={{ filter: 'blur(0px)' }}
+            />
+          )
         )}
+
+        {/* Subtle dark vignette at bottom */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 0%, transparent 40%, rgba(0,0,0,0.55) 100%)',
+          }}
+        />
       </div>
 
-      {/* Mobile Local Video */}
+      {/* Hidden audio */}
+      <audio ref={remoteAudioRef} autoPlay muted={false} />
+
+      {/* ── Camera icon pill — top center ── */}
+      <div className="relative z-10 flex justify-center pt-16 shrink-0">
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg"
+          style={{ background: 'linear-gradient(135deg, #ff6b9d, #f72585)' }}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" fill="white"/>
+          </svg>
+        </div>
+      </div>
+
+      {/* ── Local video pip (top-right, only when video call) ── */}
       {isVideo && (
-        <div className="md:hidden absolute bottom-32 right-8 w-24 h-32 rounded-2xl border-4 border-blue-500 overflow-hidden shadow-lg z-20">
+        <div
+          className="absolute top-16 right-4 z-20 rounded-2xl overflow-hidden shadow-xl"
+          style={{ width: 90, height: 120, border: '2px solid rgba(255,255,255,0.3)' }}
+        >
           <video
             ref={localVideoRef}
             autoPlay
             playsInline
             muted
-            className={`w-full h-full object-cover ${!isVideoOn ? 'blur-md bg-gray-800' : ''}`}
+            className="w-full h-full object-cover"
           />
           {!isVideoOn && (
-            <div className="absolute inset-0 bg-gray-800/80 flex items-center justify-center">
-              <i className="fa-solid fa-video-slash text-white text-2xl"></i>
+            <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+                <line x1="2" y1="2" x2="22" y2="22"/>
+                <path d="M10.66 6H14a2 2 0 012 2v3.34l1 1L23 7v10"/>
+                <path d="M17.94 17.94A2 2 0 0116 19H4a2 2 0 01-2-2V7a2 2 0 012-2h3"/>
+              </svg>
             </div>
           )}
         </div>
       )}
 
-      {/* Call Info Overlay */}
-      {showCallInfo && (
-        <div className="absolute top-8 left-8 right-8 flex items-center justify-between z-20 text-white">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-black/60 backdrop-blur px-4 py-2 rounded-full">
-              <i className="fa-solid fa-signal text-emerald-500 animate-pulse"></i>
-              <span className="text-sm font-bold">
-                {connectionStatus === 'connected' ? 'Connected' :
-                 connectionStatus === 'connecting' ? 'Connecting...' : 'Disconnected'}
-              </span>
-            </div>
-            {otherUserJoined && (
-              <div className="flex items-center gap-2 bg-emerald-500/30 border border-emerald-500 backdrop-blur px-3 py-2 rounded-full">
-                <i className="fa-solid fa-check-circle text-emerald-400"></i>
-                <span className="text-xs font-bold text-emerald-300">{displayName(otherUser)} is here</span>
-              </div>
-            )}
-            <div className="bg-black/60 backdrop-blur px-4 py-2 rounded-full font-bold text-lg">
-              {formatTime(callDuration)}
-            </div>
-          </div>
-          <button onClick={() => setShowCallInfo(false)} className="text-gray-300 hover:text-white transition p-2">
-            <i className="fa-solid fa-chevron-up"></i>
-          </button>
-        </div>
-      )}
-
-      {!showCallInfo && (
-        <button
-          onClick={() => setShowCallInfo(true)}
-          className="absolute top-8 left-8 z-20 text-white bg-black/60 backdrop-blur px-4 py-2 rounded-full hover:bg-black/80 transition"
-        >
-          <i className="fa-solid fa-chevron-down"></i>
-        </button>
-      )}
-
-      {/* Control Bar */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-8 z-20 group-hover:opacity-100 opacity-75 transition-opacity">
-        <div className="max-w-6xl mx-auto flex items-center justify-center gap-6">
-          {/* Audio Toggle */}
-          <button
-            onClick={() => {
-              setIsAudioOn(!isAudioOn);
-              webRtcRef.current?.toggleAudio(!isAudioOn);
-            }}
-            className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
-              isAudioOn
-                ? 'bg-gray-700 text-white hover:bg-gray-600'
-                : 'bg-red-500 text-white hover:bg-red-600 ring-4 ring-red-500/50'
-            }`}
-            title={isAudioOn ? 'Mute' : 'Unmute'}
-          >
-            <i className={`fa-solid ${isAudioOn ? 'fa-microphone' : 'fa-microphone-slash'}`}></i>
-          </button>
-
-          {/* Video Toggle */}
-          {isVideo && (
-            <button
-              onClick={() => {
-                setIsVideoOn(!isVideoOn);
-                webRtcRef.current?.toggleVideo(!isVideoOn);
-              }}
-              className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold transition-all shadow-lg ${
-                isVideoOn
-                  ? 'bg-gray-700 text-white hover:bg-gray-600'
-                  : 'bg-red-500 text-white hover:bg-red-600 ring-4 ring-red-500/50'
-              }`}
-              title={isVideoOn ? 'Stop Video' : 'Start Video'}
-            >
-              <i className={`fa-solid ${isVideoOn ? 'fa-video' : 'fa-video-slash'}`}></i>
-            </button>
-          )}
-
-          {/* Call Duration */}
-          <div className="bg-black/60 backdrop-blur px-6 py-3 rounded-full text-white font-bold text-lg">
-            {formatTime(callDuration)}
-          </div>
-
-          {/* End Call */}
-          <button
-            onClick={endCall}
-            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold bg-red-500 text-white hover:bg-red-600 transition-all shadow-lg"
-            title="End Call"
-          >
-            <i className="fa-solid fa-phone-slash"></i>
-          </button>
-        </div>
+      {/* ── Caller name + status — bottom-left ── */}
+      <div className="absolute z-10 left-6 shrink-0" style={{ bottom: '200px' }}>
+        <h2 className="text-white font-extrabold text-[32px] leading-tight tracking-tight drop-shadow-lg">
+          {callerName}
+        </h2>
+        <p className="text-white/70 text-[16px] font-medium mt-1 drop-shadow">
+          {connectionStatus === 'connected'
+            ? formatTime(callDuration)
+            : connectionStatus === 'connecting'
+            ? 'Connecting......'
+            : 'Disconnected'}
+        </p>
       </div>
 
-      {/* Call Stats Mobile */}
-      <div className="md:hidden absolute bottom-40 left-8 right-8 bg-black/60 backdrop-blur rounded-2xl p-4 z-20">
-        <div className="grid grid-cols-2 gap-4 text-white text-center">
-          <div>
-            <p className="text-xs text-gray-400 uppercase font-bold">Audio</p>
-            <p className="text-lg font-bold">{isAudioOn ? '✓ On' : '✗ Muted'}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 uppercase font-bold">Video</p>
-            <p className="text-lg font-bold">{isVideoOn ? '✓ On' : '✗ Off'}</p>
+      {/* ── Error overlay ── */}
+      {streamError && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 p-6">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <h3 className="text-gray-900 font-extrabold text-lg mb-2">Device Error</h3>
+            <p className="text-gray-500 text-sm mb-5">{streamError}</p>
+            <button
+              onClick={endCall}
+              className="w-full py-3 rounded-xl font-bold text-white"
+              style={{ background: 'linear-gradient(135deg, #f72585, #c9184a)' }}
+            >
+              End Call
+            </button>
           </div>
         </div>
+      )}
+
+      {/* ── Bottom controls ── */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-10 flex flex-col items-center pb-12"
+        style={{ paddingBottom: 'calc(40px + env(safe-area-inset-bottom, 0px))' }}
+      >
+        {/* Top row: 3 secondary buttons */}
+        <div className="flex items-center justify-center gap-8 mb-6">
+
+          {/* Rotate / flip camera */}
+          <button
+            onClick={() => {
+              setIsAudioOn(p => {
+                webRtcRef.current?.toggleAudio(!p);
+                return !p;
+              });
+            }}
+            className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90"
+            style={{
+              background: isAudioOn ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.10)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            {/* Refresh / rotate icon */}
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+            </svg>
+          </button>
+
+          {/* Favorite / heart */}
+          <button
+            onClick={() => setIsFavorited(p => !p)}
+            className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90"
+            style={{
+              background: isFavorited ? 'rgba(247,37,133,0.3)' : 'rgba(255,255,255,0.18)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill={isFavorited ? '#f72585' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+            </svg>
+          </button>
+
+          {/* Star / super like */}
+          <button
+            onClick={() => {
+              if (isVideo) {
+                setIsVideoOn(p => {
+                  webRtcRef.current?.toggleVideo(!p);
+                  return !p;
+                });
+              }
+            }}
+            className="w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90"
+            style={{
+              background: 'rgba(255,255,255,0.18)',
+              border: '1.5px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="white">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* End call button — centered below */}
+        <button
+          onClick={endCall}
+          className="w-16 h-16 rounded-full flex items-center justify-center shadow-2xl transition-all active:scale-90 hover:scale-105"
+          style={{
+            background: 'linear-gradient(135deg, #f72585, #c9184a)',
+            boxShadow: '0 8px 30px rgba(247,37,133,0.5)',
+          }}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+            <path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7 2 2 0 011.72 2v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.42 19.42 0 01-3.33-2.67m-2.67-3.34a19.79 19.79 0 01-3.07-8.63A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <line x1="23" y1="1" x2="1" y2="23" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </button>
       </div>
     </div>
   );

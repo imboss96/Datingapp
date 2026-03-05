@@ -72,118 +72,31 @@ router.get('/:userId', async (req, res) => {
 });
 
 // Get all users (for swiping)
-// Discovery endpoint: paginated, optional geo, age, interests, and exclude-seen
-// Query params: lat, lon, limit, skip, minAge, maxAge, interests (csv), excludeSeen=true
+// SIMPLIFIED: No filters applied - all profiles available for smooth swiping
+// Query params: limit, skip (pagination only)
 router.get('/', async (req, res) => {
   try {
     console.log('[DEBUG Backend] GET /users called by user:', req.userId);
-    console.log('[DEBUG Backend] Query params:', req.query);
     const {
-      lat,
-      lon,
       limit = 100000,
-      skip = 0,
-      minAge,
-      maxAge,
-      interests,
-      excludeSeen
+      skip = 0
     } = req.query;
 
+    const projection = '-passwordHash -email -googleId -facebookId -tiktokId';
+
+    // Simple query: exclude current user only, no other filters
     const q = {};
-
-    // Age filters
-    if (minAge) q.age = { ...(q.age || {}), $gte: Number(minAge) };
-    if (maxAge) q.age = { ...(q.age || {}), $lte: Number(maxAge) };
-
-    // Exclude current user
     if (req.userId) {
       q.id = { $ne: req.userId };
     }
 
-    // Interests filter (client can pass comma-separated list)
-    if (interests) {
-      const arr = String(interests).split(',').map(s => s.trim()).filter(Boolean);
-      if (arr.length) q.interests = { $in: arr };
-    }
-
-    // FIX 1: Only exclude swiped users (not matched), and cap at last 5000 swipes
-    // Increased from 500 to 5000 to prevent running out of profiles too quickly
-    // With 20,000+ profiles, 5000 exclusion = only 25% of pool excluded
-    // Also removed 'matches' from exclusion — matched users can still appear in discovery.
-    if (excludeSeen === 'true' && req.userId) {
-      const current = await User.findOne({ id: req.userId }).select('swipes');
-      if (current && current.swipes && current.swipes.length > 0) {
-        const recentSwipes = current.swipes.slice(-5000); // increased from 500 to 5000 swipes
-        const excluded = new Set([req.userId, ...recentSwipes]);
-        q.id = { $nin: Array.from(excluded) };
-      } else {
-        q.id = { $ne: req.userId };
-      }
-    }
-
-    const projection = '-passwordHash -email -googleId -facebookId -tiktokId';
-
-    // FIX 2: If geo is provided, try $geoNear but fall back gracefully if it fails
-    // (e.g. no 2dsphere index) instead of returning an empty array silently.
-    if (lat && lon) {
-      try {
-        const near = {
-          $geoNear: {
-            near: { type: 'Point', coordinates: [Number(lon), Number(lat)] },
-            distanceField: 'distanceMeters',
-            spherical: true,
-            query: q
-          }
-        };
-
-        const pipeline = [
-          near,
-          { $project: { passwordHash: 0, email: 0, googleId: 0, facebookId: 0, tiktokId: 0 } },
-          { $skip: Number(skip) },
-          { $limit: Math.min(Number(limit), 100000) }
-        ];
-
-        const users = await User.aggregate(pipeline);
-        console.log('[DEBUG Backend] Geo query returned', users.length, 'users');
-
-        // FIX 3: If geo returns empty results, fall through to regular query
-        // instead of returning [] to the client.
-        if (users.length > 0) {
-          // Convert GeoJSON coordinates to simple format for frontend
-          const transformedUsers = users.map(user => {
-            if (user.coordinates && user.coordinates.coordinates) {
-              const [lon, lat] = user.coordinates.coordinates;
-              user.coordinates = { longitude: lon, latitude: lat };
-            }
-            return user;
-          });
-          // Attach verification info
-          const usersWithVerification = await attachVerificationInfo(transformedUsers);
-          return res.json(usersWithVerification);
-        }
-
-        console.log('[DEBUG Backend] Geo returned 0, falling back to regular query');
-      } catch (geoErr) {
-        // $geoNear fails when there is no 2dsphere index on coordinates field.
-        // Fall through to regular paginated query below.
-        console.warn('[DEBUG Backend] $geoNear failed, falling back to regular query:', geoErr.message);
-      }
-    }
-
-    // Fallback: paginated find with projection
-    let users = await User.find(q).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 100000));
-    console.log('[DEBUG Backend] Fallback query executed, returning', users.length, 'users');
+    // Paginated find with no filtering rules
+    let users = await User.find(q)
+      .select(projection)
+      .skip(Number(skip))
+      .limit(Math.min(Number(limit), 100000));
     
-    // FIX 4: If query with exclusion returns 0 and we were excluding seen, retry without exclusion
-    // This prevents users from hitting an empty feed when they've swiped through the excludeSeen pool
-    if (users.length === 0 && excludeSeen === 'true' && req.userId) {
-      console.warn('[DEBUG Backend] Filtered query returned 0, retrying without exclusion');
-      const fallbackQ = { ...q };
-      delete fallbackQ.id; // Remove the $nin exclusion filter
-      fallbackQ.id = { $ne: req.userId }; // Just exclude the current user
-      users = await User.find(fallbackQ).select(projection).skip(Number(skip)).limit(Math.min(Number(limit), 100000));
-      console.log('[DEBUG Backend] Fallback without exclusion returned', users.length, 'users');
-    }
+    console.log('[DEBUG Backend] Query returned', users.length, 'users');
     
     // Convert GeoJSON coordinates to simple format for frontend
     const transformedUsers = users.map(user => {

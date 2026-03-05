@@ -425,7 +425,7 @@ class APIClient {
   }
 
   async requestEmailVerification(email: string) {
-    return this.post('/email-verification/register-verify', { email });
+    return this.post('/auth/resend-verification', { email });
   }
 
   async verifyEmailOTP(email: string, otp: string) {

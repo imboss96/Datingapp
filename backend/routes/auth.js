@@ -70,6 +70,46 @@ router.post('/verify-email', async (req, res) => {
   }
 });
 
+// Resend verification email endpoint
+router.post('/resend-verification', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const normEmail = String(email).toLowerCase();
+    const user = await User.findOne({ email: normEmail });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({ error: 'Email is already verified' });
+    }
+
+    // Generate new token (no expiry - users can verify anytime)
+    user.verificationToken = crypto.randomBytes(32).toString('hex');
+    user.verificationTokenExpiry = null;
+    await user.save();
+
+    // Send verification email
+    try {
+      const { sendEmailVerificationEmail } = await import('../utils/email.js');
+      await sendEmailVerificationEmail(user.email, user.verificationToken);
+      console.log('[DEBUG Backend] Resent verification email to:', user.email);
+      return res.json({ message: 'Verification email sent successfully' });
+    } catch (err) {
+      console.error('[ERROR] Failed to send verification email:', err);
+      return res.status(500).json({ error: 'Failed to send verification email' });
+    }
+  } catch (err) {
+    console.error('[ERROR] Resend verification failed:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Register
 router.post('/register', async (req, res) => {
   try {
@@ -85,19 +125,10 @@ router.post('/register', async (req, res) => {
     const existingUser = await User.findOne({ email: normEmail });
     if (existingUser) {
       if (!existingUser.emailVerified) {
-        // Resend verification email
-        try {
-          // Generate new token (no expiry - users can verify anytime)
-          existingUser.verificationToken = crypto.randomBytes(32).toString('hex');
-          existingUser.verificationTokenExpiry = null;
-          await existingUser.save();
-          const { sendEmailVerificationEmail } = await import('../utils/email.js');
-          await sendEmailVerificationEmail(existingUser.email, existingUser.verificationToken);
-          console.log('[DEBUG Backend] Re-sent verification email to unverified user:', existingUser.email);
-        } catch (err) {
-          console.error('[ERROR] Failed to resend verification email:', err);
-        }
-        return res.status(423).json({ error: 'Email registered but not verified', resend: true });
+        // REJECT: Email exists but not verified - tell user to login
+        return res.status(409).json({ 
+          error: 'This email is already registered but not verified. Please log in and we will send you a verification email.' 
+        });
       }
       return res.status(409).json({ error: 'Email already registered' });
     }
@@ -203,9 +234,20 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Block login if email not verified
+    // Send verification email if email not verified
     if (!user.emailVerified) {
-      return res.status(403).json({ error: 'Email not verified. Please check your inbox.' });
+      try {
+        // Generate new token (no expiry - users can verify anytime)
+        user.verificationToken = crypto.randomBytes(32).toString('hex');
+        user.verificationTokenExpiry = null;
+        await user.save();
+        const { sendEmailVerificationEmail } = await import('../utils/email.js');
+        await sendEmailVerificationEmail(user.email, user.verificationToken);
+        console.log('[DEBUG Backend] Sent verification email to unverified user during login:', user.email);
+      } catch (err) {
+        console.error('[ERROR] Failed to send verification email during login:', err);
+      }
+      return res.status(403).json({ error: 'Email not verified. We have sent you a verification email. Please check your inbox.' });
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);

@@ -341,23 +341,13 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   // Load swiped profiles from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('swipedProfiles');
-    if (saved) {
-      try {
-        setSwipedProfiles(new Set(JSON.parse(saved)));
-        console.log('[SwiperScreen] Loaded swiped profiles from localStorage:', JSON.parse(saved).length);
-      } catch (err) {
-        console.error('[SwiperScreen] Failed to load swiped profiles:', err);
-      }
-    }
+    // Disabled: not tracking swiped profiles anymore
+    console.log('[SwiperScreen] Swiped profile tracking disabled');
   }, []);
 
   // Save swiped profiles to localStorage whenever it changes
   useEffect(() => {
-    if (swipedProfiles.size > 0) {
-      localStorage.setItem('swipedProfiles', JSON.stringify(Array.from(swipedProfiles)));
-      console.log('[SwiperScreen] Saved swiped profiles to localStorage:', swipedProfiles.size);
-    }
+    // Disabled: not tracking swiped profiles anymore
   }, [swipedProfiles]);
 
   // Cleanup on unmount
@@ -367,15 +357,10 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   // ── Hooks (must be called before any early returns) ────────────────────────
   
-  // Filter out already swiped profiles
+  // NO FILTERING: Return all profiles for smooth swiping
   const filteredProfiles = useMemo(() => {
-    if (swipedProfiles.size === 0) return profiles;
-    const filtered = profiles.filter(p => !swipedProfiles.has(p.id));
-    if (filtered.length < profiles.length) {
-      console.log(`[SwiperScreen] Filtered out ${profiles.length - filtered.length} already swiped profiles`);
-    }
-    return filtered;
-  }, [profiles, swipedProfiles]);
+    return profiles; // No exclusion of swiped profiles
+  }, [profiles]);
 
   const currentProfile = filteredProfiles[currentIndex] || null;
   const { stats: likeStats } = useLikeStats(currentProfile?.id || null);
@@ -402,40 +387,10 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     try {
       const skip = batchNumber * BATCH_SIZE;
 
-      // Extract latitude and longitude from currentUser coordinates
-      const coordsData = extractCoordinates(currentUser.coordinates);
-      const lat = coordsData?.lat ?? null;
-      const lon = coordsData?.lon ?? null;
+      console.log('[SwiperScreen] Fetching batch:', { batchNumber, skip });
 
-      console.log('[SwiperScreen] Fetching batch:', { batchNumber, skip, distance, userLocation: coordsData, includeAllMembers });
-
-      // If showing all members, always exclude seen to be false (show all)
-      // Otherwise, try with excludeSeen=true first
-      let batchUsers = await apiClient.getProfilesForSwiping(
-        BATCH_SIZE,
-        skip,
-        !includeAllMembers,  // excludeSeen - false if showing all members
-        lat,
-        lon
-      );
-
-      // 1) If first page empty and we provided coords, retry without coords (general feed)
-      if (batchUsers.length === 0 && lat != null && lon != null && batchNumber === 0) {
-        console.warn('[SwiperScreen] Fetch returned 0, retrying without coordinates');
-        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, !includeAllMembers);
-      }
-
-      // 2) If still nothing and we want all members, or if still nothing on first page
-      if (batchUsers.length === 0 && batchNumber === 0) {
-        console.warn('[SwiperScreen] No profiles, retrying with excludeSeen=' + includeAllMembers);
-        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, includeAllMembers, lat, lon);
-      }
-
-      // 3) If still nothing, try fetching without any filters (unsorted fallback)
-      if (batchUsers.length === 0 && batchNumber === 0) {
-        console.warn('[SwiperScreen] Still no profiles, fetching unsorted fallback');
-        batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip, false);
-      }
+      // SIMPLIFIED: Fetch all profiles without any filters
+      let batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip);
 
       console.log('[SwiperScreen] API returned', batchUsers.length, 'profiles');
 
@@ -448,25 +403,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         console.warn('[SwiperScreen] Profiles without images:', withoutImages.map(p => ({ id: p.id, name: p.name })));
       }
 
-      // Apply distance filter on client-side
-      let distanceFiltered = currentUser.coordinates && distance < Number.MAX_SAFE_INTEGER
-        ? others.filter((p: UserProfile) => {
-            if (!p.coordinates) return true; // include if no location data
-            const d = calculateDistance(currentUser.coordinates!, p.coordinates);
-            return d <= distance;
-          })
-        : others;
-
-      // If distance filtering eliminated everyone but we still have others, ignore distance
-      if (distanceFiltered.length === 0 && others.length > 0) {
-        console.log('[SwiperScreen] Distance filter removed all profiles, ignoring distance');
-        distanceFiltered = others;
-      }
-
-      console.log('[SwiperScreen] After distance filter:', distanceFiltered.length, 'profiles');
+      // No distance filtering - all profiles available
+      console.log('[SwiperScreen] Returning all profiles without distance filter:', others.length, 'profiles');
 
       // Sort by match score
-      const sorted = distanceFiltered.sort(
+      const sorted = others.sort(
         (a: UserProfile, b: UserProfile) => getMatchScore(b) - getMatchScore(a)
       );
 
@@ -483,42 +424,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      // Extract current coordinates
-      const currentCoords = extractCoordinates(currentUser.coordinates);
-      
-      // Check cache: only fetch if user moved >500m OR 2 hours passed
-      if (lastCachedGeoRef.current && currentCoords) {
-        const timeSinceLastFetch = Date.now() - lastCachedGeoRef.current.timestamp;
-        const distanceMoved = calcGeoDistance(
-          lastCachedGeoRef.current.lat,
-          lastCachedGeoRef.current.lon,
-          currentCoords.lat,
-          currentCoords.lon
-        );
-        
-        console.log(`[SwiperScreen] Distance moved: ${Math.round(distanceMoved)}m, Time since fetch: ${Math.round(timeSinceLastFetch / 1000)}s`);
-        
-        // If user moved <500m AND <2 hours passed, skip fetch
-        const TWO_HOURS = 2 * 60 * 60 * 1000;
-        const MOVEMENT_THRESHOLD = 500; // meters
-        
-        if (distanceMoved < MOVEMENT_THRESHOLD && timeSinceLastFetch < TWO_HOURS) {
-          console.log('[SwiperScreen] Cache valid - skipping fetch');
-          return; // Skip fetching
-        }
-        
-        console.log('[SwiperScreen] Cache expired or user moved - refetching profiles');
-      }
-
-      // Update cache with current coordinates
-      if (currentCoords) {
-        lastCachedGeoRef.current = {
-          lat: currentCoords.lat,
-          lon: currentCoords.lon,
-          timestamp: Date.now()
-        };
-      }
-
+      // SIMPLIFIED: No coordinate or distance caching, just fetch all profiles
       setLoading(true);
       setError(null);
       setProfiles([]);
@@ -533,7 +439,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       // Retry logic for failed fetches
       while (retryCount <= maxRetries && initial.length === 0 && !cancelled) {
         try {
-          initial = await fetchProfileBatch(0, maxDistance, showAllMembers);
+          initial = await fetchProfileBatch(0, Number.MAX_SAFE_INTEGER);
           console.log('[SwiperScreen] initial fetch returned', initial.length, 'profiles');
           if (initial.length > 0) break; // Success, exit retry loop
         } catch (err: any) {
@@ -543,29 +449,6 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
             // Wait before retrying (exponential backoff)
             await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
           }
-        }
-      }
-
-      // If first batch empty and we have coords, attempt a raw fallback without coords
-      if (initial.length === 0 && currentUser.coordinates && !cancelled) {
-        console.warn('[SwiperScreen] Initial fetch empty, performing raw fallback without coordinates');
-        try {
-          const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, 0, !showAllMembers);
-          const others = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
-          initial = others.sort((a, b) => getMatchScore(b) - getMatchScore(a));
-        } catch (err) {
-          console.error('[SwiperScreen] Raw fallback failed:', err);
-        }
-      }
-
-      // One more fallback: try without any filters at all
-      if (initial.length === 0 && !cancelled) {
-        console.warn('[SwiperScreen] All filtered attempts failed, trying unfiltered fallback');
-        try {
-          const batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, 0, false);
-          initial = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
-        } catch (err) {
-          console.error('[SwiperScreen] Unfiltered fallback failed:', err);
         }
       }
 
@@ -579,7 +462,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     };
     load();
     return () => { cancelled = true; };
-  }, [currentUser.id, maxDistance, fetchProfileBatch, calcGeoDistance, showAllMembers]);
+  }, [currentUser.id, fetchProfileBatch]);
 
   // ── Preload next image ──────────────────────────────────────────────────
 
@@ -633,7 +516,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       setIsLoadingMore(true);
       try {
         const nextBatch = currentBatch + 1;
-        const more = await fetchProfileBatch(nextBatch, maxDistance);
+        const more = await fetchProfileBatch(nextBatch, Number.MAX_SAFE_INTEGER);
         if (more.length > 0) {
           setProfiles(prev => [...prev, ...more]);
           setCurrentBatch(nextBatch);
@@ -648,7 +531,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         setIsLoadingMore(false);
       }
     }
-  }, [currentBatch, maxDistance, fetchProfileBatch]);
+  }, [currentBatch, fetchProfileBatch]);
 
   // ── Reset image state when profile changes ────────────────────────────────
   // Only single useEffect to avoid duplicate renders and flickering
@@ -707,8 +590,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     try {
       const res = await storeLike(currentUser.id, profile.id);
       console.log(`[SwiperScreen] Like response:`, res);
-      // Mark profile as swiped
-      setSwipedProfiles(prev => new Set([...prev, profile.id]));
+      // Swiped profile tracking disabled
       if (res.matched && res.matchedUser) {
         setMatchedUser(res.matchedUser as any);
         setInterestMatch(res.interestMatch || 0);
@@ -718,8 +600,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     } catch (err: any) {
       // Silently handle "Already swiped" errors - just advance to next profile
       if (err.message?.includes('Already swiped') || err.status === 400) {
-        // Profile already swiped, mark it and skip
-        setSwipedProfiles(prev => new Set([...prev, profile.id]));
+        // Profile already swiped, just skip
       } else {
         console.error('[SwiperScreen] Failed to record like:', err);
         showAlert('Error', err.message || 'Failed to save like');
@@ -733,12 +614,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     if (profile?.id) {
       try {
         await storePass(currentUser.id, profile.id);
-        // Mark profile as swiped
-        setSwipedProfiles(prev => new Set([...prev, profile.id]));
+        // Swiped profile tracking disabled
       } catch (err: any) {
         // Silent fail for pass action - non-critical
         if (err.message?.includes('Already swiped') || err.status === 400) {
-          setSwipedProfiles(prev => new Set([...prev, profile.id]));
+          // Just skip
         }
       }
     }
@@ -754,8 +634,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     if (profile?.id) {
       try {
         const res = await storeSuperLike(currentUser.id, profile.id);
-        // Mark profile as swiped
-        setSwipedProfiles(prev => new Set([...prev, profile.id]));
+        // Swiped profile tracking disabled
         if (res.matched && res.matchedUser) {
           setMatchedUser(res.matchedUser as any);
           setInterestMatch(res.interestMatch || 0);
@@ -765,8 +644,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       } catch (err: any) {
         // Silently handle "Already swiped" errors - just advance to next profile
         if (err.message?.includes('Already swiped') || err.status === 400) {
-          // Profile already super liked, mark it and skip
-          setSwipedProfiles(prev => new Set([...prev, profile.id]));
+          // Profile already super liked, just skip
         } else {
           console.error('[SwiperScreen] Failed to record super like:', err);
           showAlert('Error', err.message || 'Failed to save super like');
@@ -788,7 +666,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     
     let initial: UserProfile[] = [];
     try {
-      initial = await fetchProfileBatch(0, maxDistance);
+      initial = await fetchProfileBatch(0, Number.MAX_SAFE_INTEGER);
       if (initial.length > 0) {
         setProfiles(initial);
       } else {
@@ -800,7 +678,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     } finally {
       setRetrying(false);
     }
-  }, [maxDistance, fetchProfileBatch]);
+  }, [fetchProfileBatch]);
 
   const handleRewind = useCallback(() => {
     if (currentIndex === 0) return;
