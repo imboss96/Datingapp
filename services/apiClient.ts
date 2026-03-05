@@ -166,6 +166,17 @@ class APIClient {
     return this.request('/auth/me');
   }
 
+  // Refresh user profile from server (useful after coin purchases)
+  async refreshUserProfile() {
+    try {
+      const updatedUser = await this.getCurrentUser();
+      return updatedUser;
+    } catch (err) {
+      console.error('[apiClient] Failed to refresh user profile:', err);
+      throw err;
+    }
+  }
+
   async requestPasswordReset(email: string) {
     return this.request('/auth/request-password-reset', {
       method: 'POST',
@@ -723,6 +734,57 @@ class APIClient {
   async getCoinPurchases(limit: number = 50, skip: number = 0) {
     return this.request(`/moderation/coin-purchases?limit=${limit}&skip=${skip}`, {
       method: 'GET',
+    });
+  }
+
+  // Premium Package Management
+  async getPremiumPackages(includeInactive: boolean = false) {
+    const endpoint = includeInactive ? '/moderation/premium-packages/all' : '/moderation/premium-packages';
+    return this.request(endpoint, {
+      method: 'GET',
+    });
+  }
+
+  async createPremiumPackage(packageData: {
+    packageId: string;
+    name: string;
+    duration: number;
+    plan: string;
+    price: number;
+    displayPrice?: string;
+    features?: string[];
+    description?: string;
+    displayOrder?: number;
+  }) {
+    return this.request('/moderation/premium-packages', {
+      method: 'POST',
+      body: JSON.stringify(packageData),
+    });
+  }
+
+  async updatePremiumPackage(packageId: string, packageData: any) {
+    return this.request(`/moderation/premium-packages/${packageId}`, {
+      method: 'PUT',
+      body: JSON.stringify(packageData),
+    });
+  }
+
+  async deletePremiumPackage(packageId: string) {
+    return this.request(`/moderation/premium-packages/${packageId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async grantPremiumToUser(userId: string, plan: string) {
+    return this.request(`/moderation/users/${userId}/grant-premium`, {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    });
+  }
+
+  async revokePremiumFromUser(userId: string) {
+    return this.request(`/moderation/users/${userId}/revoke-premium`, {
+      method: 'POST',
     });
   }
 

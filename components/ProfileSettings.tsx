@@ -228,6 +228,23 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
             if (s === 'success') {
               clearInterval(poll);
               console.log('[DEBUG ProfileSettings] Payment SUCCESS - Email confirmation being sent');
+              
+              // Refresh user profile from server to get updated coins
+              try {
+                const refreshedUser = await apiClient.refreshUserProfile();
+                console.log('[ProfileSettings] User profile refreshed:', { coins: refreshedUser.coins, isPremium: refreshedUser.isPremium });
+                setUser(refreshedUser);
+              } catch (refreshErr) {
+                console.error('[ProfileSettings] Failed to refresh user profile, using local state:', refreshErr);
+                // Fallback to local state update
+                const updatedUser = {
+                  ...user,
+                  coins: status.coins ?? user.coins,
+                  isPremium: status.isPremium ?? user.isPremium,
+                };
+                setUser(updatedUser);
+              }
+              
               console.log('[ProfileSettings] Lipana payment successful:', {
                 transactionId: txId,
                 coins: selectedPack.coins,
@@ -235,12 +252,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 status: 'COMPLETED',
                 emailSent: true
               });
-              const updatedUser = {
-                ...user,
-                coins: status.coins ?? user.coins,
-                isPremium: status.isPremium ?? user.isPremium,
-              };
-              setUser(updatedUser);
               setPaymentStep('SUCCESS');
               setIsProcessing(false);
             } else if (s === 'failed') {
@@ -284,12 +295,23 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
           method: selectedMethod,
           emailSent: true
         });
-        const updatedUser = {
-          ...user,
-          coins: resp.coins ?? user.coins,
-          isPremium: resp.isPremium ?? user.isPremium,
-        };
-        setUser(updatedUser);
+        
+        // Refresh user profile from server to get updated coins
+        try {
+          const refreshedUser = await apiClient.refreshUserProfile();
+          console.log('[ProfileSettings] User profile refreshed:', { coins: refreshedUser.coins, isPremium: refreshedUser.isPremium });
+          setUser(refreshedUser);
+        } catch (refreshErr) {
+          console.error('[ProfileSettings] Failed to refresh user profile, using local state:', refreshErr);
+          // Fallback to local state update
+          const updatedUser = {
+            ...user,
+            coins: resp.coins ?? user.coins,
+            isPremium: resp.isPremium ?? user.isPremium,
+          };
+          setUser(updatedUser);
+        }
+        
         setPaymentStep('SUCCESS');
         setIsProcessing(false);
         return;

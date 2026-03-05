@@ -316,9 +316,18 @@ const AppContent: React.FC<{
     );
   }
 
-  const updateCoins = (amount: number) => {
-    if (currentUser) {
-      setCurrentUser(prev => prev ? { ...prev, coins: Math.max(0, prev.coins + amount) } : null);
+  const updateCoins = async (amount: number) => {
+    if (!currentUser) return;
+    try {
+      // Call backend API to persist coin change
+      const response = await apiClient.deductCoin(currentUser.id);
+      if (response.coins !== undefined) {
+        // Update local state with server response
+        setCurrentUser(prev => prev ? { ...prev, coins: response.coins } : null);
+      }
+    } catch (err: any) {
+      console.error('[ERROR] Failed to deduct coin:', err);
+      // Optionally show error message to user
     }
   };
 
@@ -328,7 +337,7 @@ const AppContent: React.FC<{
         <Sidebar currentUser={currentUser} isAdmin={isAdmin} isModerator={isModerator} onOpenProfileSettings={() => setShowProfileSettings(true)} />
       </div>
 
-      <div className="flex-1 flex flex-col h-screen bg-white md:bg-transparent pb-20 md:pb-0 safe-area-bottom">
+      <div className="flex-1 flex flex-col h-screen bg-white md:bg-transparent overflow-hidden">
         <Routes>
           {/* ✅ SwiperScreen now receives live coords */}
           <Route path="/" element={
@@ -343,7 +352,7 @@ const AppContent: React.FC<{
           } />
           <Route path="/chats" element={
             <div className="flex w-full h-full">
-              <div className="md:hidden flex-1 overflow-y-auto"><ChatList currentUser={currentUser} /></div>
+              <div className="md:hidden flex-1 min-h-0 flex flex-col overflow-hidden"><ChatList currentUser={currentUser} /></div>
               <div className="hidden md:flex flex-1 flex-col h-full"><ChatRoom currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} /></div>
             </div>
           } />

@@ -15,6 +15,8 @@ const userSchema = new mongoose.Schema({
   videos: [{ type: String }], // Video URLs (for Tinder-like swiping)
   profilePicture: { type: String },
   isPremium: { type: Boolean, default: false },
+  premiumExpiresAt: { type: Date, default: null }, // ✅ When premium membership expires
+  premiumPlan: { type: String, enum: ['1_month', '3_months', '6_months', '12_months'], default: null }, // ✅ Track which plan user has
   role: { type: String, enum: ['USER', 'MODERATOR', 'ADMIN'], default: 'USER' },
   accountType: { type: String, enum: ['APP', 'STANDALONE'], default: 'APP' }, // APP = from main app, STANDALONE = external user
   location: { type: String },

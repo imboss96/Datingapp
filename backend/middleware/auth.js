@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { isUserPremium, checkAndRemoveExpiredPremium } from '../utils/premiumHelper.js';
 
 export const authMiddleware = async (req, res, next) => {
   try {
@@ -13,10 +14,21 @@ export const authMiddleware = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     req.userId = decoded.id;
     
-    // Fetch user info including role
+    // Fetch user info including role and premium status
     try {
       const user = await User.findOne({ id: req.userId });
       if (user) {
+        // ✅ Check if premium has expired and automatically deactivate
+        if (user.isPremium && user.premiumExpiresAt) {
+          const stillPremium = isUserPremium(user);
+          if (!stillPremium) {
+            // Premium has expired, deactivate it
+            console.log(`[AUTH] Premium expired for user ${user.id}, deactivating...`);
+            checkAndRemoveExpiredPremium(user);
+            await user.save();
+          }
+        }
+        
         req.userRole = user.role;
         // Add computed flags for isModerator and isAdmin based on role
         user.isModerator = user.role === 'MODERATOR' || user.role === 'ADMIN';

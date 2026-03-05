@@ -19,7 +19,7 @@ import SearchSuggestions from './SearchSuggestions';
 
 interface SwiperScreenProps {
   currentUser: UserProfile;
-  onDeductCoin: () => void;
+  onDeductCoin: () => Promise<void>;
 }
 
 interface Heart {
@@ -257,6 +257,22 @@ const ActionButton: React.FC<{
       )}
     </button>
   );
+};
+
+// ═══ Premium Helper ════════════════════════════════════════════════════════════
+
+const isPremiumActive = (user: UserProfile): boolean => {
+  if (!user.isPremium) return false;
+  if (!user.premiumExpiresAt) return false;
+  return new Date(user.premiumExpiresAt) > new Date();
+};
+
+const getPremiumDaysRemaining = (user: UserProfile): number | null => {
+  if (!isPremiumActive(user) || !user.premiumExpiresAt) return null;
+  const today = new Date();
+  const expiryDate = new Date(user.premiumExpiresAt);
+  const daysRemaining = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.max(0, daysRemaining);
 };
 
 // ═══ Main Component ════════════════════════════════════════════════════════════
@@ -749,7 +765,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   }, [currentProfile, currentUser.id, advance, currentIndex]);
 
   const handleSuperLike = useCallback(async () => {
-    if (!currentUser.isPremium && currentUser.coins < 1) {
+    if (!isPremiumActive(currentUser) && currentUser.coins < 1) {
       showAlert('Out of Coins', 'Top up in your profile to keep swiping.');
       return;
     }
@@ -778,7 +794,15 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         }
       }
     }
-    if (!currentUser.isPremium) onDeductCoin();
+    // Deduct coin after recording super like (unless premium is active)
+    if (!isPremiumActive(currentUser)) {
+      try {
+        await onDeductCoin();
+      } catch (err: any) {
+        console.error('[SwiperScreen] Failed to deduct coin:', err);
+        showAlert('Error', 'Failed to deduct coin. Please try again.');
+      }
+    }
     advance(currentIndex + 1);
   }, [currentProfile, currentUser, onDeductCoin, showAlert, advance, currentIndex]);
 
@@ -808,13 +832,20 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
   }, [fetchProfileBatch]);
 
-  const handleRewind = useCallback(() => {
+  const handleRewind = useCallback(async () => {
     if (currentIndex === 0) return;
-    if (!currentUser.isPremium && currentUser.coins < 1) {
+    if (!isPremiumActive(currentUser) && currentUser.coins < 1) {
       showAlert('Coins Required', 'Rewind costs 1 coin. Top up to undo your last choice!');
       return;
     }
-    if (!currentUser.isPremium) onDeductCoin();
+    if (!isPremiumActive(currentUser)) {
+      try {
+        await onDeductCoin();
+      } catch (err: any) {
+        showAlert('Error', 'Failed to deduct coin. Please try again.');
+        return;
+      }
+    }
     setCurrentIndex(prev => prev - 1);
   }, [currentIndex, currentUser, onDeductCoin, showAlert]);
 
@@ -1179,6 +1210,19 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                 >
                   <i className="fa-solid fa-magnifying-glass" />
                 </button>
+
+                {/* Premium Status Badge */}
+                {isPremiumActive(currentUser) && (
+                  <div className="ml-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold shadow-lg flex items-center gap-1 whitespace-nowrap">
+                    <i className="fa-solid fa-crown text-yellow-300" />
+                    <span>Premium</span>
+                    {getPremiumDaysRemaining(currentUser) && (
+                      <span className="text-purple-100 text-[10px]">
+                        ({getPremiumDaysRemaining(currentUser)}d)
+                      </span>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -1463,8 +1507,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               icon="fa-rotate-left"
               color="text-amber-500"
               hoverBg="hover:bg-amber-50"
-              title="Rewind (1 Coin)"
-              coinCost={!currentUser.isPremium}
+              title={isPremiumActive(currentUser) ? "Rewind (Premium)" : "Rewind (1 Coin)"}
+              coinCost={!isPremiumActive(currentUser)}
               coinColor="amber"
               glowColor="amber"
               size="sm"
@@ -1482,8 +1526,8 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
               icon="fa-star"
               color="text-purple-500"
               hoverBg="hover:bg-purple-50"
-              title="Super Like (1 Coin)"
-              coinCost={!currentUser.isPremium}
+              title={isPremiumActive(currentUser) ? "Super Like (Premium)" : "Super Like (1 Coin)"}
+              coinCost={!isPremiumActive(currentUser)}
               coinColor="purple"
               glowColor="purple"
               size="sm"
