@@ -138,104 +138,125 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
     onContinue: () => void;
     continueLabel?: string;
   }> = ({ title, subtitle, children, onContinue, continueLabel = 'Continue' }) => (
+    /*
+     * On mobile  (<430px wide): fills the full screen
+     * On desktop (≥430px wide): blurred overlay + centered white card
+     */
     <div style={{
-      display: 'flex', flexDirection: 'column',
-      height: '100dvh', maxWidth: 430, margin: '0 auto',
-      background: '#fff', position: 'relative', overflow: 'hidden',
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      /* Backdrop — transparent on narrow mobile, blurred dark on desktop */
+      background: 'rgba(0,0,0,0.45)',
+      backdropFilter: 'blur(8px)',
+      WebkitBackdropFilter: 'blur(8px)',
       fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     }}>
-      {/* Top bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '52px 20px 0' }}>
-        {/* Back button */}
-        <button
-          onClick={goBack}
-          style={{
-            width: 38, height: 38, borderRadius: 12,
-            border: '1.5px solid #f0f0f0', background: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 1px 6px rgba(0,0,0,0.07)',
-          }}
-        >
-          <svg width="9" height="15" viewBox="0 0 9 15" fill="none">
-            <path d="M8 1L1.5 7.5L8 14" stroke="#222" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-
-        {/* Skip */}
-        <button
-          onClick={() => step < TOTAL_STEPS - 1 ? goNext() : handleSubmit()}
-          style={{ background: 'none', border: 'none', color: '#FF4458', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}
-        >
-          Skip
-        </button>
-      </div>
-
-      {/* Progress dots */}
-      <div style={{ display: 'flex', gap: 6, padding: '20px 24px 0', alignItems: 'center' }}>
-        {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-          <div
-            key={i}
+      {/* White card */}
+      <div style={{
+        display: 'flex', flexDirection: 'column',
+        width: '100%', maxWidth: 430,
+        /* Full-height on narrow screens, max 90vh on desktop */
+        height: 'min(100dvh, 820px)',
+        /* Rounded only when shown as a floating modal (desktop) */
+        borderRadius: 'clamp(0px, (100vw - 431px) * 9999, 28px)',
+        background: '#fff',
+        overflow: 'hidden',
+        boxShadow: '0 40px 100px rgba(0,0,0,0.4)',
+        position: 'relative',
+      }}>
+        {/* Top bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '28px 20px 0', flexShrink: 0 }}>
+          {/* Back button */}
+          <button
+            onClick={goBack}
             style={{
-              height: 7, borderRadius: 4,
-              width: i === step ? 24 : 7,
-              background: i <= step
-                ? 'linear-gradient(90deg, #FF4458, #FF7B54)'
-                : '#F0F0F0',
-              transition: 'all 0.3s ease',
+              width: 38, height: 38, borderRadius: 12,
+              border: '1.5px solid #f0f0f0', background: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', boxShadow: '0 1px 6px rgba(0,0,0,0.07)',
             }}
-          />
-        ))}
-      </div>
+          >
+            <svg width="9" height="15" viewBox="0 0 9 15" fill="none">
+              <path d="M8 1L1.5 7.5L8 14" stroke="#222" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
 
-      {/* Title */}
-      <div style={{ padding: '24px 24px 0' }}>
-        <h1 style={{ fontSize: 30, fontWeight: 800, color: '#111', margin: 0, letterSpacing: -0.5, lineHeight: 1.15 }}>
-          {title}
-        </h1>
-        {subtitle && (
-          <p style={{ fontSize: 14, color: '#999', margin: '10px 0 0', lineHeight: 1.55, fontWeight: 400 }}>
-            {subtitle}
-          </p>
-        )}
-      </div>
-
-      {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px' }}>
-        {children}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div style={{
-          margin: '0 24px 8px', padding: '10px 14px',
-          background: '#fff0f1', border: '1px solid #ffc8cc',
-          borderRadius: 12, color: '#d63244', fontSize: 13,
-        }}>
-          ⚠️ {error}
+          {/* Skip */}
+          <button
+            onClick={() => step < TOTAL_STEPS - 1 ? goNext() : handleSubmit()}
+            style={{ background: 'none', border: 'none', color: '#FF4458', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Skip
+          </button>
         </div>
-      )}
 
-      {/* Continue button */}
-      <div style={{ padding: '8px 24px 40px', flexShrink: 0 }}>
-        <button
-          onClick={onContinue}
-          disabled={loading}
-          style={{
-            width: '100%', padding: '18px 0', borderRadius: 50,
-            border: 'none',
-            background: 'linear-gradient(90deg, #FF4458 0%, #FF7854 100%)',
-            color: '#fff', fontSize: 16, fontWeight: 700,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            opacity: loading ? 0.75 : 1,
-            boxShadow: '0 8px 28px rgba(255,68,88,0.38)',
-            fontFamily: 'inherit', letterSpacing: 0.2,
-            transition: 'transform 0.15s, opacity 0.2s',
-          }}
-          onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.98)')}
-          onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
-        >
-          {loading ? 'Saving...' : continueLabel}
-        </button>
+        {/* Progress dots */}
+        <div style={{ display: 'flex', gap: 6, padding: '16px 24px 0', alignItems: 'center', flexShrink: 0 }}>
+          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                height: 7, borderRadius: 4,
+                width: i === step ? 24 : 7,
+                background: i <= step
+                  ? 'linear-gradient(90deg, #FF4458, #FF7B54)'
+                  : '#F0F0F0',
+                transition: 'all 0.3s ease',
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Title */}
+        <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: '#111', margin: 0, letterSpacing: -0.5, lineHeight: 1.15 }}>
+            {title}
+          </h1>
+          {subtitle && (
+            <p style={{ fontSize: 14, color: '#999', margin: '8px 0 0', lineHeight: 1.55, fontWeight: 400 }}>
+              {subtitle}
+            </p>
+          )}
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px', minHeight: 0 }}>
+          {children}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div style={{
+            margin: '0 24px 8px', padding: '10px 14px',
+            background: '#fff0f1', border: '1px solid #ffc8cc',
+            borderRadius: 12, color: '#d63244', fontSize: 13, flexShrink: 0,
+          }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {/* Continue button */}
+        <div style={{ padding: '10px 24px 32px', flexShrink: 0 }}>
+          <button
+            onClick={onContinue}
+            disabled={loading}
+            style={{
+              width: '100%', padding: '17px 0', borderRadius: 50,
+              border: 'none',
+              background: 'linear-gradient(90deg, #FF4458 0%, #FF7854 100%)',
+              color: '#fff', fontSize: 16, fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.75 : 1,
+              boxShadow: '0 8px 28px rgba(255,68,88,0.38)',
+              fontFamily: 'inherit', letterSpacing: 0.2,
+              transition: 'transform 0.15s, opacity 0.2s',
+            }}
+            onMouseDown={e => (e.currentTarget.style.transform = 'scale(0.98)')}
+            onMouseUp={e => (e.currentTarget.style.transform = 'scale(1)')}
+          >
+            {loading ? 'Saving...' : continueLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
