@@ -441,7 +441,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     }
   }, [currentUser, getMatchScore]);
 
-  // ── Initial load ────────────────────────────────────────────────────────
+  // ── Initial load (only on mount and when user ID changes) ──────────────
 
   useEffect(() => {
     let cancelled = false;
@@ -462,7 +462,28 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       // Retry logic for failed fetches
       while (retryCount <= maxRetries && initial.length === 0 && !cancelled) {
         try {
-          initial = await fetchProfileBatch(0, Number.MAX_SAFE_INTEGER);
+          const skip = 0;
+          console.log('[SwiperScreen] Fetching batch:', { batchNumber: 0, skip });
+
+          // SIMPLIFIED: Fetch all profiles without any filters
+          let batchUsers = await apiClient.getProfilesForSwiping(BATCH_SIZE, skip);
+
+          console.log('[SwiperScreen] API returned', batchUsers.length, 'profiles');
+
+          const others = batchUsers.filter((u: UserProfile) => u.id !== currentUser.id);
+          console.log('[SwiperScreen] After filtering current user:', others.length, 'profiles');
+          
+          // Debug: log profiles with missing images
+          const withoutImages = others.filter(p => !p.images || p.images.length === 0);
+          if (withoutImages.length > 0) {
+            console.warn('[SwiperScreen] Profiles without images:', withoutImages.map(p => ({ id: p.id, name: p.name })));
+          }
+
+          // No distance filtering - all profiles available
+          console.log('[SwiperScreen] Returning all profiles without distance filter:', others.length, 'profiles');
+
+          initial = others; // Do NOT sort here - keep API order on initial load
+
           console.log('[SwiperScreen] initial fetch returned', initial.length, 'profiles');
           if (initial.length > 0) break; // Success, exit retry loop
         } catch (err: any) {
@@ -485,7 +506,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     };
     load();
     return () => { cancelled = true; };
-  }, [currentUser.id, fetchProfileBatch]);
+  }, [currentUser.id]);
 
   // ── Preload next image ──────────────────────────────────────────────────
 
