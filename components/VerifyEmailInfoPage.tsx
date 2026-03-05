@@ -71,10 +71,16 @@ const VerifyEmailInfoPage: React.FC = () => {
     try {
       await apiClient.requestEmailVerification(email);
       setResendDone(true);
-      setResendCooldown(60); // 60 second cooldown to prevent spam
+      setResendCooldown(120); // ✅ 2-minute cooldown (120 seconds) - matching backend
       setTimeout(() => setResendDone(false), 4000);
     } catch (err: any) {
-      setError(err.message || 'Failed to resend verification email.');
+      // ✅ Check if error is rate-limited and use backend-provided cooldown time
+      if (err.code === 'RATE_LIMITED' && err.retryAfter) {
+        setResendCooldown(err.retryAfter);
+        setError(`Please wait ${err.retryAfter} seconds before requesting another verification email`);
+      } else {
+        setError(err.message || 'Failed to resend verification email.');
+      }
     } finally {
       setResendLoading(false);
     }
@@ -84,7 +90,7 @@ const VerifyEmailInfoPage: React.FC = () => {
   useEffect(() => {
     if (justResent) {
       setResendDone(true);
-      setResendCooldown(60);
+      setResendCooldown(120); // ✅ 2-minute cooldown (120 seconds) - matching backend
       const t = setTimeout(() => setResendDone(false), 4000);
       return () => clearTimeout(t);
     }

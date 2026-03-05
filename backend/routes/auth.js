@@ -89,9 +89,28 @@ router.post('/resend-verification', async (req, res) => {
       return res.status(400).json({ error: 'Email is already verified' });
     }
 
+    // ✅ Rate limiting: Check if email was sent recently (2-minute cooldown)
+    const now = new Date();
+    const lastSentAt = user.verificationEmailSentAt ? new Date(user.verificationEmailSentAt) : null;
+    const twoMinutesInMs = 2 * 60 * 1000; // 120,000 ms
+    const twoMinutesAgo = new Date(now.getTime() - twoMinutesInMs);
+
+    if (lastSentAt && lastSentAt > twoMinutesAgo) {
+      const timeDiffMs = now.getTime() - lastSentAt.getTime();
+      const secondsRemaining = Math.ceil((twoMinutesInMs - timeDiffMs) / 1000);
+      console.log(`[RATE LIMIT] Verification email resend blocked for ${normEmail}. Retry after ${secondsRemaining}s`);
+      return res.status(429).json({
+        error: 'Please wait before requesting another verification email',
+        code: 'RATE_LIMITED',
+        retryAfter: secondsRemaining,
+        message: `You can request a new verification email in ${secondsRemaining} seconds`
+      });
+    }
+
     // Generate new token (no expiry - users can verify anytime)
     user.verificationToken = crypto.randomBytes(32).toString('hex');
     user.verificationTokenExpiry = null;
+    user.verificationEmailSentAt = now; // ✅ Track when email was sent
     await user.save();
 
     // Send verification email
@@ -99,7 +118,11 @@ router.post('/resend-verification', async (req, res) => {
       const { sendEmailVerificationEmail } = await import('../utils/email.js');
       await sendEmailVerificationEmail(user.email, user.verificationToken);
       console.log('[DEBUG Backend] Resent verification email to:', user.email);
-      return res.json({ message: 'Verification email sent successfully' });
+      return res.json({
+        message: 'Verification email sent successfully',
+        sentAt: now,
+        canResendAt: new Date(now.getTime() + twoMinutesInMs)
+      });
     } catch (err) {
       console.error('[ERROR] Failed to send verification email:', err);
       return res.status(500).json({ error: 'Failed to send verification email' });
@@ -155,6 +178,8 @@ router.post('/register', async (req, res) => {
       verificationTokenExpiry: null,
     });
 
+    // ✅ Track when verification email was sent (for rate limiting)
+    user.verificationEmailSentAt = new Date();
     await user.save();
 
     // Log signup
@@ -237,13 +262,26 @@ router.post('/login', async (req, res) => {
     // Send verification email if email not verified
     if (!user.emailVerified) {
       try {
-        // Generate new token (no expiry - users can verify anytime)
-        user.verificationToken = crypto.randomBytes(32).toString('hex');
-        user.verificationTokenExpiry = null;
-        await user.save();
-        const { sendEmailVerificationEmail } = await import('../utils/email.js');
-        await sendEmailVerificationEmail(user.email, user.verificationToken);
-        console.log('[DEBUG Backend] Sent verification email to unverified user during login:', user.email);
+        // ✅ Rate limiting: Check if email was sent recently (2-minute cooldown)
+        const now = new Date();
+        const lastSentAt = user.verificationEmailSentAt ? new Date(user.verificationEmailSentAt) : null;
+        const twoMinutesInMs = 2 * 60 * 1000; // 120,000 ms
+        const twoMinutesAgo = new Date(now.getTime() - twoMinutesInMs);
+
+        let shouldSendEmail = !lastSentAt || lastSentAt <= twoMinutesAgo;
+
+        if (shouldSendEmail) {
+          // Generate new token (no expiry - users can verify anytime)
+          user.verificationToken = crypto.randomBytes(32).toString('hex');
+          user.verificationTokenExpiry = null;
+          user.verificationEmailSentAt = now; // ✅ Track when email was sent
+          await user.save();
+          const { sendEmailVerificationEmail } = await import('../utils/email.js');
+          await sendEmailVerificationEmail(user.email, user.verificationToken);
+          console.log('[DEBUG Backend] Sent verification email to unverified user during login:', user.email);
+        } else {
+          console.log(`[RATE LIMIT] Verification email not sent during login for ${user.email} - email already sent recently`);
+        }
       } catch (err) {
         console.error('[ERROR] Failed to send verification email during login:', err);
       }

@@ -46,7 +46,7 @@ class APIClient {
         }
         const err = new Error(errorMessage);
         (err as any).status = response.status;
-        // Preserve all error data from backend for proper error handling
+        // ✅ Preserve all error data from backend for proper error handling (including rate-limiting)
         (err as any).code = errorData.code;
         (err as any).reason = errorData.reason;
         (err as any).message = errorMessage;
@@ -55,6 +55,7 @@ class APIClient {
         (err as any).supportMessage = errorData.supportMessage;
         (err as any).contactEmail = errorData.contactEmail;
         (err as any).showSuspensionPage = errorData.showSuspensionPage;
+        (err as any).retryAfter = errorData.retryAfter; // ✅ Rate-limiting retry time
         throw err;
       }
 

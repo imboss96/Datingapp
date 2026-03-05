@@ -76,6 +76,7 @@ const userSchema = new mongoose.Schema({
   // Email verification
   verificationToken: { type: String, sparse: true },
   verificationTokenExpiry: { type: Date },
+  verificationEmailSentAt: { type: Date }, // ✅ Track when verification email was last sent (for rate limiting)
 });
 
 // Indexes
