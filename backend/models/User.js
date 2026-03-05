@@ -16,7 +16,7 @@ const userSchema = new mongoose.Schema({
   profilePicture: { type: String },
   isPremium: { type: Boolean, default: false },
   premiumExpiresAt: { type: Date, default: null }, // ✅ When premium membership expires
-  premiumPlan: { type: String, enum: ['1_month', '3_months', '6_months', '12_months'], default: null }, // ✅ Track which plan user has
+  premiumPlan: { type: String, enum: [null, '1_month', '3_months', '6_months', '12_months'], default: null }, // ✅ Track which plan user has
   role: { type: String, enum: ['USER', 'MODERATOR', 'ADMIN'], default: 'USER' },
   accountType: { type: String, enum: ['APP', 'STANDALONE'], default: 'APP' }, // APP = from main app, STANDALONE = external user
   location: { type: String },

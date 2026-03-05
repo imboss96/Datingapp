@@ -2,14 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Load environment variables FIRST before any other imports
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 import mongoose from 'mongoose';
 import { createServer } from 'http';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import chatsRoutes from './routes/chats.js';
@@ -34,9 +36,6 @@ import supportRoutes from './routes/support.js';
 import landingPageSettingsRoutes from './routes/landingPageSettings.js';
 import LandingPageSettings from './models/LandingPageSettings.js';
 import CoinPackage from './models/CoinPackage.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 console.log('[DEBUG] Environment variables loaded:');
 console.log('[DEBUG] BREVO_API_KEY exists:', !!process.env.BREVO_API_KEY);

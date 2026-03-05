@@ -94,6 +94,14 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   // Get coin packages from global context (automatically updates every 10 seconds)
   const { coinPackages, loading: loadingCoinPackages } = useCoinPackages();
 
+  // Premium packages state
+  const [premiumPackages, setPremiumPackages] = useState<any[]>([]);
+  const [loadingPremiumPackages, setLoadingPremiumPackages] = useState(false);
+  const [selectedPremiumPackage, setSelectedPremiumPackage] = useState<any | null>(null);
+  const [premiumPaymentStep, setPremiumPaymentStep] = useState<'SELECT_METHOD' | 'PROCESSING' | 'SUCCESS'>('SELECT_METHOD');
+  const [premiumSelectedMethod, setPremiumSelectedMethod] = useState<string>('card');
+  const [premiumMomoNumber, setPremiumMomoNumber] = useState<string>('');
+
   // Debug logging for coin packages
   React.useEffect(() => {
     console.log('[DEBUG ProfileSettings] Coin packages updated:', {
@@ -341,6 +349,131 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     }
   };
 
+  const handleOpenPremiumCheckout = (pkg: any) => {
+    setSelectedPremiumPackage(pkg);
+    setPremiumPaymentStep('SELECT_METHOD');
+    setPremiumMomoNumber('');
+  };
+
+  const closePremiumCheckout = () => {
+    if (!isProcessing) {
+      setSelectedPremiumPackage(null);
+      setPremiumPaymentStep('SELECT_METHOD');
+      setPremiumMomoNumber('');
+      setError(null);
+    }
+  };
+
+  const handleConfirmPremiumPayment = async () => {
+    console.log('[DEBUG ProfileSettings] Premium payment clicked', { selectedMethod: premiumSelectedMethod, selectedPremiumPackage });
+    setError(null);
+    setIsProcessing(true);
+    setPremiumPaymentStep('PROCESSING');
+
+    try {
+      if (!selectedPremiumPackage) {
+        setPremiumPaymentStep('SELECT_METHOD');
+        setIsProcessing(false);
+        return;
+      }
+
+      console.log('[ProfileSettings] Processing premium purchase:', {
+        packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
+        price: selectedPremiumPackage.price,
+        plan: selectedPremiumPackage.plan,
+        userEmail: user.email,
+        method: premiumSelectedMethod
+      });
+
+      if (premiumSelectedMethod === 'momo') {
+        // Initiate mobile money for premium  
+        console.log('[DEBUG ProfileSettings] Starting momo flow for premium with:', { phone: premiumMomoNumber });
+        const init = await apiClient.post('/transactions/initiate-premium', {
+          userId: user.id,
+          packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
+          phoneNumber: premiumMomoNumber
+        });
+        
+        if (!init || !init.transactionId) {
+          throw new Error('Failed to initiate mobile money prompt');
+        }
+        
+        const txId = init.transactionId;
+        console.log('[DEBUG ProfileSettings] Premium Lipana prompt sent, txId=', txId);
+
+        // Poll status
+        const poll = setInterval(async () => {
+          try {
+            const status = await apiClient.lipanaStatus(txId);
+            const s = status.status?.toLowerCase();
+            
+            if (s === 'success') {
+              clearInterval(poll);
+              console.log('[DEBUG ProfileSettings] Premium payment SUCCESS');
+              
+              // Refresh user profile to get updated premium status
+              try {
+                const refreshedUser = await apiClient.refreshUserProfile();
+                console.log('[ProfileSettings] User profile refreshed after premium:', { isPremium: refreshedUser.isPremium, premiumExpiresAt: refreshedUser.premiumExpiresAt });
+                setUser(refreshedUser);
+              } catch (refreshErr) {
+                console.error('[ProfileSettings] Failed to refresh user profile:', refreshErr);
+              }
+              
+              setPremiumPaymentStep('SUCCESS');
+              setIsProcessing(false);
+            } else if (s === 'failed' || s === 'cancelled') {
+              clearInterval(poll);
+              setError('Premium payment failed or cancelled');
+              setPremiumPaymentStep('SELECT_METHOD');
+              setIsProcessing(false);
+            }
+          } catch (pollErr) {
+            console.error('[ERROR ProfileSettings] polling premium payment status failed:', pollErr);
+            clearInterval(poll);
+            setError('Error checking payment status');
+            setPremiumPaymentStep('SELECT_METHOD');
+            setIsProcessing(false);
+          }
+        }, 2000);
+        
+        return;
+      } else {
+        // Card payment for premium
+        const resp: any = await apiClient.post('/transactions/purchase-premium', {
+          userId: user.id,
+          packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
+          method: premiumSelectedMethod,
+        });
+        
+        console.log('[ProfileSettings] Premium payment successful:', {
+          packageId: selectedPremiumPackage._id,
+          plan: selectedPremiumPackage.plan,
+          userEmail: user.email
+        });
+        
+        // Refresh user profile to get updated premium status
+        try {
+          const refreshedUser = await apiClient.refreshUserProfile();
+          console.log('[ProfileSettings] User profile refreshed after premium:', { isPremium: refreshedUser.isPremium });
+          setUser(refreshedUser);
+        } catch (refreshErr) {
+          console.error('[ProfileSettings] Failed to refresh user profile:', refreshErr);
+        }
+        
+        setPremiumPaymentStep('SUCCESS');
+        setIsProcessing(false);
+        return;
+      }
+    } catch (err: any) {
+      console.error('[ERROR ProfileSettings] Premium payment processing failed:', err);
+      const errorMsg = err?.response?.data?.error || err?.message || 'Premium purchase failed. Please try again.';
+      setError(errorMsg);
+      setPremiumPaymentStep('SELECT_METHOD');
+      setIsProcessing(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     setSaving(true);
     setError(null);
@@ -527,6 +660,27 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
       loadTransactions();
     }
   }, [openModal]);
+
+  // Fetch premium packages on component mount
+  React.useEffect(() => {
+    const fetchPremiumPackages = async () => {
+      try {
+        setLoadingPremiumPackages(true);
+        const response = await apiClient.getPremiumPackages();
+        if (response.success && Array.isArray(response.packages)) {
+          setPremiumPackages(response.packages);
+        } else if (response.premium_packages && Array.isArray(response.premium_packages)) {
+          setPremiumPackages(response.premium_packages);
+        }
+      } catch (error) {
+        console.error('[ERROR] Failed to fetch premium packages:', error);
+      } finally {
+        setLoadingPremiumPackages(false);
+      }
+    };
+    
+    fetchPremiumPackages();
+  }, []);
 
   const handleEnablePush = async () => {
     setPushProcessing(true);
@@ -744,6 +898,160 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
             </div>
           )}
 
+          {/* Premium Checkout Overlay */}
+          {selectedPremiumPackage && (
+            <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-4">
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closePremiumCheckout}></div>
+              
+              <div className="relative w-full md:max-w-md bg-white rounded-t-[2.5rem] md:rounded-[2rem] shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-300">
+                <div className="p-6 md:p-8">
+                  {premiumPaymentStep === 'SELECT_METHOD' && (
+                    <>
+                      {error && (
+                        <div className="p-3 mb-4 bg-rose-50 border border-rose-200 rounded-lg">
+                          <p className="text-xs text-rose-700 font-medium">{error}</p>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-black text-gray-900">Premium Checkout</h3>
+                        <button onClick={closePremiumCheckout} className="text-gray-400 hover:text-gray-600">
+                          <i className="fa-solid fa-xmark text-xl"></i>
+                        </button>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 mb-6 flex items-center justify-between border border-purple-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white shadow-lg">
+                            <i className="fa-solid fa-crown text-xl"></i>
+                          </div>
+                          <div>
+                            <p className="font-black text-gray-900">{selectedPremiumPackage.name}</p>
+                            <p className="text-xs text-gray-500">{selectedPremiumPackage.duration} Days Premium Access</p>
+                          </div>
+                        </div>
+                        <p className="text-lg font-black text-gray-900">${selectedPremiumPackage.price.toFixed(2)}</p>
+                      </div>
+
+                      <div className="space-y-3 mb-8">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Payment Method</p>
+                        {PAYMENT_METHODS.map((method) => (
+                          <button
+                            key={method.id}
+                            onClick={() => setPremiumSelectedMethod(method.id)}
+                            className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                              premiumSelectedMethod === method.id
+                                ? 'border-purple-500 bg-purple-50/30'
+                                : 'border-gray-100 hover:border-gray-200 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${premiumSelectedMethod === method.id ? 'text-purple-500' : 'text-gray-400'}`}>
+                                <i className={method.icon}></i>
+                              </div>
+                              <div className="text-left">
+                                <p className="text-sm font-bold text-gray-800">{method.name}</p>
+                                {method.providers.length > 0 && (
+                                  <p className="text-[10px] text-gray-400 font-medium italic">
+                                    {method.providers.join(' • ')}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${premiumSelectedMethod === method.id ? 'border-purple-500' : 'border-gray-200'}`}>
+                              {premiumSelectedMethod === method.id && <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+
+                      {premiumSelectedMethod === 'momo' && (
+                        <div className="mb-4">
+                          <label className="block text-xs font-bold text-gray-700 mb-2">Mobile Money Number</label>
+                          <input
+                            type="tel"
+                            value={premiumMomoNumber}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/[^0-9]/g, '');
+                              setPremiumMomoNumber(v);
+                              if (v && premiumSelectedMethod !== 'momo') setPremiumSelectedMethod('momo');
+                            }}
+                            placeholder="e.g., 233501234567"
+                            className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                          />
+                        </div>
+                      )}
+
+                      <button 
+                        onClick={handleConfirmPremiumPayment}
+                        disabled={isProcessing || (premiumSelectedMethod === 'momo' && !/^[0-9]{7,15}$/.test(premiumMomoNumber))}
+                        className="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-purple-500/20 active:scale-95 transition-transform flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <i className="fa-solid fa-lock text-xs opacity-70"></i>
+                        Get Premium ${selectedPremiumPackage.price.toFixed(2)}
+                      </button>
+                      <p className="text-[10px] text-gray-400 text-center mt-4">
+                        Your payment is encrypted and secure. By paying, you agree to our Terms of Service.
+                      </p>
+                    </>
+                  )}
+
+                  {premiumPaymentStep === 'PROCESSING' && (
+                    <div className="py-20 flex flex-col items-center text-center">
+                      <div className="relative w-20 h-20 mb-6">
+                        <div className="absolute inset-0 border-4 border-purple-100 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-purple-500 rounded-full border-t-transparent animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center text-purple-500">
+                          <i className="fa-solid fa-crown text-2xl"></i>
+                        </div>
+                      </div>
+                      <h3 className="text-xl font-black text-gray-900 mb-2">Processing Premium Purchase</h3>
+                      {premiumSelectedMethod === 'momo' ? (
+                        <p className="text-sm text-gray-500 max-w-[240px]">
+                          A prompt has been sent to <strong>{premiumMomoNumber}</strong>. Enter your PIN on your phone to complete the payment.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-500 max-w-[240px]">Connecting to secure gateway. Please do not close or refresh this window.</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-4 max-w-[240px]">
+                        <i className="fa-solid fa-envelope text-gray-400 mr-1"></i>
+                        Confirmation email will be sent to your inbox
+                      </p>
+                    </div>
+                  )}
+
+                  {premiumPaymentStep === 'SUCCESS' && (
+                    <div className="py-12 flex flex-col items-center text-center">
+                      <div className="w-24 h-24 bg-purple-100 rounded-full flex items-center justify-center text-purple-500 text-4xl mb-6 animate-bounce">
+                        <i className="fa-solid fa-crown"></i>
+                      </div>
+                      <h3 className="text-2xl font-black text-gray-900 mb-2">Welcome to Premium!</h3>
+                      <p className="text-sm text-gray-500 mb-2">
+                        You now have <span className="font-bold text-gray-900">{selectedPremiumPackage.duration} days</span> of unlimited access.
+                      </p>
+                      <div className="text-xs text-gray-600 space-y-1 mb-6 text-left bg-gray-50 p-3 rounded-lg">
+                        <div className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500"></i> Unlimited Rewinds</div>
+                        <div className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500"></i> Unlimited Super Likes</div>
+                        <div className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500"></i> No Coin Costs</div>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mx-4 mb-8">
+                        <p className="text-xs text-blue-700 flex items-center justify-center gap-2">
+                          <i className="fa-solid fa-envelope text-blue-600"></i>
+                          <span>Confirmation email sent to <strong>{user.email}</strong></span>
+                        </p>
+                      </div>
+                      <button 
+                        onClick={closePremiumCheckout}
+                        className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl active:scale-95 transition-transform"
+                      >
+                        Return to Profile
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Profile UI */}
           <div className="relative h-64">
             <img src={user.images[0]} className="w-full h-full object-cover" alt="Me" />
@@ -831,6 +1139,50 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                 Supports Mobile Money (MTN, Airtel, M-Pesa), Cards, & Pay Apps.
               </p>
             </div>
+
+            {/* Premium Membership Shop */}
+            {premiumPackages.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Premium Membership</h4>
+                  <div className="flex items-center gap-1.5 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-100">
+                    <i className="fa-solid fa-crown text-purple-500 text-xs"></i>
+                    <span className="text-[9px] text-purple-600 font-black uppercase">Unlimited</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {premiumPackages.map((pkg) => (
+                    <button
+                      key={pkg._id || pkg.id}
+                      onClick={() => handleOpenPremiumCheckout(pkg)}
+                      className="p-4 rounded-2xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 flex flex-col gap-2 text-left transition-all active:scale-95"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="text-sm font-black text-gray-900">{pkg.name}</span>
+                          <span className="text-[9px] text-purple-600 font-bold block">{pkg.plan.replace(/_/g, ' ').toUpperCase()}</span>
+                        </div>
+                        <span className="text-lg font-black text-purple-600">${pkg.price.toFixed(2)}</span>
+                      </div>
+                      <div className="text-[9px] text-gray-600 space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <i className="fa-solid fa-check text-purple-500"></i>
+                          <span>Unlimited Rewinds</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <i className="fa-solid fa-check text-purple-500"></i>
+                          <span>Unlimited Super Likes</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <i className="fa-solid fa-check text-purple-500"></i>
+                          <span>No Coin Costs</span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Account Settings */}
             <div className="space-y-2">

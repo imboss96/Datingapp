@@ -217,4 +217,113 @@ router.post('/purchase', async (req, res) => {
   }
 });
 
+// Premium package purchase endpoint
+router.post('/purchase-premium', async (req, res) => {
+  try {
+    const { userId, packageId, method } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'Missing userId' });
+    }
+
+    console.log('[DEBUG transactions.purchase-premium] Request:', { userId, packageId, method });
+
+    // Import premium package model and helper
+    const PremiumPackage = (await import('../models/PremiumPackage.js')).default;
+    const { upgradeUserToPremium } = await import('../utils/premiumHelper.js');
+
+    // Find premium package
+    const premiumPkg = await PremiumPackage.findById(packageId).lean();
+    if (!premiumPkg || !premiumPkg.isActive) {
+      return res.status(404).json({ error: 'Premium package not found' });
+    }
+
+    // Create transaction
+    const tx = new Transaction({
+      id: uuidv4(),
+      userId,
+      type: 'PREMIUM_UPGRADE',
+      amount: premiumPkg.price,
+      price: `$${premiumPkg.price.toFixed(2)}`,
+      method: method || 'card',
+      status: 'COMPLETED',
+      description: `Premium ${premiumPkg.plan} purchase`,
+    });
+    await tx.save();
+
+    console.log('[DEBUG transactions.purchase-premium] Transaction created:', tx.id);
+
+    // Update user with premium status
+    let user = null;
+    try {
+      user = await User.findOne({ _id: userId });
+      if (user) {
+        await upgradeUserToPremium(user, premiumPkg.plan);
+        console.log('[DEBUG transactions.purchase-premium] User upgraded to premium:', {
+          userId,
+          plan: premiumPkg.plan,
+          expiresAt: user.premiumExpiresAt
+        });
+      }
+    } catch (userErr) {
+      console.warn('[WARN transactions.purchase-premium] Could not update user:', userErr.message);
+    }
+
+    res.json({
+      ok: true,
+      success: true,
+      transactionId: tx.id,
+      isPremium: user?.isPremium ?? true,
+      premiumExpiresAt: user?.premiumExpiresAt,
+      plan: premiumPkg.plan
+    });
+  } catch (err) {
+    console.error('[ERROR transactions.purchase-premium]', err.message, err);
+    res.status(500).json({ error: err.message || 'Premium purchase failed' });
+  }
+});
+
+// Initiate premium Lipana payment
+router.post('/initiate-premium', async (req, res) => {
+  try {
+    const { userId, packageId, phoneNumber } = req.body;
+    if (!userId || !packageId || !phoneNumber) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log('[DEBUG transactions.initiate-premium] Request:', { userId, packageId, phone: phoneNumber });
+
+    // Import models
+    const PremiumPackage = (await import('../models/PremiumPackage.js')).default;
+
+    // Find premium package
+    const premiumPkg = await PremiumPackage.findById(packageId).lean();
+    if (!premiumPkg || !premiumPkg.isActive) {
+      return res.status(404).json({ error: 'Premium package not found' });
+    }
+
+    // Create transaction record
+    const tx = new Transaction({
+      id: uuidv4(),
+      userId,
+      type: 'PREMIUM_UPGRADE',
+      amount: premiumPkg.price,
+      price: `$${premiumPkg.price.toFixed(2)}`,
+      method: 'momo',
+      status: 'PENDING',
+      description: `Premium ${premiumPkg.plan} via Lipana`,
+    });
+    await tx.save();
+
+    // Return transaction ID for client to poll status
+    res.json({
+      ok: true,
+      transactionId: tx.id,
+      message: 'Mobile money prompt sent. Enter your PIN on your phone.'
+    });
+  } catch (err) {
+    console.error('[ERROR transactions.initiate-premium]', err.message);
+    res.status(500).json({ error: err.message || 'Failed to initiate premium payment' });
+  }
+});
+
 export default router;

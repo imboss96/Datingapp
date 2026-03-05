@@ -98,6 +98,20 @@ const ModeratorPanel: React.FC = () => {
   const [loadingCoinPurchases, setLoadingCoinPurchases] = useState(false);
   const [coinPurchasesError, setCoinPurchasesError] = useState<string | null>(null);
 
+  // Premium Packages Management
+  const [premiumPackages, setPremiumPackages] = useState<any[]>([]);
+  const [editingPremiumPackageId, setEditingPremiumPackageId] = useState<string | null>(null);
+  const [editingPremiumPackageForm, setEditingPremiumPackageForm] = useState<{ name: string; duration: string; plan: string; price: string }>({ name: '', duration: '', plan: '', price: '' });
+  const [showAddPremiumPackageForm, setShowAddPremiumPackageForm] = useState(false);
+  const [newPremiumPackageForm, setNewPremiumPackageForm] = useState<{ name: string; duration: string; plan: string; price: string }>({ name: '', duration: '', plan: '1_month', price: '' });
+  const [loadingPremiumPackages, setLoadingPremiumPackages] = useState(false);
+  const [premiumPackagesError, setPremiumPackagesError] = useState<string | null>(null);
+
+  // Premium User Management
+  const [selectedUserForPremium, setSelectedUserForPremium] = useState<string | null>(null);
+  const [premiumActionPlan, setPremiumActionPlan] = useState<string>('1_month');
+  const [premiumActionType, setPremiumActionType] = useState<'grant' | 'revoke'>('grant');
+
   // Profile Management
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingUserForm, setEditingUserForm] = useState({
@@ -1068,6 +1082,157 @@ const ModeratorPanel: React.FC = () => {
       console.error('[ERROR ModeratorPanel] Failed to create package:', error);
       const errorMsg = error instanceof Error ? error.message : String(error);
       showNotification(errorMsg || 'Failed to create package', 'error');
+    }
+  };
+
+  // Premium Package Handlers
+  const fetchPremiumPackages = async () => {
+    try {
+      setLoadingPremiumPackages(true);
+      const response = await apiClient.getPremiumPackages(true);
+      if (response.success && Array.isArray(response.packages)) {
+        setPremiumPackages(response.packages);
+        setPremiumPackagesError(null);
+      } else if (response.premium_packages && Array.isArray(response.premium_packages)) {
+        setPremiumPackages(response.premium_packages);
+        setPremiumPackagesError(null);
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch premium packages:', error);
+      setPremiumPackagesError((error as any).message || 'Failed to fetch premium packages');
+    } finally {
+      setLoadingPremiumPackages(false);
+    }
+  };
+
+  const handleEditPremiumPackage = (pkg: any) => {
+    setEditingPremiumPackageId(pkg._id || pkg.id);
+    setEditingPremiumPackageForm({
+      name: pkg.name,
+      duration: String(pkg.duration),
+      plan: pkg.plan || '1_month',
+      price: String(pkg.price)
+    });
+  };
+
+  const handleSavePremiumPackage = async () => {
+    if (!editingPremiumPackageForm.name || !editingPremiumPackageForm.duration || !editingPremiumPackageForm.price) {
+      showNotification('Please fill in all fields', 'warning');
+      return;
+    }
+
+    try {
+      const duration = parseInt(editingPremiumPackageForm.duration);
+      const price = parseFloat(editingPremiumPackageForm.price);
+
+      if (duration <= 0 || price < 0) {
+        showNotification('Duration must be > 0 and price must be >= 0', 'warning');
+        return;
+      }
+
+      const response = await apiClient.updatePremiumPackage(editingPremiumPackageId!, {
+        name: editingPremiumPackageForm.name,
+        duration,
+        plan: editingPremiumPackageForm.plan,
+        price
+      });
+
+      if (response.success) {
+        setPremiumPackages(premiumPackages.map(pkg =>
+          pkg._id === editingPremiumPackageId || pkg.id === editingPremiumPackageId
+            ? response.package
+            : pkg
+        ));
+        setEditingPremiumPackageId(null);
+        setEditingPremiumPackageForm({ name: '', duration: '', plan: '', price: '' });
+        showNotification('Premium package updated successfully', 'success');
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to save premium package:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      showNotification(errorMsg || 'Failed to save premium package', 'error');
+    }
+  };
+
+  const handleDeletePremiumPackage = async (id: string) => {
+    if (confirm('Are you sure you want to delete this premium package?')) {
+      try {
+        const response = await apiClient.deletePremiumPackage(id);
+
+        if (response.success) {
+          setPremiumPackages(premiumPackages.filter(pkg => pkg._id !== id && pkg.id !== id));
+          showNotification('Premium package deleted successfully', 'success');
+        }
+      } catch (error) {
+        console.error('[ERROR] Failed to delete premium package:', error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        showNotification(errorMsg || 'Failed to delete premium package', 'error');
+      }
+    }
+  };
+
+  const handleAddPremiumPackage = async () => {
+    if (!newPremiumPackageForm.name || !newPremiumPackageForm.duration || !newPremiumPackageForm.price) {
+      showNotification('Please fill in all fields', 'warning');
+      return;
+    }
+
+    try {
+      const duration = parseInt(newPremiumPackageForm.duration);
+      const price = parseFloat(newPremiumPackageForm.price);
+
+      if (duration <= 0 || price < 0) {
+        showNotification('Duration must be > 0 and price must be >= 0', 'warning');
+        return;
+      }
+
+      const response = await apiClient.createPremiumPackage({
+        packageId: `premium_${Date.now()}`,
+        name: newPremiumPackageForm.name,
+        duration,
+        plan: newPremiumPackageForm.plan,
+        price,
+        features: ['Unlimited Rewinds', 'Unlimited Super Likes', 'No Coin Cost']
+      });
+
+      if (response.success) {
+        setPremiumPackages([...premiumPackages, response.package]);
+        setNewPremiumPackageForm({ name: '', duration: '', plan: '1_month', price: '' });
+        setShowAddPremiumPackageForm(false);
+        showNotification('Premium package created successfully', 'success');
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to create premium package:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      showNotification(errorMsg || 'Failed to create premium package', 'error');
+    }
+  };
+
+  const handleGrantPremium = async (userId: string, plan: string) => {
+    try {
+      const response = await apiClient.grantPremiumToUser(userId, plan);
+      if (response.success) {
+        showNotification(`Premium granted to user for ${plan}`, 'success');
+        setSelectedUserForPremium(null);
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to grant premium:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      showNotification(errorMsg || 'Failed to grant premium', 'error');
+    }
+  };
+
+  const handleRevokePremium = async (userId: string) => {
+    try {
+      const response = await apiClient.revokePremiumFromUser(userId);
+      if (response.success) {
+        showNotification('Premium revoked from user', 'success');
+        setSelectedUserForPremium(null);
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to revoke premium:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      showNotification(errorMsg || 'Failed to revoke premium', 'error');
     }
   };
 
@@ -2945,10 +3110,189 @@ const ModeratorPanel: React.FC = () => {
                 </table>
               </div>
             </div>
+
+            {/* Premium Packages Management */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                  <i className="fa-solid fa-crown text-purple-600"></i>
+                  Premium Packages Management
+                </h4>
+                <button 
+                  onClick={() => setShowAddPremiumPackageForm(!showAddPremiumPackageForm)}
+                  className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  <i className="fa-solid fa-plus"></i>
+                  Add Package
+                </button>
+              </div>
+
+              {/* Add New Premium Package Form */}
+              {showAddPremiumPackageForm && (
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200 p-4 mb-6">
+                  <h5 className="font-bold text-gray-700 text-xs mb-3 flex items-center gap-2">
+                    <i className="fa-solid fa-circle-plus text-purple-600"></i>
+                    Create New Premium Package
+                  </h5>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Name</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g., Premium Plus"
+                        value={newPremiumPackageForm.name}
+                        onChange={(e) => setNewPremiumPackageForm({...newPremiumPackageForm, name: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Duration (days)</label>
+                      <input 
+                        type="number" 
+                        placeholder="e.g., 30"
+                        value={newPremiumPackageForm.duration}
+                        onChange={(e) => setNewPremiumPackageForm({...newPremiumPackageForm, duration: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Plan</label>
+                      <select 
+                        value={newPremiumPackageForm.plan}
+                        onChange={(e) => setNewPremiumPackageForm({...newPremiumPackageForm, plan: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      >
+                        <option value="1_month">1 Month</option>
+                        <option value="3_months">3 Months</option>
+                        <option value="6_months">6 Months</option>
+                        <option value="12_months">12 Months</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Price ($)</label>
+                      <input 
+                        type="number" 
+                        placeholder="e.g., 9.99"
+                        value={newPremiumPackageForm.price}
+                        onChange={(e) => setNewPremiumPackageForm({...newPremiumPackageForm, price: e.target.value})}
+                        step="0.01"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="flex gap-2 items-end">
+                      <button 
+                        onClick={handleAddPremiumPackage}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-all"
+                      >
+                        <i className="fa-solid fa-check mr-1"></i>Save
+                      </button>
+                      <button 
+                        onClick={() => setShowAddPremiumPackageForm(false)}
+                        className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 px-3 py-2 rounded-lg text-xs font-bold transition-all"
+                      >
+                        <i className="fa-solid fa-times mr-1"></i>Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Premium Packages Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {premiumPackages.length === 0 ? (
+                  <div className="md:col-span-4 text-center py-12 text-gray-500">
+                    <i className="fa-solid fa-inbox text-4xl text-gray-300 mb-2 block"></i>
+                    <p className="font-medium">No premium packages</p>
+                    <p className="text-xs mt-1">Create your first premium package to get started</p>
+                  </div>
+                ) : (
+                  premiumPackages.map((pkg) => (
+                    <div key={pkg._id || pkg.id} className="border border-purple-200 rounded-lg p-4 hover:border-purple-500 hover:shadow-md transition-all bg-gradient-to-br from-white to-purple-50">
+                      {editingPremiumPackageId === pkg._id || editingPremiumPackageId === pkg.id ? (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">Name</label>
+                            <input 
+                              type="text" 
+                              value={editingPremiumPackageForm.name}
+                              onChange={(e) => setEditingPremiumPackageForm({...editingPremiumPackageForm, name: e.target.value})}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">Duration (days)</label>
+                            <input 
+                              type="number" 
+                              value={editingPremiumPackageForm.duration}
+                              onChange={(e) => setEditingPremiumPackageForm({...editingPremiumPackageForm, duration: e.target.value})}
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">Price ($)</label>
+                            <input 
+                              type="number" 
+                              value={editingPremiumPackageForm.price}
+                              onChange={(e) => setEditingPremiumPackageForm({...editingPremiumPackageForm, price: e.target.value})}
+                              step="0.01"
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={handleSavePremiumPackage}
+                              className="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-2 py-1 rounded text-xs font-bold transition-all"
+                            >
+                              Save
+                            </button>
+                            <button 
+                              onClick={() => setEditingPremiumPackageId(null)}
+                              className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 px-2 py-1 rounded text-xs font-bold transition-all"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-center mb-3">
+                            <div className="text-2xl font-bold text-purple-600 mb-1">{pkg.name}</div>
+                            <p className="text-xs text-gray-600 font-medium">{pkg.duration} days</p>
+                          </div>
+                          <div className="bg-purple-100 rounded-lg py-2 px-3 text-center mb-3">
+                            <p className="text-lg font-bold text-purple-700">${pkg.price.toFixed(2)}</p>
+                            <p className="text-xs text-purple-600 mt-0.5">{pkg.plan.replace(/_/g, ' ')}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => handleEditPremiumPackage(pkg)}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1"
+                            >
+                              <i className="fa-solid fa-edit"></i>Edit
+                            </button>
+                            <button 
+                              onClick={() => handleDeletePremiumPackage(pkg._id || pkg.id)}
+                              className="flex-1 bg-red-600 hover:bg-red-700 text-white px-2 py-1.5 rounded text-xs font-bold transition-all flex items-center justify-center gap-1"
+                            >
+                              <i className="fa-solid fa-trash"></i>Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                <p className="text-xs text-purple-800 flex items-center gap-2">
+                  <i className="fa-solid fa-info-circle text-purple-600"></i>
+                  <strong>Note:</strong> Packages modified here will appear to users in ProfileSettings when they purchase premium membership.
+                </p>
+              </div>
+            </div>
           </div>
         )}
-
-        {activeTab === 'REVENUE' && (
           <div className="space-y-6">
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
               <i className="fa-solid fa-hand-holding-dollar text-amber-600 text-xl"></i>
