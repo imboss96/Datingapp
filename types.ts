@@ -44,6 +44,20 @@ export interface Notification {
   actionUrl?: string;
 }
 
+// ─── Lifestyle Preferences (optional - for Phase 2 enhanced matching) ─────────
+
+export interface LifestylePreferences {
+  relationshipGoal?: 'casual' | 'serious' | 'friendship' | 'networking';
+  smoking?:          'never' | 'sometimes' | 'regularly';
+  drinking?:         'never' | 'socially'  | 'regularly';
+  exercise?:         'never' | 'sometimes' | 'regularly' | 'daily';
+  pets?:             'none'  | 'cats'      | 'dogs'      | 'both' | 'other';
+  children?:         'none'  | 'want'      | 'have'      | 'dont_want';
+  religion?:         string;
+  education?:        'high_school' | 'college' | 'bachelors' | 'masters' | 'phd' | 'other';
+  languages?:        string[];
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -76,6 +90,10 @@ export interface UserProfile {
   // Online Status
   isOnline?: boolean;
   lastSeen?: number; // Timestamp of last activity (milliseconds)
+  // Lifestyle (optional - requires user to fill in profile settings)
+  lifestyle?: LifestylePreferences;
+  // Computed by matching algorithm - attached by apiClient after fetch
+  matchScore?: number;
 }
 
 export interface MediaFile {

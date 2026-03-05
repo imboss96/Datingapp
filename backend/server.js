@@ -24,6 +24,7 @@ import moderationAuthRoutes from './routes/moderationAuth.js';
 import pushRoutes from './routes/push.js';
 import publicRoutes from './routes/public.js';
 import likesRoutes from './routes/likes.js';
+import storiesRoutes from './routes/stories.js';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { initCloudinary } from './utils/cloudinary.js';
@@ -157,6 +158,7 @@ app.use('/api/chats', authMiddleware, chatsRoutes);
 app.use('/api/reports', authMiddleware, reportsRoutes);
 app.use('/api/matches', authMiddleware, matchesRoutes);
 app.use('/api/likes', authMiddleware, likesRoutes);
+app.use('/api/stories', authMiddleware, storiesRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/transactions', transactionsRoutes);  // Auth middleware applied selectively in transactions.js
 app.use('/api/moderation', authMiddleware, moderationRoutes);  // Moderator-only routes

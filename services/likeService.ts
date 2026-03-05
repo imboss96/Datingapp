@@ -10,6 +10,12 @@ export interface LikeResponse {
   message: string;
   interestMatch?: number;
   ageMatch?: number;
+  overallScore?: number;      // composite 0–100 from multi-factor algorithm
+  proximityScore?: number;
+  recencyScore?: number;
+  trustScore?: number;
+  bioScore?: number;
+  distKm?: number | null;
   matchId?: string;
   matchedUser?: {
     id: string;

@@ -6,6 +6,11 @@ import { useAlert } from '../services/AlertContext';
 import { calculateDistance, DISTANCE_RANGES, getDistanceRangeLabel } from '../services/distanceUtils';
 import { storeLike, storeSuperLike, storePass } from '../services/likeService';
 import { useLikeStats } from '../services/useLikeHooks';
+import {
+  calcMatchScore,
+  getScoreBreakdown,
+  getCompatibilityLabel,
+} from '../services/matchingAlgorithm';
 import MatchModal from './MatchModal';
 import UserProfileModal from './UserProfileModal';
 import SearchSuggestions from './SearchSuggestions';
@@ -29,25 +34,7 @@ const BATCH_SIZE        = 30;
 const PRELOAD_THRESHOLD = 20; // load next batch EARLY when this many profiles remain - background loading
 
 // ═══ Helpers (outside component – never recreated) ═══════════════════════════
-
-const calcMatchScore = (profile: UserProfile, currentUser: UserProfile): number => {
-  let score = 0;
-
-  if (profile.location === currentUser.location) score += 20;
-
-  if (currentUser.coordinates && profile.coordinates) {
-    const d = calculateDistance(currentUser.coordinates, profile.coordinates);
-    if      (d <=   1) score += 30;
-    else if (d <=   5) score += 25;
-    else if (d <=  10) score += 20;
-    else if (d <=  50) score += 10;
-  }
-
-  const common = profile.interests.filter(i => currentUser.interests.includes(i)).length;
-  if (common > 0) score += Math.min(common * 10, 50);
-
-  return score;
-};
+// Note: calcMatchScore imported from services/matchingAlgorithm
 
 const getTimeAgoLabel = (timestamp: number): string => {
   const diff  = Date.now() - timestamp;
@@ -76,34 +63,35 @@ const extractCoordinates = (coords: any): { lat: number; lon: number } | null =>
   return null;
 };
 
-// Helper to validate and optimize Cloudinary image URLs with retry logic
+// Helper to validate and optimize image URLs
 const validateImageUrl = (url: string | undefined): string | null => {
   if (!url || typeof url !== 'string') return null;
-  if (!url.trim()) return null;
-  
-  try {
-    const trimmed = url.trim();
-    
-    // Validate URL
-    new URL(trimmed);
-    
-    // If it's a Cloudinary URL, optimize it
-    if (trimmed.includes('res.cloudinary.com')) {
-      // Add quality and format optimization if not already present
-      if (!trimmed.includes('/q_')) {
-        // Use cloud name from environment variable
-        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhxitpddx';
-        // Dynamically extract cloud name and inject optimization parameters
-        const cloudinaryOptimized = trimmed.replace(
-          /res\.cloudinary\.com\/([^/]+)\/image\/upload\//,
-          `res.cloudinary.com/${cloudName}/image/upload/q_auto,w_600,f_auto/`
-        );
-        console.log('[SwiperScreen] Optimized Cloudinary URL:', cloudinaryOptimized);
-        return cloudinaryOptimized;
-      }
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  const applyCloudinaryImageOptimization = (u: string): string => {
+    if (u.includes('res.cloudinary.com') && !u.includes('/q_')) {
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhxitpddx';
+      const optimized = u.replace(
+        /res\.cloudinary\.com\/([^/]+)\/image\/upload\//,
+        `res.cloudinary.com/${cloudName}/image/upload/q_auto,w_600,f_auto/`
+      );
+      if (import.meta.env.DEV) console.log('[SwiperScreen] Optimized Cloudinary image URL:', optimized);
+      return optimized;
     }
-    
-    return trimmed;
+    if (import.meta.env.DEV) console.log('[SwiperScreen] Valid image URL:', u);
+    return u;
+  };
+
+  // Accept absolute URLs (http/https) or relative paths starting with /
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+    return applyCloudinaryImageOptimization(trimmed);
+  }
+
+  // Try parsing as a full URL as fallback
+  try {
+    new URL(trimmed);
+    return applyCloudinaryImageOptimization(trimmed);
   } catch (err) {
     console.warn('[SwiperScreen] Invalid image URL:', url, 'Error:', err);
     return null;
@@ -121,29 +109,32 @@ const isVideoUrl = (url: string | undefined): boolean => {
 // Helper to validate and optimize video URLs
 const validateVideoUrl = (url: string | undefined): string | null => {
   if (!url || typeof url !== 'string') return null;
-  if (!url.trim()) return null;
-  
-  try {
-    const trimmed = url.trim();
-    
-    // Validate URL
-    new URL(trimmed);
-    
-    // If it's a Cloudinary URL, optimize video
-    if (trimmed.includes('res.cloudinary.com')) {
-      if (!trimmed.includes('/q_')) {
-        const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhxitpddx';
-        // Optimize video: quality auto, format mp4
-        const cloudinaryOptimized = trimmed.replace(
-          /res\.cloudinary\.com\/([^/]+)\/video\/upload\//,
-          `res.cloudinary.com/${cloudName}/video/upload/q_auto,f_auto/`
-        );
-        console.log('[SwiperScreen] Optimized Cloudinary Video URL:', cloudinaryOptimized);
-        return cloudinaryOptimized;
-      }
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  const applyCloudinaryVideoOptimization = (u: string): string => {
+    if (u.includes('res.cloudinary.com') && !u.includes('/q_')) {
+      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dhxitpddx';
+      const optimized = u.replace(
+        /res\.cloudinary\.com\/([^/]+)\/video\/upload\//,
+        `res.cloudinary.com/${cloudName}/video/upload/q_auto,f_auto/`
+      );
+      if (import.meta.env.DEV) console.log('[SwiperScreen] Optimized Cloudinary video URL:', optimized);
+      return optimized;
     }
-    
-    return trimmed;
+    if (import.meta.env.DEV) console.log('[SwiperScreen] Valid video URL:', u);
+    return u;
+  };
+
+  // Accept absolute URLs (http/https) or relative paths starting with /
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+    return applyCloudinaryVideoOptimization(trimmed);
+  }
+
+  // Try parsing as a full URL as fallback
+  try {
+    new URL(trimmed);
+    return applyCloudinaryVideoOptimization(trimmed);
   } catch (err) {
     console.warn('[SwiperScreen] Invalid video URL:', url, 'Error:', err);
     return null;
@@ -375,7 +366,9 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
   const matchScoreCache = useRef<Record<string, number>>({});
 
   const getMatchScore = useCallback((profile: UserProfile): number => {
+    if (!profile) return 0;
     if (matchScoreCache.current[profile.id] === undefined) {
+      // Use the new multi-factor algorithm from services/matchingAlgorithm
       matchScoreCache.current[profile.id] = calcMatchScore(profile, currentUser);
     }
     return matchScoreCache.current[profile.id];
@@ -541,6 +534,16 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
     setFailedImages(new Set()); // Reset failed images when switching profiles
   }, [currentIndex]);
 
+  // ── Image load timeout — dismiss spinner if onLoad/onError never fire ─────
+  useEffect(() => {
+    if (imgLoaded) return; // already loaded, nothing to do
+    const timer = setTimeout(() => {
+      if (import.meta.env.DEV) console.warn('[SwiperScreen] Image load timeout — dismissing spinner');
+      setImgLoaded(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [imgLoaded, currentIndex, currentImageIndex]);
+
   // ── Image Carousel Navigation ──────────────────────────────────────────────
 
   const goToNextImage = useCallback(() => {
@@ -594,8 +597,12 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
       if (res.matched && res.matchedUser) {
         setMatchedUser(res.matchedUser as any);
         setInterestMatch(res.interestMatch || 0);
-        setShowMatchModal(true);
-        showAlert('It\'s a Match! 🎉', `You and ${res.matchedUser.name} liked each other!`);
+        // Only show the "It's a Match!" modal when compatibility score > 60%
+        const score = res.overallScore ?? res.interestMatch ?? 0;
+        if (score > 60) {
+          setShowMatchModal(true);
+        }
+        showAlert("It's a Match!", `You and ${res.matchedUser.name} liked each other!`);
       }
     } catch (err: any) {
       // Silently handle "Already swiped" errors - just advance to next profile
@@ -638,8 +645,12 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         if (res.matched && res.matchedUser) {
           setMatchedUser(res.matchedUser as any);
           setInterestMatch(res.interestMatch || 0);
-          setShowMatchModal(true);
-          showAlert('Super Like Match! 🌟', `${res.matchedUser.name} loved your super like!`);
+          // Only show the "It's a Match!" modal when compatibility score > 60%
+          const score = res.overallScore ?? res.interestMatch ?? 0;
+          if (score > 60) {
+            setShowMatchModal(true);
+          }
+          showAlert("Super Like Match!", `${res.matchedUser.name} loved your super like!`);
         }
       } catch (err: any) {
         // Silently handle "Already swiped" errors - just advance to next profile
@@ -871,8 +882,11 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
 
   // ── Current profile ────────────────────────────────────────────────────
 
-  const matchScore = getMatchScore(currentProfile);
-  const distance   = getDistance(currentProfile);
+  const matchScore     = getMatchScore(currentProfile);
+  const distance       = getDistance(currentProfile);
+  // scoreBreakdown and compatLabel are derived synchronously — no hooks needed
+  const scoreBreakdown = currentProfile ? getScoreBreakdown(currentProfile, currentUser) : null;
+  const compatLabel    = getCompatibilityLabel(matchScore);
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -913,7 +927,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
         <div className="w-full flex-1 md:h-full max-w-sm md:max-w-2xl md:max-h-[90vh] flex flex-col relative group">
 
           {/* ── Top overlay controls ── */}
-          <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto gap-2">
+          <div className="absolute top-1 left-3 right-3 z-30 flex items-center justify-between pointer-events-auto gap-2">
             {searchOpen ? (
               <div className="flex-1 flex items-center gap-2">
                 <input
@@ -1000,6 +1014,35 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
             onTouchEnd={handleTouchEnd}
             onClick={handleCardTap}
           >
+            {/* ── Mobile Navigation Buttons (visible on mobile only) ── */}
+            <div className="absolute top-16 left-0 right-0 z-40 md:hidden flex items-center justify-center gap-4 pt-2 px-4">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Stay on swipe screen - just dismiss any overlays
+                  setSearchOpen(false);
+                  setShowDistanceFilter(false);
+                }}
+                className="flex-1 py-3 px-4 bg-white/90 backdrop-blur-sm rounded-full font-bold text-gray-900 shadow-lg border border-white/50 active:scale-95 transition-transform flex items-center justify-center gap-2"
+                title="Swipe profiles"
+              >
+                <i className="fa-solid fa-fire text-orange-500"></i>
+                <span>Swipe</span>
+              </button>
+              
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/discover');
+                }}
+                className="flex-1 py-3 px-4 spark-gradient text-white rounded-full font-bold shadow-lg border border-white/30 active:scale-95 transition-transform flex items-center justify-center gap-2"
+                title="Browse all members"
+              >
+                <i className="fa-solid fa-compass text-white"></i>
+                <span>Discover</span>
+              </button>
+            </div>
+
             <div className="absolute inset-0 bg-gray-300 rounded-3xl overflow-hidden swipe-card ring-1 ring-black/5" style={{
               boxShadow: '0 16px 48px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.1)',
             }}>
@@ -1074,7 +1117,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                     console.warn(`[SwiperScreen] ${isFailed ? 'Failed to load' : 'No valid'} media URL for profile ${currentProfile?.id} at index ${currentImageIndex}`);
                     return (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
-                        <div className="text-6xl mb-4">{isVideo ? '🎬' : '📷'}</div>
+                        <div className="text-6xl mb-4">{isVideo ? <i className="fa-solid fa-video text-6xl" /> : <i className="fa-solid fa-camera text-6xl" />}</div>
                         <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
                         <p className="text-xl text-white/80 font-semibold mb-4">{currentProfile?.age}</p>
                         <p className="text-sm text-white/60 text-center max-w-xs mb-6">{currentProfile?.location}</p>
@@ -1156,7 +1199,7 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                 })()
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600 p-6">
-                  <div className="text-6xl mb-4">👤</div>
+                  <div className="text-6xl mb-4"><i className="fa-solid fa-user text-6xl" /></div>
                   <h2 className="text-3xl font-bold text-white text-center mb-2">{currentProfile?.name}</h2>
                   <p className="text-xl text-white/80 font-semibold mb-4">{currentProfile?.age}</p>
                   <p className="text-sm text-white/60 text-center max-w-xs mb-6">{currentProfile?.location}</p>
@@ -1204,16 +1247,32 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                   )}
                 </div>
 
-                {/* Match score + distance - compact badges */}
+                {/* Match score + distance — enhanced multi-factor badges */}
                 <div className="mb-3 md:mb-4 flex items-center gap-2 flex-wrap">
-                  <div className="bg-white/25 backdrop-blur-lg ring-1 ring-white/50 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5">
-                    <i className="fa-solid fa-heart text-pink-200" />
-                    <span>{matchScore}% Match</span>
+                  {/* Compatibility label badge */}
+                  <div className="bg-white backdrop-blur-lg ring-1 ring-gray-200 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5 text-gray-900">
+                    <i className="fa-solid fa-heart text-pink-500" />
+                    <span>{matchScore}% · {compatLabel.label}</span>
                   </div>
+                  {/* Shared interests count badge */}
+                  {scoreBreakdown && scoreBreakdown.mutualInterests.length > 0 && (
+                    <div className="bg-emerald-500/40 backdrop-blur-lg ring-1 ring-emerald-300/50 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5">
+                      <i className="fa-solid fa-star text-emerald-200" />
+                      <span>{scoreBreakdown.mutualInterests.length} shared</span>
+                    </div>
+                  )}
+                  {/* Distance badge */}
                   {distance !== null && (
-                    <div className="bg-white/25 backdrop-blur-lg ring-1 ring-white/50 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5">
-                      <i className="fa-solid fa-location-dot text-blue-200" />
+                    <div className="bg-white backdrop-blur-lg ring-1 ring-gray-200 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5 text-gray-900">
+                      <i className="fa-solid fa-location-dot text-blue-600" />
                       <span>{distance < 1 ? '<1 km' : `${Math.round(distance)} km`}</span>
+                    </div>
+                  )}
+                  {/* Online recency badge */}
+                  {currentProfile?.isOnline && (
+                    <div className="bg-green-500/40 backdrop-blur-lg ring-1 ring-green-300/50 px-3 md:px-3.5 py-1.5 md:py-2 rounded-full text-[10px] md:text-xs font-bold flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-300 inline-block" />
+                      <span>Online</span>
                     </div>
                   )}
                 </div>

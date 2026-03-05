@@ -8,6 +8,7 @@ import LoginPage from './components/LoginPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
 import AccountSuspendedPage from './components/AccountSuspendedPage';
 import SwiperScreen from "./components/SwiperScreen";
+import DiscoveryPage from "./components/DiscoveryPage";
 import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
 import ModeratorPanel from './components/ModeratorPanel';
@@ -333,6 +334,11 @@ const AppContent: React.FC<{
           <Route path="/" element={
             <div className="flex-1 overflow-y-auto">
               <SwiperScreen currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} />
+            </div>
+          } />
+          <Route path="/discover" element={
+            <div className="flex-1 overflow-y-auto">
+              <DiscoveryPage currentUser={currentUser} />
             </div>
           } />
           <Route path="/chats" element={

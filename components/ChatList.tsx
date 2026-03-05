@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
 import { formatLastSeen } from '../services/lastSeenUtils';
 import ChatOptionsModal from './ChatOptionsModal';
 import { useAlert } from '../services/AlertContext';
+import StoryViewer, { StoryUser } from './StoryViewer';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,6 +217,99 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
   const [selectedChatUsername, setSelectedChatUsername] = useState('');
   const [optionsLoading,       setOptionsLoading]       = useState(false);
 
+  // ── Stories state ─────────────────────────────────────────────────────────
+  const [myStories, setMyStories] = useState<StoryUser | null>(null);
+  const [feedStories, setFeedStories] = useState<StoryUser[]>([]);
+  const [storyViewerOpen, setStoryViewerOpen] = useState(false);
+  const [storyViewerIndex, setStoryViewerIndex] = useState(0);
+  const [isViewingOwnStory, setIsViewingOwnStory] = useState(false);
+  const [uploadingStory, setUploadingStory] = useState(false);
+
+  // Combined stories for viewer
+  const allStories = useMemo(() => {
+    return myStories ? [myStories, ...feedStories] : feedStories;
+  }, [myStories, feedStories]);
+
+  // ── Load stories ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const loadStories = async () => {
+      try {
+        // Load user's own stories
+        const myStoriesRes = await apiClient.getMyStories();
+        if (myStoriesRes.stories && myStoriesRes.stories.length > 0 && currentUser) {
+          setMyStories({
+            id: currentUser.id,
+            name: 'Your Story',
+            avatar: currentUser.images?.[0] || '',
+            stories: myStoriesRes.stories.map((s: any) => ({
+              id: s.id,
+              imageUrl: s.mediaUrl,
+              duration: (s.duration || 5) * 1000,
+            })),
+          });
+        } else {
+          setMyStories(null);
+        }
+
+        // Load feed stories
+        const feedRes = await apiClient.getStoriesFeed(20, 0);
+        if (feedRes.feed && feedRes.feed.length > 0) {
+          const users: StoryUser[] = feedRes.feed.map((u: any) => ({
+            id: u.userId,
+            name: u.userName,
+            avatar: u.userAvatar || '',
+            stories: u.stories.map((s: any) => ({
+              id: s.id,
+              imageUrl: s.mediaUrl,
+              duration: (s.duration || 5) * 1000,
+            })),
+          }));
+          setFeedStories(users);
+        } else {
+          setFeedStories([]);
+        }
+      } catch (err) {
+        console.warn('[ChatList] Failed to load stories:', err);
+      }
+    };
+    loadStories();
+  }, [currentUser]);
+
+  // ── Handle add story (use existing image as story) ──────────────────────────
+  const handleAddStory = async () => {
+    if (!currentUser?.images || currentUser.images.length === 0) {
+      showAlert('No Photos', 'You need profile photos to create a story');
+      return;
+    }
+
+    // Show photo picker - for now use first image
+    const imageUrl = currentUser.images[0];
+    setUploadingStory(true);
+    try {
+      await apiClient.createStory(imageUrl, 'image', 5);
+      // Reload stories
+      const myStoriesRes = await apiClient.getMyStories();
+      if (myStoriesRes.stories && myStoriesRes.stories.length > 0 && currentUser) {
+        setMyStories({
+          id: currentUser.id,
+          name: 'Your Story',
+          avatar: currentUser.images?.[0] || '',
+          stories: myStoriesRes.stories.map((s: any) => ({
+            id: s.id,
+            imageUrl: s.mediaUrl,
+            duration: (s.duration || 5) * 1000,
+          })),
+        });
+      }
+      showAlert('Story Added!', 'Your story is now live');
+    } catch (err) {
+      console.error('[ChatList] Failed to add story:', err);
+      showAlert('Error', 'Failed to add story');
+    } finally {
+      setUploadingStory(false);
+    }
+  };
+
   // ── Data loading ────────────────────────────────────────────────────────────
 
   const loadData = useCallback(async (silent: boolean) => {
@@ -407,11 +501,14 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
 
   return (
     /* Outer shell: soft blush/pink background (visible behind the white card) */
-    <div className="h-full flex flex-col" style={{ background: 'linear-gradient(160deg, #fce8f0 0%, #f8e8fb 100%)' }}>
+    <div 
+      className="h-full flex flex-col max-w-full overflow-hidden" 
+      style={{ background: 'linear-gradient(160deg, #fce8f0 0%, #f8e8fb 100%)' }}
+    >
 
       {/* Header lives on the blush background */}
-      <div className="flex items-center justify-between px-5 pt-6 pb-4 shrink-0">
-        <h1 className="text-[30px] font-extrabold text-gray-900 tracking-tight">Messages</h1>
+      <div className="flex items-center justify-between px-4 md:px-5 pt-4 md:pt-6 pb-3 md:pb-4 shrink-0">
+        <h1 className="text-2xl md:text-[30px] font-extrabold text-gray-900 tracking-tight">Messages</h1>
         <div className="flex items-center gap-2">
           {refreshing && (
             <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
@@ -436,11 +533,11 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
       </div>
 
       {/* White card with rounded top corners */}
-      <div className="flex-1 bg-white rounded-t-[28px] flex flex-col overflow-hidden shadow-[0_-4px_24px_rgba(200,60,120,0.08)]">
+      <div className="flex-1 bg-white rounded-t-[20px] md:rounded-t-[28px] flex flex-col overflow-hidden shadow-[0_-4px_24px_rgba(200,60,120,0.08)]">
 
         {/* Search */}
-        <div className="px-5 pt-5 pb-3 shrink-0">
-          <div className="flex items-center gap-2.5 bg-gray-100 rounded-2xl px-4 py-3">
+        <div className="px-3 md:px-5 pt-4 md:pt-5 pb-2 md:pb-3">
+          <div className="flex items-center gap-2 bg-gray-100 rounded-xl md:rounded-2xl px-3 md:px-4 py-2 md:py-3">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round">
               <circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/>
             </svg>
@@ -466,31 +563,97 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         ) : (
           <div className="flex-1 overflow-y-auto min-h-0">
 
-            {/* Activities */}
-            {activityUsers.length > 0 && !searchQuery && (
-              <div className="px-5 pt-2 pb-4 shrink-0">
-                <h2 className="text-[16px] font-extrabold text-gray-900 mb-4">Activities</h2>
-                <div className="flex gap-5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-                  {currentUser && (
-                    <ActivityItem user={currentUser} isCurrentUser onClick={() => {}} />
-                  )}
-                  {activityUsers.map(user => (
-                    <ActivityItem
-                      key={user.id}
-                      user={user}
+            {/* Stories section - own story + feed */}
+            {(myStories || feedStories.length > 0) && !searchQuery && (
+              <div className="px-3 md:px-5 pt-2 pb-3 md:pb-4 shrink-0">
+                <h2 className="text-sm md:text-[16px] font-extrabold text-gray-900 mb-3 md:mb-4">Stories</h2>
+                <div className="flex gap-4 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+                  {/* Your own story / Add story button */}
+                  {myStories ? (
+                    <button
                       onClick={() => {
-                        const chat = chats.find(c => c.participants.includes(user.id));
-                        if (chat) openChat(chat.id, user);
+                        // View own story - find index in combined list
+                        const ownIndex = 0;
+                        setStoryViewerIndex(ownIndex);
+                        setIsViewingOwnStory(true);
+                        setStoryViewerOpen(true);
                       }}
-                    />
+                      className="flex flex-col items-center gap-1.5 shrink-0 group"
+                    >
+                      <div className="relative">
+                        <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-rose-500 via-rose-400 to-orange-400" />
+                        <img
+                          src={myStories.avatar}
+                          alt="Your Story"
+                          className="w-12 h-12 md:w-16 md:h-16 rounded-full object-cover border-2 border-white relative"
+                        />
+                        <span className="absolute bottom-0 right-0 w-4 h-4 md:w-5 md:h-5 bg-rose-500 text-white text-[10px] md:text-xs font-bold rounded-full flex items-center justify-center border-2 border-white">
+                          {myStories.stories.length}
+                        </span>
+                      </div>
+                      <span className="text-[10px] md:text-[12px] font-semibold text-gray-700 group-hover:text-rose-500 transition-colors max-w-[50px] md:max-w-[68px] truncate">
+                        Your Story
+                      </span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleAddStory}
+                      disabled={uploadingStory}
+                      className="flex flex-col items-center gap-1 shrink-0 group"
+                    >
+                      <div className="relative">
+                        <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
+                          {uploadingStory ? (
+                            <div className="w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-[10px] md:text-[12px] font-semibold text-gray-500 group-hover:text-rose-500 transition-colors max-w-[50px] md:max-w-[68px] truncate">
+                        Add Story
+                      </span>
+                    </button>
+                  )}
+                  {/* Feed stories */}
+                  {feedStories.map((user, idx) => (
+                    <button
+                      key={user.id}
+                      onClick={() => {
+                        setStoryViewerIndex(myStories ? idx + 1 : idx);
+                        setIsViewingOwnStory(false);
+                        setStoryViewerOpen(true);
+                      }}
+                      className="flex flex-col items-center gap-1.5 shrink-0 group"
+                    >
+                      <div className="relative">
+                        <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-rose-500 via-rose-400 to-orange-400" />
+                        <img
+                          src={user.avatar}
+                          alt={user.name}
+                          className="w-12 h-12 md:w-16 md:h-16 rounded-full object-cover border-2 border-white relative"
+                        />
+                        {user.stories.length > 1 && (
+                          <span className="absolute bottom-0 right-0 w-4 h-4 md:w-5 md:h-5 bg-rose-500 text-white text-[10px] md:text-xs font-bold rounded-full flex items-center justify-center border-2 border-white">
+                            {user.stories.length}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] md:text-[12px] font-semibold text-gray-700 group-hover:text-rose-500 transition-colors max-w-[50px] md:max-w-[68px] truncate">
+                        {user.name.split(' ')[0]}
+                      </span>
+                    </button>
                   ))}
                 </div>
               </div>
             )}
 
             {/* Messages section title */}
-            <div className="px-5 pb-2">
-              <h2 className="text-[16px] font-extrabold text-gray-900">Messages</h2>
+            <div className="px-3 md:px-5 pb-2">
+              <h2 className="text-sm md:text-[16px] font-extrabold text-gray-900">Messages</h2>
             </div>
 
             {filteredChats.length === 0 ? (
@@ -584,6 +747,18 @@ const ChatList: React.FC<{ currentUser?: UserProfile }> = ({ currentUser }) => {
         chatUsername={selectedChatUsername}
         loading={optionsLoading}
       />
+
+      {/* Story Viewer Modal */}
+      {storyViewerOpen && allStories.length > 0 && (
+        <StoryViewer
+          users={allStories}
+          initialUserIndex={storyViewerIndex}
+          onClose={() => setStoryViewerOpen(false)}
+          onReply={(userId, message) => {
+            console.log('[ChatList] Story reply:', userId, message);
+          }}
+        />
+      )}
     </div>
   );
 };

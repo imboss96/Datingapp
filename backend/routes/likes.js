@@ -160,6 +160,62 @@ router.get('/given/user', authMiddleware, async (req, res) => {
   }
 });
 
+// Get full user profiles for all users that the current user has liked
+// GET /api/likes/given/user/profiles
+router.get('/given/user/profiles', authMiddleware, async (req, res) => {
+  try {
+    const likerUserId = req.userId;
+    const { limit = 20, skip = 0 } = req.query;
+
+    // Get likes given by current user
+    const likes = await Like.find({ likerUserId })
+      .sort({ createdAt: -1 })
+      .skip(Number(skip))
+      .limit(Number(limit));
+
+    if (likes.length === 0) {
+      return res.json({
+        likerUserId,
+        totalLiked: 0,
+        users: []
+      });
+    }
+
+    // Get the profileUserIds
+    const profileUserIds = likes.map(like => like.profileUserId);
+
+    // Import User model dynamically to avoid issues
+    const { default: User } = await import('../models/User.js');
+
+    // Fetch full user profiles
+    const projection = '-passwordHash -email -googleId -facebookId -tiktokId';
+    const users = await User.find({ id: { $in: profileUserIds } })
+      .select(projection);
+
+    // Sort by likes order (most recent first)
+    const userMap = new Map(users.map(u => [u.id, u]));
+    const orderedUsers = profileUserIds
+      .map(id => userMap.get(id))
+      .filter(Boolean);
+
+    // Attach likeType to each user
+    const likesMap = new Map(likes.map(l => [l.profileUserId, l.likeType]));
+    const usersWithLikeType = orderedUsers.map(user => ({
+      ...user.toObject(),
+      likeType: likesMap.get(user.id) || 'like'
+    }));
+
+    res.json({
+      likerUserId,
+      totalLiked: await Like.countDocuments({ likerUserId }),
+      users: usersWithLikeType
+    });
+  } catch (err) {
+    console.error('[ERROR] Getting liked user profiles failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get all likes received by a user
 // GET /api/likes/received/user
 router.get('/received/user', authMiddleware, async (req, res) => {

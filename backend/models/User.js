@@ -41,6 +41,18 @@ const userSchema = new mongoose.Schema({
   emailVerifiedAt: { type: Date },
   isPhotoVerified: { type: Boolean, default: false },
   photoVerifiedAt: { type: Date },
+  // Lifestyle Preferences (optional - used for enhanced matching Phase 2)
+  lifestyle: {
+    relationshipGoal: { type: String, enum: ['casual', 'serious', 'friendship', 'networking'] },
+    smoking:          { type: String, enum: ['never', 'sometimes', 'regularly'] },
+    drinking:         { type: String, enum: ['never', 'socially', 'regularly'] },
+    exercise:         { type: String, enum: ['never', 'sometimes', 'regularly', 'daily'] },
+    pets:             { type: String, enum: ['none', 'cats', 'dogs', 'both', 'other'] },
+    children:         { type: String, enum: ['none', 'want', 'have', 'dont_want'] },
+    religion:         { type: String },
+    education:        { type: String, enum: ['high_school', 'college', 'bachelors', 'masters', 'phd', 'other'] },
+    languages:        [{ type: String }],
+  },
   // Trust & Badges
   badges: [{ type: String }],
   trustScore: { type: Number, default: 0 },

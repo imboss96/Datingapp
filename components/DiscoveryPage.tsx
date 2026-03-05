@@ -1,27 +1,50 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import ProfileDiscovery from './ProfileDiscovery';
 import ReportBlockModal from './ReportBlockModal';
+import apiClient from '../services/apiClient';
 
 interface DiscoveryPageProps {
   currentUser: UserProfile;
-  allProfiles: UserProfile[];
-  blockedUsers: string[];
-  onBlockUser: (userId: string) => void;
-  onReportUser: (userId: string, reason: string, description: string) => void;
+  allProfiles?: UserProfile[];
+  blockedUsers?: string[];
+  onBlockUser?: (userId: string) => void;
+  onReportUser?: (userId: string, reason: string, description: string) => void;
 }
 
 const DiscoveryPage: React.FC<DiscoveryPageProps> = ({
   currentUser,
-  allProfiles,
-  blockedUsers,
-  onBlockUser,
-  onReportUser,
+  allProfiles = [],
+  blockedUsers = [],
+  onBlockUser = () => {},
+  onReportUser = () => {},
 }) => {
   const navigate = useNavigate();
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [profiles, setProfiles] = useState<UserProfile[]>(allProfiles);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch profiles if not provided
+  useEffect(() => {
+    if (!allProfiles || allProfiles.length === 0) {
+      setIsLoading(true);
+      (async () => {
+        try {
+          const users = await apiClient.getAllUsers(10000);
+          setProfiles(users || []);
+        } catch (err) {
+          console.error('Failed to load profiles:', err);
+          setProfiles([]);
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+    } else {
+      setProfiles(allProfiles);
+    }
+  }, [allProfiles]);
 
   const handleProfileSelect = (profile: UserProfile) => {
     setSelectedProfile(profile);
@@ -145,12 +168,28 @@ const DiscoveryPage: React.FC<DiscoveryPageProps> = ({
                 </div>
               </div>
             </div>
+          ) : isLoading ? (
+            // Loading state
+            <div className="flex items-center justify-center h-64">
+              <div className="space-y-4 text-center">
+                <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-rose-500 animate-spin mx-auto"></div>
+                <p className="text-gray-500 font-semibold">Loading profiles...</p>
+              </div>
+            </div>
+          ) : profiles.length === 0 ? (
+            // Empty state
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center space-y-4">
+                <i className="fa-solid fa-person-circle text-6xl text-gray-300"></i>
+                <p className="text-gray-500 font-semibold">No profiles available</p>
+              </div>
+            </div>
           ) : (
             // Grid View
             <ProfileDiscovery
               currentUser={currentUser}
-              allProfiles={allProfiles}
-              blockedUsers={blockedUsers}
+              allProfiles={profiles}
+              blockedUsers={blockedUsers || currentUser?.blockedUsers || []}
               onProfileSelect={handleProfileSelect}
             />
           )}

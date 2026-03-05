@@ -212,9 +212,9 @@ class APIClient {
     return this.request(`/users?limit=${limit}`);
   }
 
-  // ✅ UPDATED: now accepts lat/lon to enable geo-based profile fetching
+  // ✅ UPDATED: uses /users/discover endpoint with multi-factor scoring
   async getProfilesForSwiping(
-    limit: number = 100,
+    limit: number = 30,
     skip: number = 0,
     excludeSeen: boolean = true,
     lat?: number | null,
@@ -223,15 +223,29 @@ class APIClient {
     const params = new URLSearchParams();
     params.append('limit', String(limit));
     params.append('skip', String(skip));
-    params.append('excludeSeen', String(excludeSeen));
 
-    // Pass coordinates so backend uses $geoNear aggregation
+    // Pass coordinates for proximity scoring
     if (lat != null && lon != null) {
       params.append('lat', String(lat));
       params.append('lon', String(lon));
     }
 
-    return this.request(`/users?${params.toString()}`, { method: 'GET' });
+    // Use the new scored discovery endpoint; fall back to legacy /users on error
+    try {
+      return await this.request(`/users/discover?${params.toString()}`, { method: 'GET' });
+    } catch (err) {
+      console.warn('[apiClient] /users/discover failed, falling back to /users', err);
+      // Include excludeSeen in fallback to maintain same behavior
+      const fallbackParams = new URLSearchParams();
+      fallbackParams.append('limit', String(limit));
+      fallbackParams.append('skip', String(skip));
+      fallbackParams.append('excludeSeen', String(excludeSeen));
+      if (lat != null && lon != null) {
+        fallbackParams.append('lat', String(lat));
+        fallbackParams.append('lon', String(lon));
+      }
+      return this.request(`/users?${fallbackParams.toString()}`, { method: 'GET' });
+    }
   }
 
   async updateProfile(userId: string, updates: any) {
@@ -847,6 +861,51 @@ class APIClient {
   async getGivenLikes() {
     return this.request('/likes/given/user', {
       method: 'GET',
+    });
+  }
+
+  // Get full user profiles for users that the current user has liked
+  async getLikedUserProfiles(limit: number = 20, skip: number = 0) {
+    return this.request(`/likes/given/user/profiles?limit=${limit}&skip=${skip}`, {
+      method: 'GET',
+    });
+  }
+
+  // ─── Stories API ─────────────────────────────────────────────────────────
+
+  // Create a new story
+  async createStory(mediaUrl: string, mediaType: 'image' | 'video' = 'image', duration: number = 5) {
+    return this.request('/stories', {
+      method: 'POST',
+      body: JSON.stringify({ mediaUrl, mediaType, duration }),
+    });
+  }
+
+  // Get my stories
+  async getMyStories() {
+    return this.request('/stories/me', {
+      method: 'GET',
+    });
+  }
+
+  // Get stories feed (all users' stories)
+  async getStoriesFeed(limit: number = 50, skip: number = 0) {
+    return this.request(`/stories/feed?limit=${limit}&skip=${skip}`, {
+      method: 'GET',
+    });
+  }
+
+  // Mark story as viewed
+  async markStoryViewed(storyId: string) {
+    return this.request(`/stories/${storyId}/view`, {
+      method: 'POST',
+    });
+  }
+
+  // Delete a story
+  async deleteStory(storyId: string) {
+    return this.request(`/stories/${storyId}`, {
+      method: 'DELETE',
     });
   }
 

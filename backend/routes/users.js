@@ -6,6 +6,7 @@ import PhotoVerification from '../models/PhotoVerification.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { v4 as uuidv4 } from 'uuid';
 import { sendNotification } from '../utils/websocket.js';
+import { calcCompatibility } from '../utils/matchingScore.js';
 
 const router = express.Router();
 
@@ -67,6 +68,81 @@ router.get('/:userId', async (req, res) => {
     const [userWithVerification] = await attachVerificationInfo([user]);
     res.json(userWithVerification);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── GET /users/discover  ────────────────────────────────────────────────────
+// Enhanced discovery endpoint: fetches profiles, scores them with the
+// multi-factor compatibility algorithm, and returns them pre-sorted.
+// Query params: limit, skip, lat, lon
+router.get('/discover', authMiddleware, async (req, res) => {
+  try {
+    const { limit = 30, skip = 0, lat, lon } = req.query;
+    const currentUserId = req.userId;
+
+    const currentUser = await User.findOne({ id: currentUserId });
+    if (!currentUser) return res.status(404).json({ error: 'User not found' });
+
+    const projection = '-passwordHash -email -googleId -facebookId -tiktokId';
+
+    // Exclude current user and users already swiped
+    const q = {
+      id:        { $ne: currentUserId },
+      suspended: { $ne: true },
+      banned:    { $ne: true },
+    };
+
+    let users = await User.find(q)
+      .select(projection)
+      .skip(Number(skip))
+      .limit(Math.min(Number(limit), 200));
+
+    // Convert GeoJSON coords to simple { latitude, longitude } format
+    const transformed = users.map(u => {
+      const obj = u.toObject();
+      if (obj.coordinates?.coordinates) {
+        const [longitude, latitude] = obj.coordinates.coordinates;
+        obj.coordinates = { latitude, longitude };
+      }
+      return obj;
+    });
+
+    // Attach verification info
+    const withVerification = await attachVerificationInfo(transformed);
+
+    // Override currentUser coords format for scoring
+    let currentUserForScoring = currentUser.toObject();
+    if (currentUserForScoring.coordinates?.coordinates) {
+      const [longitude, latitude] = currentUserForScoring.coordinates.coordinates;
+      currentUserForScoring.coordinates = { latitude, longitude };
+    }
+    // Allow caller to pass explicit coords (e.g., from Geolocation API)
+    // Validate coordinates are valid numbers before using
+    if (lat != null && lon != null) {
+      const parsedLat = Number(lat);
+      const parsedLon = Number(lon);
+      if (!isNaN(parsedLat) && !isNaN(parsedLon) && 
+          parsedLat >= -90 && parsedLat <= 90 &&
+          parsedLon >= -180 && parsedLon <= 180) {
+        currentUserForScoring.coordinates = { latitude: parsedLat, longitude: parsedLon };
+      } else {
+        console.warn('[WARN] Invalid coordinates provided:', { lat, lon });
+      }
+    }
+
+    // Score + attach matchScore to each profile
+    const scored = withVerification.map(profile => {
+      const compat = calcCompatibility(currentUserForScoring, profile);
+      return { ...profile, matchScore: compat.overallScore };
+    });
+
+    // Sort descending by matchScore
+    scored.sort((a, b) => b.matchScore - a.matchScore);
+
+    res.json(scored);
+  } catch (err) {
+    console.error('[ERROR] /users/discover failed:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -217,27 +293,10 @@ router.post('/:userId/swipe', authMiddleware, async (req, res) => {
     currentUser.swipes.push(targetUserId);
     await currentUser.save();
 
-    // Calculate compatibility scores
-    const calculateCompatibility = (user1, user2) => {
-      if (!user1.interests || !user2.interests || user1.interests.length === 0) {
-        return { interestMatch: 0, ageMatch: 0, mutualInterests: [] };
-      }
-      const commonInterests = user1.interests.filter(interest => 
-        user2.interests.includes(interest)
-      ).length;
-      const totalUniqueInterests = new Set([...user1.interests, ...user2.interests]).size;
-      const interestMatch = Math.round((commonInterests / totalUniqueInterests) * 100);
-      const mutualInterests = user1.interests.filter(i => user2.interests.includes(i));
-      
-      // Age compatibility (ideal: within 5 years)
-      const ageDiff = Math.abs(user1.age - user2.age);
-      const ageMatch = Math.max(0, 100 - (ageDiff * 10));
-      
-      return { interestMatch, ageMatch, mutualInterests };
-    };
-
-    const { interestMatch, ageMatch, mutualInterests } = calculateCompatibility(currentUser, targetUser);
-    console.log(`[Swipe] ${req.params.userId} ${action}s ${targetUserId}. Interest: ${interestMatch}%, Age: ${ageMatch}%`);
+    // Calculate compatibility scores using shared utility
+    const compat = calcCompatibility(currentUser, targetUser);
+    const { interestMatch, ageMatch, mutualInterests, overallScore, proximityScore, recencyScore, trustScore, bioScore, distKm } = compat;
+    console.log(`[Swipe] ${req.params.userId} ${action}s ${targetUserId}. Score: ${overallScore}/100  (Interests: ${interestMatch}%, Age: ${ageMatch}%)`);
 
     // Record like or superlike in the Like model
     if (action === 'like' || action === 'superlike') {
@@ -293,6 +352,12 @@ router.post('/:userId/swipe', authMiddleware, async (req, res) => {
         interestMatch,
         ageMatch,
         mutualInterests,
+        overallScore,
+        proximityScore,
+        recencyScore,
+        trustScore,
+        bioScore,
+        distKm,
         notified: true
       });
       
@@ -388,6 +453,12 @@ router.post('/:userId/swipe', authMiddleware, async (req, res) => {
         interestMatch: Math.max(interestMatch, 65), // Boost demo matches to show good compatibility
         ageMatch: Math.max(ageMatch, 70),
         mutualInterests: mutualInterests.length > 0 ? mutualInterests : ['Trying new things'],
+        overallScore:   Math.max(overallScore, 60),
+        proximityScore,
+        recencyScore,
+        trustScore,
+        bioScore,
+        distKm,
         notified: true
       });
       
