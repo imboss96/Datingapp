@@ -214,7 +214,7 @@ router.put('/:userId', async (req, res) => {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    const { name, age, bio, location, interests, images, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted, legalAcceptanceDate, coordinates } = req.body;
+    const { name, age, bio, location, interests, images, videos, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted, legalAcceptanceDate, coordinates } = req.body;
     console.log('[DEBUG Backend] Updating user profile with:', { name, age, bio, location, interests, username });
     
     // If username is being updated, check if it's available
@@ -230,6 +230,9 @@ router.put('/:userId', async (req, res) => {
     }
 
     const updateData = { name, age, bio, location, interests, images, updatedAt: new Date() };
+    if (videos) {
+      updateData.videos = videos;
+    }
     if (coordinates) {
       updateData.coordinates = { type: 'Point', coordinates };
     }

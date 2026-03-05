@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   age: { type: Number, required: true },
   bio: { type: String },
   images: [{ type: String }],
+  videos: [{ type: String }], // Video URLs (for Tinder-like swiping)
   profilePicture: { type: String },
   isPremium: { type: Boolean, default: false },
   role: { type: String, enum: ['USER', 'MODERATOR', 'ADMIN'], default: 'USER' },

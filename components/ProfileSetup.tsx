@@ -286,6 +286,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
   const [longitude,         setLongitude]         = useState<number | null>(null);
   const [bio,               setBio]               = useState('');
   const [uploadedImages,    setUploadedImages]    = useState<string[]>(profilePicture ? [profilePicture] : []);
+  const [uploadedVideos,    setUploadedVideos]    = useState<string[]>([]); // ✅ Videos for swiping
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [loading,           setLoading]           = useState(false);
   const [error,             setError]             = useState('');
@@ -339,14 +340,26 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
     if (!files) return;
     Array.from(files).forEach(file => {
       const reader = new FileReader();
-      reader.onloadend = () =>
-        setUploadedImages(prev => prev.length < 6 ? [...prev, reader.result as string] : prev);
+      const isVideo = file.type.startsWith('video/');
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        if (isVideo) {
+          // Add to videos array (max 3 videos)
+          setUploadedVideos(prev => prev.length < 3 ? [...prev, dataUrl] : prev);
+        } else {
+          // Add to images array (max 6 images)
+          setUploadedImages(prev => prev.length < 6 ? [...prev, dataUrl] : prev);
+        }
+      };
       reader.readAsDataURL(file);
     });
   };
 
   const removeImage = (idx: number) =>
     setUploadedImages(prev => prev.filter((_, i) => i !== idx));
+
+  const removeVideo = (idx: number) => // ✅ Remove video
+    setUploadedVideos(prev => prev.filter((_, i) => i !== idx));
 
   const handleSubmit = async () => {
     if (selectedInterests.length === 0) { setError('Please select at least one interest'); return; }
@@ -356,6 +369,7 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
         username, name, age: parseInt(age), bio, location, gender,
         interests: selectedInterests,
         images: uploadedImages,
+        videos: uploadedVideos, // ✅ Include videos
         profilePicture: uploadedImages[0] || profilePicture,
       };
       if (latitude !== null && longitude !== null)
@@ -509,57 +523,112 @@ const ProfileSetup: React.FC<ProfileSetupProps> = ({
         style={{ display: 'none' }}
         onChange={handleImageUpload}
       />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 20 }}>
-        {Array.from({ length: 4 }).map((_, idx) => {
-          const img = uploadedImages[idx];
-          return img ? (
-            <div key={idx} style={{
-              position: 'relative', borderRadius: 16, overflow: 'hidden',
-              aspectRatio: '3/4', boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-            }}>
-              <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              {idx === 0 && (
+      
+      {/* Photos Section */}
+      <div>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111', marginTop: 20, marginBottom: 10 }}>Photos</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {Array.from({ length: 4 }).map((_, idx) => {
+            const img = uploadedImages[idx];
+            return img ? (
+              <div key={idx} style={{
+                position: 'relative', borderRadius: 16, overflow: 'hidden',
+                aspectRatio: '3/4', boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+              }}>
+                <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                {idx === 0 && (
+                  <span style={{
+                    position: 'absolute', top: 7, left: 7,
+                    background: '#FF4458', color: '#fff',
+                    fontSize: 8, fontWeight: 800, letterSpacing: 0.5,
+                    padding: '2px 6px', borderRadius: 20,
+                  }}>PRIMARY</span>
+                )}
+                <button onClick={() => removeImage(idx)} style={{
+                  position: 'absolute', top: 7, right: 7,
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.45)', color: '#fff',
+                  border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 9, fontWeight: 700,
+                }}>✕</button>
+              </div>
+            ) : (
+              <button key={idx} onClick={() => fileInputRef.current?.click()} style={{
+                aspectRatio: '3/4', borderRadius: 16,
+                border: '2px dashed #FFBFC6',
+                background: 'linear-gradient(135deg,#fff5f6,#fff0f4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+              }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: '50%',
+                  background: 'linear-gradient(135deg,#FF4458,#FF7854)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 5px 14px rgba(255,68,88,0.38)',
+                }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path d="M9 3v12M3 9h12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+                  </svg>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Videos Section */}
+      <div>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#111', marginTop: 20, marginBottom: 10 }}>Videos (Optional) 🎬</h3>
+        <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>Add up to 3 short videos. They'll play silently on your profile!</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          {Array.from({ length: 3 }).map((_, idx) => {
+            const video = uploadedVideos[idx];
+            return video ? (
+              <div key={idx} style={{
+                position: 'relative', borderRadius: 16, overflow: 'hidden',
+                aspectRatio: '1/1.3', boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                background: '#000',
+              }}>
+                <video src={video} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 <span style={{
                   position: 'absolute', top: 7, left: 7,
                   background: '#FF4458', color: '#fff',
-                  fontSize: 8, fontWeight: 800, letterSpacing: 0.5,
-                  padding: '2px 6px', borderRadius: 20,
-                }}>PRIMARY</span>
-              )}
-              <button onClick={() => removeImage(idx)} style={{
-                position: 'absolute', top: 7, right: 7,
-                width: 22, height: 22, borderRadius: '50%',
-                background: 'rgba(0,0,0,0.45)', color: '#fff',
-                border: 'none', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 9, fontWeight: 700,
-              }}>✕</button>
-            </div>
-          ) : (
-            <button key={idx} onClick={() => fileInputRef.current?.click()} style={{
-              aspectRatio: '3/4', borderRadius: 16,
-              border: '2px dashed #FFBFC6',
-              background: 'linear-gradient(135deg,#fff5f6,#fff0f4)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer',
-            }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: '50%',
-                background: 'linear-gradient(135deg,#FF4458,#FF7854)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 5px 14px rgba(255,68,88,0.38)',
-              }}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <path d="M9 3v12M3 9h12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
-                </svg>
+                  fontSize: 10, fontWeight: 700,
+                  padding: '3px 7px', borderRadius: 4,
+                }}>🎬</span>
+                <button onClick={() => removeVideo(idx)} style={{
+                  position: 'absolute', top: 7, right: 7,
+                  width: 22, height: 22, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.45)', color: '#fff',
+                  border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 9, fontWeight: 700,
+                }}>✕</button>
               </div>
-            </button>
-          );
-        })}
+            ) : (
+              <button key={idx} onClick={() => fileInputRef.current?.click()} style={{
+                aspectRatio: '1/1.3', borderRadius: 16,
+                border: '2px dashed #FFB0B8',
+                background: 'linear-gradient(135deg,#fff9fa,#fff5f7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: 'linear-gradient(135deg,#FF7854,#FFB0B8)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 4px 10px rgba(255,120,84,0.3)',
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+                    <path d="M9 3v12M3 9h12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+                  </svg>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <p style={{ fontSize: 11, color: '#ccc', textAlign: 'center', marginTop: 10 }}>
-        Tap + to add photos or videos
-      </p>
     </Shell>
   );
 

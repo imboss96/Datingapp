@@ -66,6 +66,7 @@ export interface UserProfile {
   age: number;
   bio: string;
   images: string[];
+  videos?: string[]; // Video URLs for Tinder-like swiping
   isPremium: boolean;
   role: UserRole;
   location: string;
