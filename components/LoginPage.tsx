@@ -40,9 +40,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
       interestsIsArray: Array.isArray(user.interests),
       interestsLength: Array.isArray(user.interests) ? user.interests.length : 'N/A'
     });
-    const isComplete = user.interests && Array.isArray(user.interests) && user.interests.length > 0 && 
-           user.location && user.location !== 'Not specified' && 
-           user.age && user.age > 0;
+    const normalizedGender = typeof user.gender === 'string' ? user.gender.trim().toLowerCase() : '';
+    const isComplete = user.interests && Array.isArray(user.interests) && user.interests.length > 0 &&
+           user.images && Array.isArray(user.images) && user.images.length > 0 &&
+           user.username && user.username.trim().length >= 3 &&
+           user.location && user.location !== 'Not specified' &&
+           user.age && user.age >= 18 &&
+           ['man', 'woman', 'other'].includes(normalizedGender);
     console.log('[DEBUG LoginPage] Profile complete:', isComplete);
     return isComplete;
   };
@@ -109,6 +113,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
             id: me.id,
             name: me.name,
             username: me.username || '',
+            email: me.email || email,
+            gender: me.gender || undefined,
             age: me.age || 25,
             bio: me.bio || 'Welcome to lunesa!',
             images: me.images || [],
@@ -200,6 +206,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
         id: me.id,
         name: me.name,
         username: me.username || '',
+        email: me.email || decoded.email,
+        gender: me.gender || undefined,
         age: me.age || 25,
         bio: me.bio || 'Welcome to lunesa!',
         images: me.images || [],
@@ -275,6 +283,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onClose, isModal 
                 id: me.id,
                 name: me.name,
                 username: me.username || '',
+                email: me.email || email,
+                gender: me.gender || undefined,
                 age: me.age || 25,
                 bio: me.bio || 'Welcome to lunesa!',
                 images: me.images || [],

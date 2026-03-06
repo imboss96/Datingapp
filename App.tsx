@@ -51,6 +51,60 @@ const INITIAL_ME: UserProfile = {
   reportedUsers: []
 };
 
+const parseProfileInterests = (interests: unknown): string[] => {
+  if (Array.isArray(interests)) {
+    return interests.filter((interest): interest is string => typeof interest === 'string' && interest.trim().length > 0);
+  }
+
+  if (typeof interests === 'string') {
+    return interests.split(',').map((interest) => interest.trim()).filter(Boolean);
+  }
+
+  return [];
+};
+
+const isProfileSetupComplete = (user: Partial<UserProfile> | null): boolean => {
+  if (!user) return false;
+
+  const normalizedGender = typeof user.gender === 'string' ? user.gender.trim().toLowerCase() : '';
+  const interests = parseProfileInterests(user.interests);
+  const images = Array.isArray(user.images) ? user.images.filter(Boolean) : [];
+  const username = typeof user.username === 'string' ? user.username.trim() : '';
+  const location = typeof user.location === 'string' ? user.location.trim() : '';
+  const age = Number(user.age);
+
+  return Boolean(
+    normalizedGender &&
+    ['man', 'woman', 'other'].includes(normalizedGender) &&
+    username.length >= 3 &&
+    age >= 18 &&
+    location &&
+    location !== 'Not specified' &&
+    interests.length > 0 &&
+    images.length > 0
+  );
+};
+
+const buildCompletedProfileUser = (baseUser: UserProfile, userData: any): UserProfile => {
+  const interests = parseProfileInterests(userData.interests);
+  const parsedAge = Number.parseInt(String(userData.age), 10);
+
+  return {
+    ...baseUser,
+    ...userData,
+    age: Number.isFinite(parsedAge) && parsedAge > 0 ? parsedAge : baseUser.age,
+    bio: userData.bio ?? baseUser.bio,
+    location: userData.location ?? baseUser.location,
+    username: userData.username ?? baseUser.username,
+    gender: userData.gender ?? baseUser.gender,
+    images: Array.isArray(userData.images) ? userData.images : baseUser.images,
+    interests: interests.length > 0 ? interests : baseUser.interests,
+    termsOfServiceAccepted: userData.termsOfServiceAccepted ?? baseUser.termsOfServiceAccepted ?? true,
+    privacyPolicyAccepted: userData.privacyPolicyAccepted ?? baseUser.privacyPolicyAccepted ?? true,
+    cookiePolicyAccepted: userData.cookiePolicyAccepted ?? baseUser.cookiePolicyAccepted ?? true,
+  };
+};
+
 const AppContent: React.FC<{
   currentUser: UserProfile | null;
   setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile | null>>;
@@ -104,6 +158,13 @@ const AppContent: React.FC<{
     currentUser.termsOfServiceAccepted &&
     currentUser.privacyPolicyAccepted
   ) : false;
+  const requiresProfileSetup = Boolean(
+    currentUser &&
+    currentUser.role === UserRole.USER &&
+    hasAcceptedLegal &&
+    !isProfileSetupComplete(currentUser)
+  );
+  const profileSetupUser = (newSignupUser || currentUser) as UserProfile | null;
 
   if (!currentUser || !currentUser.id) {
     return (
@@ -131,7 +192,10 @@ const AppContent: React.FC<{
                 setShowTerms(true);
               } else {
                 if (user.termsOfServiceAccepted && user.privacyPolicyAccepted) {
+                  const needsProfileSetup = user.role === UserRole.USER && !isProfileSetupComplete(user);
                   setCurrentUser(user);
+                  setNewSignupUser(needsProfileSetup ? user : null);
+                  setShowProfileSetup(needsProfileSetup);
                 } else {
                   setNewSignupUser(user);
                   setShowTerms(true);
@@ -180,13 +244,15 @@ const AppContent: React.FC<{
                       });
                       const refreshed = await apiClient.getCurrentUser();
                       const persistedUser = refreshed as UserProfile;
-                      const needsProfileSetup = !persistedUser.interests || persistedUser.interests.length === 0 || !persistedUser.location || !persistedUser.age;
+                      const needsProfileSetup = !isProfileSetupComplete(persistedUser);
                       if (needsProfileSetup) {
+                        setCurrentUser(persistedUser);
                         setNewSignupUser(persistedUser);
                         setShowProfileSetup(true);
                       } else {
                         setCurrentUser(persistedUser);
                         setNewSignupUser(null);
+                        setShowProfileSetup(false);
                       }
                     } catch (err) {
                       console.warn('[DEBUG App] Failed to persist legal acceptance:', err);
@@ -205,27 +271,10 @@ const AppContent: React.FC<{
             <ProfileSetup
               userId={newSignupUser.id}
               name={newSignupUser.name}
-              email={newSignupUser.name + '@lunesa.com'}
+              email={newSignupUser.email || `${newSignupUser.name}@lunesa.com`}
               profilePicture={newSignupUser.images?.[0]}
               onComplete={(userData: any) => {
-                let interests: string[] = [];
-                if (userData.interests) {
-                  if (Array.isArray(userData.interests)) {
-                    interests = userData.interests;
-                  } else if (typeof userData.interests === 'string') {
-                    interests = userData.interests.split(',').map((i: string) => i.trim()).filter((i: string) => i);
-                  }
-                }
-                const completeUser: UserProfile = {
-                  ...newSignupUser,
-                  age: parseInt(userData.age) || newSignupUser.age,
-                  bio: userData.bio || newSignupUser.bio,
-                  location: userData.location || newSignupUser.location,
-                  interests,
-                  termsOfServiceAccepted: true,
-                  privacyPolicyAccepted: true,
-                  cookiePolicyAccepted: true
-                };
+                const completeUser = buildCompletedProfileUser(newSignupUser, userData);
                 setCurrentUser(completeUser);
                 setShowProfileSetup(false);
                 setNewSignupUser(null);

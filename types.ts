@@ -63,6 +63,7 @@ export interface UserProfile {
   name: string;
   username?: string;
   email?: string;
+  gender?: 'Man' | 'Woman' | 'Other' | string;
   age: number;
   bio: string;
   images: string[];

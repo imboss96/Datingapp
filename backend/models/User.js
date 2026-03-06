@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema({
   tiktokId: { type: String, sparse: true },
   name: { type: String, required: true },
   username: { type: String, unique: true, sparse: true, lowercase: true, index: true },
+  gender: { type: String, trim: true },
   age: { type: Number, required: true },
   bio: { type: String },
   images: [{ type: String }],

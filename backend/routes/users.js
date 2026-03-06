@@ -10,6 +10,23 @@ import { calcCompatibility } from '../utils/matchingScore.js';
 
 const router = express.Router();
 
+const normalizeGender = (gender) => {
+  if (gender === undefined || gender === null || gender === '') {
+    return undefined;
+  }
+
+  const normalized = String(gender).trim().toLowerCase();
+  const genderMap = {
+    man: 'Man',
+    male: 'Man',
+    woman: 'Woman',
+    female: 'Woman',
+    other: 'Other',
+  };
+
+  return genderMap[normalized] || null;
+};
+
 // Helper to attach verification info to users
 async function attachVerificationInfo(users) {
   const userIds = users.map(u => u.id || u._id);
@@ -214,8 +231,8 @@ router.put('/:userId', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
-    const { name, age, bio, location, interests, images, videos, username, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted, legalAcceptanceDate, coordinates } = req.body;
-    console.log('[DEBUG Backend] Updating user profile with:', { name, age, bio, location, interests, username });
+    const { name, age, bio, location, interests, images, videos, username, gender, termsOfServiceAccepted, privacyPolicyAccepted, cookiePolicyAccepted, legalAcceptanceDate, coordinates } = req.body;
+    console.log('[DEBUG Backend] Updating user profile with:', { name, age, bio, location, interests, username, gender });
     
     // If username is being updated, check if it's available
     if (username) {
@@ -229,9 +246,17 @@ router.put('/:userId', authMiddleware, async (req, res) => {
       }
     }
 
+    const normalizedGender = normalizeGender(gender);
+    if (gender !== undefined && normalizedGender === null) {
+      return res.status(400).json({ error: 'Invalid gender value' });
+    }
+
     const updateData = { name, age, bio, location, interests, images, updatedAt: new Date() };
     if (videos) {
       updateData.videos = videos;
+    }
+    if (normalizedGender !== undefined) {
+      updateData.gender = normalizedGender;
     }
     if (coordinates) {
       updateData.coordinates = { type: 'Point', coordinates };
