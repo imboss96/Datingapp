@@ -446,6 +446,26 @@ const updateChatEarningReview = async ({ chatId, moderatorId, action, reason = '
   };
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DEBUG ENDPOINT - Check token and authentication status
+// ═══════════════════════════════════════════════════════════════════════════
+router.get('/debug/auth-status', modOnlyMiddleware, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      authenticated: true,
+      userId: req.userId,
+      userRole: req.userRole,
+      isModerator: req.userRole === 'MODERATOR' || req.userRole === 'ADMIN',
+      isAdmin: req.userRole === 'ADMIN',
+      timestamp: new Date().toISOString(),
+      message: 'Token is valid. Authentication working correctly!'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get auth status' });
+  }
+});
+
 // Warn user
 router.post('/user-action', modOnlyMiddleware, async (req, res) => {
   try {
