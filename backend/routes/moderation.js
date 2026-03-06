@@ -2464,4 +2464,133 @@ router.get('/activity/chat/:chatId', adminOnlyMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * GET /moderation/all-transactions
+ * Get all user transactions (coin purchases and premium upgrades) for moderator dashboard
+ */
+router.get('/all-transactions', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { limit = 50, skip = 0, type, status } = req.query;
+
+    // Build filter
+    const filter = {};
+    if (type) filter.type = type; // COIN_PURCHASE, PREMIUM_UPGRADE, COIN_DEDUCTION
+    if (status) filter.status = status; // PENDING, COMPLETED, FAILED, CANCELLED
+
+    // Get transactions with user details
+    const transactions = await Transaction.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .lean();
+
+    // Fetch user details for each transaction
+    const enrichedTransactions = await Promise.all(
+      transactions.map(async (tx) => {
+        const user = await User.findOne({ id: tx.userId }).select('id username name email images premiumExpiresAt isPremium').lean();
+        return {
+          ...tx,
+          user: user ? {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            email: user.email,
+            avatar: user.images?.[0] || null,
+            isPremium: user.isPremium,
+            premiumExpiresAt: user.premiumExpiresAt
+          } : null
+        };
+      })
+    );
+
+    // Get total count
+    const total = await Transaction.countDocuments(filter);
+
+    // Calculate summary stats
+    const summary = await Transaction.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: '$type',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' }
+        }
+      }
+    ]);
+
+    const stats = {
+      totalTransactions: total,
+      byType: {}
+    };
+
+    summary.forEach(item => {
+      stats.byType[item._id] = {
+        count: item.count,
+        totalAmount: item.totalAmount
+      };
+    });
+
+    res.json({
+      success: true,
+      transactions: enrichedTransactions,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        skip: parseInt(skip),
+        hasMore: parseInt(skip) + parseInt(limit) < total
+      },
+      stats
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to fetch all transactions:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /moderation/transactions/:userId
+ * Get transactions for a specific user
+ */
+router.get('/transactions/:userId', modOnlyMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { limit = 20, skip = 0 } = req.query;
+
+    // Get user's transactions
+    const transactions = await Transaction.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .skip(parseInt(skip))
+      .lean();
+
+    const total = await Transaction.countDocuments({ userId });
+
+    // Get user details
+    const user = await User.findOne({ id: userId }).select('id username name email images premiumExpiresAt isPremium').lean();
+
+    res.json({
+      success: true,
+      user: user ? {
+        id: user.id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        avatar: user.images?.[0] || null,
+        isPremium: user.isPremium,
+        premiumExpiresAt: user.premiumExpiresAt
+      } : null,
+      transactions,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        skip: parseInt(skip),
+        hasMore: parseInt(skip) + parseInt(limit) < total
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to fetch user transactions:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

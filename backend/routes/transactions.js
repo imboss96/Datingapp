@@ -109,25 +109,44 @@ router.post('/purchase', async (req, res) => {
 
     console.log('[DEBUG transactions.purchase] Request:', { userId, packageId, method });
 
-    // First try to find package in CoinPackage collection (new system)
+    // First try to find package in CoinPackage collection (new system) by ID if packageId looks like MongoDB ObjectId
     let pkg = null;
     let coins = 0;
     let price = 0;
     let isPremium = false;
 
-    // Try parsing packageId in different formats
-    let pkgNumber = null;
-    if (packageId.startsWith('coins_')) {
-      pkgNumber = parseInt(packageId.replace('coins_', ''));
+    // Check if packageId is a MongoDB ObjectId (24 hex characters)
+    if (typeof packageId === 'string' && /^[0-9a-fA-F]{24}$/.test(packageId)) {
+      const coinPkg = await CoinPackage.findById(packageId).lean();
+      if (coinPkg) {
+        coins = coinPkg.coins;
+        price = coinPkg.price;
+        pkg = coinPkg;
+        console.log('[DEBUG transactions.purchase] Found package in CoinPackage collection by MongoDB ID:', { coins, price });
+      }
     }
 
-    if (pkgNumber) {
+    // Try parsing packageId as custom numeric ID (created by admin in CoinPackage)
+    if (!pkg && !isNaN(packageId)) {
+      const numId = parseInt(packageId, 10);
+      const coinPkg = await CoinPackage.findOne({ id: numId, isActive: true }).lean();
+      if (coinPkg) {
+        coins = coinPkg.coins;
+        price = coinPkg.price;
+        pkg = coinPkg;
+        console.log('[DEBUG transactions.purchase] Found package by custom numeric id:', { id: numId, coins, price });
+      }
+    }
+
+    // Try parsing packageId by coins number (if format is 'coins_100')
+    if (!pkg && typeof packageId === 'string' && packageId.startsWith('coins_')) {
+      const pkgNumber = parseInt(packageId.replace('coins_', ''));
       const coinPkg = await CoinPackage.findOne({ coins: pkgNumber, isActive: true }).lean();
       if (coinPkg) {
         coins = coinPkg.coins;
         price = coinPkg.price;
         pkg = coinPkg;
-        console.log('[DEBUG transactions.purchase] Found package in CoinPackage collection:', coinPkg);
+        console.log('[DEBUG transactions.purchase] Found package by coins number:', { coins, price });
       }
     }
 
@@ -141,7 +160,7 @@ router.post('/purchase', async (req, res) => {
     }
 
     if (!coins) {
-      return res.status(400).json({ error: 'Invalid package id' });
+      return res.status(400).json({ error: 'Invalid package id. Package not found.' });
     }
 
     const tx = new Transaction({

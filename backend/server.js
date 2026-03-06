@@ -34,6 +34,7 @@ import { initWebSocket } from './utils/websocket.js';
 import lipanaRoutes from './routes/lipana.js';
 import supportRoutes from './routes/support.js';
 import landingPageSettingsRoutes from './routes/landingPageSettings.js';
+import premiumPackagesRoutes from './routes/premiumPackages.js';
 import LandingPageSettings from './models/LandingPageSettings.js';
 import CoinPackage from './models/CoinPackage.js';
 
@@ -161,6 +162,7 @@ app.use('/api/stories', authMiddleware, storiesRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/transactions', transactionsRoutes);  // Auth middleware applied selectively in transactions.js
 app.use('/api/moderation', authMiddleware, moderationRoutes);  // Moderator-only routes
+app.use('/api/moderation', authMiddleware, premiumPackagesRoutes);  // Premium package management
 app.use('/api/admin', authMiddleware, landingPageSettingsRoutes);  // Admin-only routes
 app.use('/api/support', supportRoutes);  // Support/Contact routes (public submit, auth for moderator)
 app.use('/api/push', authMiddleware, pushRoutes);

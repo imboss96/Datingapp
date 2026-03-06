@@ -38,7 +38,7 @@ router.get('/public/premium-packages', async (req, res) => {
  * GET /api/moderation/premium-packages
  * Get all premium packages (admin only)
  */
-router.get('/moderation/premium-packages', authMiddleware, async (req, res) => {
+router.get('/premium-packages', authMiddleware, async (req, res) => {
   try {
     if (req.userInfo?.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Admin access required' });
@@ -60,7 +60,7 @@ router.get('/moderation/premium-packages', authMiddleware, async (req, res) => {
  * POST /api/moderation/premium-packages
  * Create a new premium package (admin only)
  */
-router.post('/moderation/premium-packages', authMiddleware, async (req, res) => {
+router.post('/premium-packages', authMiddleware, async (req, res) => {
   try {
     if (req.userInfo?.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Admin access required' });
@@ -111,7 +111,7 @@ router.post('/moderation/premium-packages', authMiddleware, async (req, res) => 
  * PUT /api/moderation/premium-packages/:packageId
  * Update a premium package (admin only)
  */
-router.put('/moderation/premium-packages/:packageId', authMiddleware, async (req, res) => {
+router.put('/premium-packages/:packageId', authMiddleware, async (req, res) => {
   try {
     if (req.userInfo?.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Admin access required' });
@@ -147,7 +147,7 @@ router.put('/moderation/premium-packages/:packageId', authMiddleware, async (req
  * DELETE /api/moderation/premium-packages/:packageId
  * Delete a premium package (admin only)
  */
-router.delete('/moderation/premium-packages/:packageId', authMiddleware, async (req, res) => {
+router.delete('/premium-packages/:packageId', authMiddleware, async (req, res) => {
   try {
     if (req.userInfo?.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Admin access required' });
@@ -177,7 +177,7 @@ router.delete('/moderation/premium-packages/:packageId', authMiddleware, async (
  * POST /api/moderation/users/:userId/grant-premium
  * Manually grant premium to a user (admin only)
  */
-router.post('/moderation/users/:userId/grant-premium', authMiddleware, async (req, res) => {
+router.post('/users/:userId/grant-premium', authMiddleware, async (req, res) => {
   try {
     if (req.userInfo?.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Admin access required' });
@@ -216,7 +216,7 @@ router.post('/moderation/users/:userId/grant-premium', authMiddleware, async (re
  * POST /api/moderation/users/:userId/revoke-premium
  * Revoke premium from a user (admin only)
  */
-router.post('/moderation/users/:userId/revoke-premium', authMiddleware, async (req, res) => {
+router.post('/users/:userId/revoke-premium', authMiddleware, async (req, res) => {
   try {
     if (req.userInfo?.role !== 'ADMIN') {
       return res.status(403).json({ error: 'Admin access required' });

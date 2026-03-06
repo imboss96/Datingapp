@@ -788,6 +788,29 @@ class APIClient {
     });
   }
 
+  // Transaction Management
+  async getAllTransactions(limit: number = 50, skip: number = 0, type?: string, status?: string) {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      skip: skip.toString(),
+    });
+    if (type) params.append('type', type);
+    if (status) params.append('status', status);
+    return this.request(`/moderation/all-transactions?${params.toString()}`, {
+      method: 'GET',
+    });
+  }
+
+  async getUserTransactions(userId: string, limit: number = 20, skip: number = 0) {
+    const params = new URLSearchParams({
+      limit: limit.toString(),
+      skip: skip.toString(),
+    });
+    return this.request(`/moderation/transactions/${userId}?${params.toString()}`, {
+      method: 'GET',
+    });
+  }
+
   // User Profile Management
   async updateUserProfile(userId: string, profileData: {
     username?: string;

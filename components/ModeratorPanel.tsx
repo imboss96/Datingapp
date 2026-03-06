@@ -112,6 +112,20 @@ const ModeratorPanel: React.FC = () => {
   const [premiumActionPlan, setPremiumActionPlan] = useState<string>('1_month');
   const [premiumActionType, setPremiumActionType] = useState<'grant' | 'revoke'>('grant');
 
+  // Transaction Management
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+  const [transactionFilter, setTransactionFilter] = useState<'ALL' | 'COIN_PURCHASE' | 'PREMIUM_UPGRADE'>('ALL');
+  const [transactionPage, setTransactionPage] = useState(0);
+  const [transactionStats, setTransactionStats] = useState<any>(null);
+
+  // Coin Sales Statistics
+  const [coinRevenue, setCoinRevenue] = useState<number>(0);
+  const [coinPurchasesCount, setCoinPurchasesCount] = useState<number>(0);
+  const [avgTransaction, setAvgTransaction] = useState<number>(0);
+  const [activePayingUsers, setActivePayingUsers] = useState<number>(0);
+
   // Profile Management
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingUserForm, setEditingUserForm] = useState({
@@ -399,6 +413,8 @@ const ModeratorPanel: React.FC = () => {
     } else if (activeTab === 'PAYMENTS') {
       fetchCoinPackages();
       fetchCoinPurchases();
+      fetchPremiumPackages();
+      fetchAllTransactions();
     } else if (activeTab === 'SUPPORT') {
       fetchContactMessages();
       fetchMessageStats();
@@ -1235,6 +1251,64 @@ const ModeratorPanel: React.FC = () => {
       showNotification(errorMsg || 'Failed to revoke premium', 'error');
     }
   };
+
+  // Transaction Handlers
+  const fetchAllTransactions = async () => {
+    try {
+      setLoadingTransactions(true);
+      setTransactionsError(null);
+      const type = transactionFilter === 'ALL' ? undefined : transactionFilter;
+      const response = await apiClient.getAllTransactions(50, transactionPage * 50, type);
+      
+      if (response.success && Array.isArray(response.transactions)) {
+        setAllTransactions(response.transactions);
+        setTransactionStats(response.stats);
+        calculateCoinSalesStats(response.transactions);
+      } else {
+        setTransactionsError('Failed to fetch transactions');
+      }
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch transactions:', error);
+      setTransactionsError((error as any).message || 'Failed to fetch transactions');
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
+  // Calculate coin sales statistics from transactions
+  const calculateCoinSalesStats = (transactions: any[]) => {
+    if (!transactions || transactions.length === 0) {
+      setCoinRevenue(0);
+      setCoinPurchasesCount(0);
+      setAvgTransaction(0);
+      setActivePayingUsers(0);
+      return;
+    }
+
+    // Filter coin purchases only
+    const coinPurchases = transactions.filter(t => t.type === 'COIN_PURCHASE');
+    
+    // Calculate total revenue
+    const totalRevenue = coinPurchases.reduce((sum, t) => sum + (t.amount || 0), 0);
+    
+    // Calculate average transaction
+    const avgTx = coinPurchases.length > 0 ? totalRevenue / coinPurchases.length : 0;
+    
+    // Get unique paying users (coin purchases only)
+    const uniqueUsers = new Set(coinPurchases.map(t => t.userId));
+    
+    setCoinRevenue(totalRevenue);
+    setCoinPurchasesCount(coinPurchases.length);
+    setAvgTransaction(avgTx);
+    setActivePayingUsers(uniqueUsers.size);
+  };
+
+  // Recalculate stats when transactions change
+  useEffect(() => {
+    if (allTransactions.length > 0) {
+      calculateCoinSalesStats(allTransactions);
+    }
+  }, [allTransactions]);
 
   return (
     <div className="h-full bg-gray-50 flex flex-col">
@@ -2844,7 +2918,7 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Coin Revenue</p>
-                    <p className="text-3xl font-bold text-green-600 mt-2">$0.00</p>
+                    <p className="text-3xl font-bold text-green-600 mt-2">${coinRevenue.toFixed(2)}</p>
                     <p className="text-xs text-gray-500 mt-1">All time</p>
                   </div>
                   <div className="bg-green-100 rounded-full p-4">
@@ -2857,7 +2931,7 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Coin Purchases</p>
-                    <p className="text-3xl font-bold text-blue-600 mt-2">0</p>
+                    <p className="text-3xl font-bold text-blue-600 mt-2">{coinPurchasesCount}</p>
                     <p className="text-xs text-gray-500 mt-1">This month</p>
                   </div>
                   <div className="bg-blue-100 rounded-full p-4">
@@ -2870,7 +2944,7 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Avg Transaction</p>
-                    <p className="text-3xl font-bold text-purple-600 mt-2">$0.00</p>
+                    <p className="text-3xl font-bold text-purple-600 mt-2">${avgTransaction.toFixed(2)}</p>
                     <p className="text-xs text-gray-500 mt-1">Per purchase</p>
                   </div>
                   <div className="bg-purple-100 rounded-full p-4">
@@ -2883,7 +2957,7 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Active Users</p>
-                    <p className="text-3xl font-bold text-indigo-600 mt-2">0</p>
+                    <p className="text-3xl font-bold text-indigo-600 mt-2">{activePayingUsers}</p>
                     <p className="text-xs text-gray-500 mt-1">Paying customers</p>
                   </div>
                   <div className="bg-indigo-100 rounded-full p-4">
@@ -3291,8 +3365,154 @@ const ModeratorPanel: React.FC = () => {
                 </p>
               </div>
             </div>
+
+            {/* All Transactions Section */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                  <i className="fa-solid fa-receipt text-green-600"></i>
+                  All Transactions (Coins & Premium)
+                </h4>
+                <button 
+                  onClick={fetchAllTransactions}
+                  disabled={loadingTransactions}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                >
+                  <i className="fa-solid fa-refresh"></i>
+                  {loadingTransactions ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              {/* Transaction Filter Tabs */}
+              <div className="flex gap-2 mb-4 border-b border-gray-200">
+                {['ALL', 'COIN_PURCHASE', 'PREMIUM_UPGRADE'].map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => {
+                      setTransactionFilter(filter as any);
+                      setTransactionPage(0);
+                    }}
+                    className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all ${
+                      transactionFilter === filter
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    {filter === 'COIN_PURCHASE' && 'Coin Purchases'}
+                    {filter === 'PREMIUM_UPGRADE' && 'Premium Upgrades'}
+                    {filter === 'ALL' && 'All Transactions'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Transaction Stats */}
+              {transactionStats && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {transactionStats.byType && Object.entries(transactionStats.byType).map(([type, data]: any) => (
+                    <div key={type} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <p className="text-xs text-gray-600 font-semibold mb-2">{type === 'COIN_PURCHASE' ? 'Coin Purchases' : 'Premium Upgrades'}</p>
+                      <p className="text-2xl font-bold text-gray-800">{data.count}</p>
+                      <p className="text-xs text-gray-500 mt-1">${data.totalAmount?.toFixed(2) || 0}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Transactions Table */}
+              {transactionsError ? (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                  <i className="fa-solid fa-exclamation-circle mr-2"></i>{transactionsError}
+                </div>
+              ) : allTransactions.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600">User</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600">Type</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600">Amount</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600">Method</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allTransactions.map((tx: any) => (
+                        <tr key={tx.id} className="border-b border-gray-200 hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden">
+                                {tx.user?.avatar ? (
+                                  <img src={tx.user.avatar} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-600">
+                                    {tx.user?.username?.charAt(0)?.toUpperCase() || 'U'}
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-gray-800">{tx.user?.username || 'Unknown'}</p>
+                                <p className="text-xs text-gray-500">{tx.userId}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold ${
+                              tx.type === 'COIN_PURCHASE' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                            }`}>
+                              <i className={`fa-solid ${tx.type === 'COIN_PURCHASE' ? 'fa-coins' : 'fa-crown'}`}></i>
+                              {tx.type === 'COIN_PURCHASE' ? 'Coin' : 'Premium'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-gray-800">{tx.price || `${tx.amount} coins`}</td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center gap-1 text-xs">
+                              <i className={`fa-solid ${
+                                tx.method === 'momo' || tx.method === 'lipana' ? 'fa-mobile' : 'fa-credit-card'
+                              } text-gray-600`}></i>
+                              {tx.method === 'momo' || tx.method === 'lipana' ? 'Mobile Money' : 'Card'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold ${
+                              tx.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 
+                              tx.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              <i className={`fa-solid ${
+                                tx.status === 'COMPLETED' ? 'fa-check-circle' :
+                                tx.status === 'PENDING' ? 'fa-hourglass-end' :
+                                'fa-times-circle'
+                              }`}></i>
+                              {tx.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {new Date(tx.createdAt).toLocaleDateString()} {new Date(tx.createdAt).toLocaleTimeString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : loadingTransactions ? (
+                <div className="flex justify-center items-center py-8">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="animate-spin"><i className="fa-solid fa-spinner text-2xl text-blue-600"></i></div>
+                    <p className="text-sm text-gray-600">Loading transactions...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <i className="fa-solid fa-inbox text-4xl text-gray-300 mb-2 block"></i>
+                  <p className="text-gray-600">No transactions found</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
+        {activeTab === 'REVENUE' && (
           <div className="space-y-6">
             <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
               <i className="fa-solid fa-hand-holding-dollar text-amber-600 text-xl"></i>

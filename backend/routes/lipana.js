@@ -138,12 +138,39 @@ router.post('/initiate', async (req, res) => {
     
     // Try to find package in CoinPackage collection first (new system)
     let pkg = null;
-    let pkgNumber = null;
-    if (packageId.startsWith('coins_')) {
-      pkgNumber = parseInt(packageId.replace('coins_', ''));
+    
+    // Check if packageId is a MongoDB ObjectId (24 hex characters)
+    if (typeof packageId === 'string' && /^[0-9a-fA-F]{24}$/.test(packageId)) {
+      const coinPkg = await CoinPackage.findById(packageId).lean();
+      if (coinPkg) {
+        pkg = {
+          coins: coinPkg.coins,
+          price: `$${coinPkg.price.toFixed(2)}`,
+          isPremium: false,
+          ...coinPkg
+        };
+        console.log(`[LIPANA /initiate] Found package in CoinPackage collection by MongoDB ID:`, { coins: pkg.coins, price: pkg.price });
+      }
     }
 
-    if (pkgNumber) {
+    // Try parsing packageId as custom numeric ID (created by admin in CoinPackage)
+    if (!pkg && !isNaN(packageId)) {
+      const numId = parseInt(packageId, 10);
+      const coinPkg = await CoinPackage.findOne({ id: numId, isActive: true }).lean();
+      if (coinPkg) {
+        pkg = {
+          coins: coinPkg.coins,
+          price: `$${coinPkg.price.toFixed(2)}`,
+          isPremium: false,
+          ...coinPkg
+        };
+        console.log(`[LIPANA /initiate] Found package by custom numeric id:`, { id: numId, coins: pkg.coins, price: pkg.price });
+      }
+    }
+
+    // Try parsing by coins number format (if format is 'coins_100')
+    if (!pkg && typeof packageId === 'string' && packageId.startsWith('coins_')) {
+      const pkgNumber = parseInt(packageId.replace('coins_', ''));
       const coinPkg = await CoinPackage.findOne({ coins: pkgNumber, isActive: true }).lean();
       if (coinPkg) {
         pkg = {
@@ -152,7 +179,7 @@ router.post('/initiate', async (req, res) => {
           isPremium: false,
           ...coinPkg
         };
-        console.log(`[LIPANA /initiate] Found package in CoinPackage collection:`, pkg);
+        console.log(`[LIPANA /initiate] Found package by coins number:`, { coins: pkg.coins, price: pkg.price });
       }
     }
 

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
 import apiClient from '../services/apiClient';
-import { useCoinPackages } from '../services/CoinPackageContext';
 import PasswordResetModal from './PasswordResetModal';
 import PhotoVerificationModal from './PhotoVerificationModal';
 import EditProfileModal from './EditProfileModal';
@@ -90,9 +89,10 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushEndpoint, setPushEndpoint] = useState<string | null>(null);
   const [pushProcessing, setPushProcessing] = useState(false);
-  
-  // Get coin packages from global context (automatically updates every 10 seconds)
-  const { coinPackages, loading: loadingCoinPackages } = useCoinPackages();
+
+  // Coin packages state
+  const [coinPackages, setCoinPackages] = useState<any[]>([]);
+  const [loadingCoinPackages, setLoadingCoinPackages] = useState(false);
 
   // Premium packages state
   const [premiumPackages, setPremiumPackages] = useState<any[]>([]);
@@ -101,16 +101,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [premiumPaymentStep, setPremiumPaymentStep] = useState<'SELECT_METHOD' | 'PROCESSING' | 'SUCCESS'>('SELECT_METHOD');
   const [premiumSelectedMethod, setPremiumSelectedMethod] = useState<string>('card');
   const [premiumMomoNumber, setPremiumMomoNumber] = useState<string>('');
-
-  // Debug logging for coin packages
-  React.useEffect(() => {
-    console.log('[DEBUG ProfileSettings] Coin packages updated:', {
-      packages: coinPackages,
-      count: coinPackages.length,
-      loading: loadingCoinPackages,
-      values: coinPackages.map(p => ({ coins: p.coins, price: p.price }))
-    });
-  }, [coinPackages, loadingCoinPackages]);
 
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
@@ -660,6 +650,27 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
       loadTransactions();
     }
   }, [openModal]);
+
+  // Fetch coin packages on component mount
+  React.useEffect(() => {
+    const fetchCoinPackages = async () => {
+      try {
+        setLoadingCoinPackages(true);
+        const response = await apiClient.getCoinPackages();
+        if (response.success && Array.isArray(response.packages)) {
+          setCoinPackages(response.packages);
+        } else if (response.packages && Array.isArray(response.packages)) {
+          setCoinPackages(response.packages);
+        }
+      } catch (error) {
+        console.error('[ERROR] Failed to fetch coin packages:', error);
+      } finally {
+        setLoadingCoinPackages(false);
+      }
+    };
+    
+    fetchCoinPackages();
+  }, []);
 
   // Fetch premium packages on component mount
   React.useEffect(() => {
