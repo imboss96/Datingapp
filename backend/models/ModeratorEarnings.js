@@ -21,8 +21,26 @@ const moderatorEarningsSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'approved', 'paid', 'disputed'],
-    default: 'approved'
+    enum: ['pending', 'approved', 'paid', 'disputed', 'rejected'],
+    default: 'pending'
+  },
+  approvedAt: {
+    type: Date
+  },
+  approvedBy: {
+    type: String
+  },
+  scheduledPayoutDate: {
+    type: Date
+  },
+  rejectedAt: {
+    type: Date
+  },
+  rejectedBy: {
+    type: String
+  },
+  rejectionReason: {
+    type: String
   },
   paymentMethod: {
     type: String,

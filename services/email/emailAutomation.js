@@ -10,6 +10,7 @@ import {
   sendEmailVerificationEmail,
   sendCoinPurchaseEmail,
   sendPremiumUpgradeEmail,
+  sendPaymentConfirmationEmail,
   subscribeToNewsletter
 } from './brevoService.js';
 
@@ -161,6 +162,27 @@ export const sendCustomTransactionalEmail = async (email, subject, htmlContent, 
     }
   } catch (error) {
     console.error('[EmailAutomation] Error in custom email automation:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send the shared payment confirmation email.
+ */
+export const sendPaymentConfirmationEmailAutomation = async (paymentData) => {
+  try {
+    console.log('[EmailAutomation] Sending shared payment confirmation email to:', paymentData.email);
+    const result = await sendPaymentConfirmationEmail(paymentData);
+
+    if (result.success) {
+      console.log('[EmailAutomation] Shared payment confirmation email sent successfully');
+      return { success: true, messageId: result.messageId };
+    }
+
+    console.error('[EmailAutomation] Failed to send shared payment confirmation email:', result.error);
+    return { success: false, error: result.error };
+  } catch (error) {
+    console.error('[EmailAutomation] Error in shared payment confirmation automation:', error);
     return { success: false, error: error.message };
   }
 };

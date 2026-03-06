@@ -59,6 +59,17 @@ export interface ModeratorChat {
   flaggedCount: number;
   requestInitiator?: string;
   assignedModerator?: string;
+  repliedBy?: string;
+  replyStatus?: 'replied' | 'unreplied';
+  isReplied?: boolean;
+  markedAsRepliedAt?: number;
+  moderatorDetails?: {
+    id: string;
+    name: string;
+    email?: string;
+    username?: string;
+    role?: string;
+  } | null;
   isAssigned?: boolean;
   isQueued?: boolean;
 }
@@ -68,7 +79,7 @@ interface Props {
   currentUserId: string;
   onClose?: () => void;
   onRefresh?: () => void;
-  onRepliedChatAdded?: () => void;
+  onRepliedChatAdded?: (chat: ModeratorChat) => void;
 }
 
 const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onRefresh, onRepliedChatAdded }) => {
@@ -554,8 +565,20 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
           const response = await apiClient.markChatAsReplied(selectedChatId);
           console.log('[DEBUG ChatModerationView] Chat marked as replied successfully:', response);
           // Trigger refresh of replied chats in parent component
-          onRepliedChatAdded?.();
+          if (response?.chat) {
+            onRepliedChatAdded?.({
+              ...currentChat,
+              ...response.chat,
+              messages: [...messages, newMessage].sort((a, b) => a.timestamp - b.timestamp),
+              lastUpdated: response.chat.lastUpdated || newMessage.timestamp,
+              flaggedCount: currentChat.flaggedCount || 0,
+            });
+          }
           console.log('[DEBUG ChatModerationView] Called onRepliedChatAdded callback');
+          
+          // Also refresh parent component to get updated chat list
+          onRefresh?.();
+          console.log('[DEBUG ChatModerationView] Called onRefresh callback');
         } catch (error) {
           console.warn('Could not mark chat as replied on backend:', error);
         }
@@ -572,10 +595,10 @@ const ChatModerationView: React.FC<Props> = ({ chat, currentUserId, onClose, onR
         // Increment moderator coins (0.1 per reply)
         setModeratorCoins(prev => prev + 0.1);
         
-        // Update session earnings via API
+        // Refresh earnings from the server-owned summary after a successful reply.
         try {
-          const earningsRes = await apiClient.addSessionEarnings(0.10);
-          setSessionEarnings(earningsRes.newSessionEarnings || 0);
+          const earningsRes = await apiClient.getSessionEarnings();
+          setSessionEarnings(earningsRes.sessionEarnings || 0);
           setTotalEarnings(earningsRes.totalEarnings || 0);
         } catch (error) {
           console.warn('Failed to update session earnings:', error);

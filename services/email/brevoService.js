@@ -14,6 +14,11 @@ const getConfig = () => ({
   welcomeEmailTemplateId: parseInt(process.env.BREVO_WELCOME_EMAIL_TEMPLATE_ID) || 3,
   premiumUpgradeTemplateId: parseInt(process.env.BREVO_PREMIUM_UPGRADE_TEMPLATE_ID) || 7,
   coinPurchaseTemplateId: parseInt(process.env.BREVO_COIN_PURCHASE_TEMPLATE_ID) || 8,
+  paymentConfirmationTemplateId:
+    parseInt(process.env.BREVO_PAYMENT_CONFIRMATION_TEMPLATE_ID) ||
+    parseInt(process.env.BREVO_COIN_PURCHASE_TEMPLATE_ID) ||
+    parseInt(process.env.BREVO_PREMIUM_UPGRADE_TEMPLATE_ID) ||
+    8,
   newsletterListId: parseInt(process.env.BREVO_NEWSLETTER_LIST_ID) || 4,
 });
 
@@ -390,6 +395,83 @@ export const sendCoinPurchaseEmail = async (email, userName, coins, price, trans
     return { success: true, messageId: result.messageId };
   } catch (error) {
     console.error('[✗Brevo] Failed to send coin purchase email');
+    console.error('  Error message:', error.message);
+    console.error('  Error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send one shared payment confirmation email template for all purchase types.
+ */
+export const sendPaymentConfirmationEmail = async (paymentData) => {
+  try {
+    const config = getConfig();
+    const { apiKey, paymentConfirmationTemplateId, frontendUrl } = config;
+    const {
+      email,
+      userName,
+      purchaseType,
+      packageName,
+      price,
+      transactionId,
+      method,
+      coins,
+      planDuration,
+      premiumExpiresAt
+    } = paymentData;
+
+    console.log('[Brevo] sendPaymentConfirmationEmail START');
+    console.log('  Email:', email);
+    console.log('  Purchase type:', purchaseType);
+    console.log('  Template ID:', paymentConfirmationTemplateId);
+    console.log('  Method:', method);
+    console.log('  API Key present:', !!apiKey);
+
+    const payload = {
+      to: [{ email }],
+      templateId: paymentConfirmationTemplateId,
+      params: {
+        USER_NAME: userName || email.split('@')[0],
+        USER_EMAIL: email,
+        PURCHASE_TYPE: purchaseType === 'premium' ? 'Premium Upgrade' : 'Coin Purchase',
+        PACKAGE_NAME: packageName || (purchaseType === 'premium' ? 'Premium Membership' : `${coins || 0} Spark Coins`),
+        PRICE: typeof price === 'number' ? `$${price.toFixed(2)}` : price || '$0.00',
+        PAYMENT_METHOD: method || 'card',
+        TRANSACTION_ID: transactionId || 'N/A',
+        COINS: coins || 0,
+        PLAN_DURATION: planDuration || '',
+        PREMIUM_EXPIRES_AT: premiumExpiresAt ? new Date(premiumExpiresAt).toLocaleDateString() : '',
+        PURCHASE_DATE: new Date().toLocaleDateString(),
+        PROFILE_LINK: `${frontendUrl}/#/profile`
+      }
+    };
+
+    const response = await fetch(`${BREVO_API_URL}/smtp/email`, {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'api-key': apiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    console.log('  Response status:', response.status);
+    console.log('  Response ok:', response.ok);
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('  API Error:', error);
+      throw new Error(`Brevo API error: ${error.message || response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('[✓Brevo] Payment confirmation email sent successfully');
+    console.log('  Message ID:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('[✗Brevo] Failed to send payment confirmation email');
     console.error('  Error message:', error.message);
     console.error('  Error:', error);
     return { success: false, error: error.message };

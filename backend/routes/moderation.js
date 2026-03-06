@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import User from '../models/User.js';
 import Chat from '../models/Chat.js';
 import ModeratorEarnings from '../models/ModeratorEarnings.js';
+import ModeratorEarningsSummary from '../models/ModeratorEarningsSummary.js';
 import PaymentMethod from '../models/PaymentMethod.js';
 import PaymentTransaction from '../models/PaymentTransaction.js';
 import Transaction from '../models/Transaction.js';
@@ -10,9 +11,181 @@ import ActivityLog from '../models/ActivityLog.js';
 import CoinPackage from '../models/CoinPackage.js';
 import bcryptjs from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { logBan, logWarn, logModeratorAction, logRoleChange } from '../utils/activityLogger.js';
+import { logBan, logWarn, logModeratorAction, logRoleChange, logEarningRecorded, logModeratorReplied, logEarningApproved, logPaymentProcessed, logPaymentStatusChanged } from '../utils/activityLogger.js';
+import { sendNotification } from '../utils/websocket.js';
 
 const router = express.Router();
+const EARNING_PER_CHAT_REPLY = 0.1;
+const MONTHLY_PAYOUT_DAY = 15;
+
+const getNextPayoutDate = (referenceDate = new Date()) => {
+  const payoutDate = new Date(referenceDate);
+  payoutDate.setHours(0, 0, 0, 0);
+  if (payoutDate.getDate() <= MONTHLY_PAYOUT_DAY) {
+    payoutDate.setDate(MONTHLY_PAYOUT_DAY);
+    return payoutDate;
+  }
+
+  payoutDate.setMonth(payoutDate.getMonth() + 1, MONTHLY_PAYOUT_DAY);
+  return payoutDate;
+};
+
+const isPayoutDayReached = (referenceDate = new Date()) => referenceDate.getDate() >= MONTHLY_PAYOUT_DAY;
+
+const describePaymentMethod = (paymentMethod) => {
+  if (!paymentMethod) return null;
+  return {
+    id: paymentMethod.id,
+    type: paymentMethod.type,
+    name: paymentMethod.name,
+    isDefault: paymentMethod.isDefault,
+    isVerified: paymentMethod.isVerified,
+    lastFourDigits: paymentMethod.lastFourDigits || null,
+    bankName: paymentMethod.bankName || null
+  };
+};
+
+const getDefaultPaymentMethod = async (moderatorId) => {
+  let method = await PaymentMethod.findOne({
+    moderatorId,
+    isActive: true,
+    isDefault: true
+  }).lean();
+
+  if (!method) {
+    method = await PaymentMethod.findOne({
+      moderatorId,
+      isActive: true
+    }).sort({ isDefault: -1, createdAt: 1 }).lean();
+  }
+
+  return method;
+};
+
+const sendModeratorSystemNotification = (moderatorId, payload = {}) => {
+  if (!moderatorId) return false;
+  return sendNotification(moderatorId, {
+    type: 'system_notification',
+    id: uuidv4(),
+    timestamp: Date.now(),
+    ...payload
+  });
+};
+
+const getOrCreateEarningsSummary = async (moderatorId, moderatorName = 'Unknown') => {
+  let summary = await ModeratorEarningsSummary.findOne({ moderatorId });
+  if (!summary) {
+    summary = new ModeratorEarningsSummary({
+      moderatorId,
+      moderatorName,
+      sessionEarnings: 0,
+      totalEarnings: 0,
+      totalReplies: 0,
+      dailyEarnings: [],
+      lastResetAt: new Date()
+    });
+  } else if (moderatorName && (!summary.moderatorName || summary.moderatorName === 'Unknown')) {
+    summary.moderatorName = moderatorName;
+  }
+  return summary;
+};
+
+const reconcileEarningsSummaryFromLedger = async (moderatorId, moderatorName = 'Unknown') => {
+  const [aggregate] = await ModeratorEarnings.aggregate([
+    {
+      $match: { moderatorId }
+    },
+    {
+      $group: {
+        _id: '$moderatorId',
+        totalEarned: {
+          $sum: {
+            $cond: [
+              { $in: ['$status', ['pending', 'approved', 'paid']] },
+              '$earnedAmount',
+              0
+            ]
+          }
+        },
+        totalReplies: { $sum: 1 },
+        unpaidApproved: {
+          $sum: {
+            $cond: [{ $eq: ['$status', 'approved'] }, '$earnedAmount', 0]
+          }
+        },
+        unpaidPending: {
+          $sum: {
+            $cond: [{ $eq: ['$status', 'pending'] }, '$earnedAmount', 0]
+          }
+        },
+        lastReplyAt: { $max: '$repliedAt' }
+      }
+    }
+  ]);
+
+  const dailyLedger = await ModeratorEarnings.aggregate([
+    {
+      $match: {
+        moderatorId,
+        status: { $in: ['pending', 'approved', 'paid'] }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: { format: '%Y-%m-%d', date: '$repliedAt' }
+        },
+        amount: { $sum: '$earnedAmount' },
+        repliesCount: { $sum: 1 }
+      }
+    },
+    {
+      $sort: { _id: -1 }
+    }
+  ]);
+
+  const summary = await getOrCreateEarningsSummary(moderatorId, moderatorName);
+  summary.moderatorName = moderatorName || summary.moderatorName || 'Unknown';
+  summary.totalEarnings = Number((aggregate?.totalEarned || 0).toFixed(2));
+  summary.sessionEarnings = Number((((aggregate?.unpaidApproved || 0) + (aggregate?.unpaidPending || 0)).toFixed(2)));
+  summary.totalReplies = aggregate?.totalReplies || 0;
+  summary.lastReplyAt = aggregate?.lastReplyAt || summary.lastReplyAt || null;
+  summary.dailyEarnings = dailyLedger.map(day => ({
+    date: new Date(`${day._id}T00:00:00.000Z`),
+    amount: Number((day.amount || 0).toFixed(2)),
+    chatsModerated: day.repliesCount || 0,
+    repliesCount: day.repliesCount || 0
+  }));
+  summary.lastEarningsUpdate = new Date();
+  await summary.save();
+
+  return summary;
+};
+
+const applyReplyEarning = async ({ moderatorId, moderatorName, chatId, repliedAt }) => {
+  const existingEntry = await ModeratorEarnings.findOne({ moderatorId, chatId });
+  if (existingEntry) {
+    const summary = await reconcileEarningsSummaryFromLedger(moderatorId, moderatorName);
+    return { created: false, entry: existingEntry, summary };
+  }
+
+  const entry = new ModeratorEarnings({
+    moderatorId,
+    moderatorName: moderatorName || 'Unknown',
+    chatId,
+    earnedAmount: EARNING_PER_CHAT_REPLY,
+    status: 'pending',
+    repliedAt,
+    scheduledPayoutDate: getNextPayoutDate(repliedAt),
+    notes: `Chat reply by moderator ${moderatorName || moderatorId}`
+  });
+  await entry.save();
+  const summary = await reconcileEarningsSummaryFromLedger(moderatorId, moderatorName);
+  await logModeratorReplied(chatId, moderatorId, EARNING_PER_CHAT_REPLY, {});
+  await logEarningRecorded(moderatorId, chatId, EARNING_PER_CHAT_REPLY, {});
+
+  return { created: true, entry, summary };
+};
 
 // Middleware to check if user is moderator (authMiddleware is already applied at app level)
 const modOnlyMiddleware = (req, res, next) => {
@@ -37,6 +210,240 @@ const adminOnlyMiddleware = (req, res, next) => {
   } catch (error) {
     res.status(401).json({ error: 'Unauthorized' });
   }
+};
+
+const approveEarningsForModerator = async ({ moderatorId, moderatorName, earningIds = [], adminId }) => {
+  const query = {
+    moderatorId,
+    status: 'pending'
+  };
+
+  if (earningIds.length > 0) {
+    query._id = { $in: earningIds };
+  }
+
+  const earningsToApprove = await ModeratorEarnings.find(query);
+  if (earningsToApprove.length === 0) {
+    return { approvedCount: 0, approvedAmount: 0, earnings: [] };
+  }
+
+  const scheduledPayoutDate = getNextPayoutDate(new Date());
+  let approvedAmount = 0;
+  for (const earning of earningsToApprove) {
+    earning.status = 'approved';
+    earning.approvedAt = new Date();
+    earning.approvedBy = adminId;
+    earning.scheduledPayoutDate = scheduledPayoutDate;
+    earning.updatedAt = new Date();
+    approvedAmount += earning.earnedAmount || 0;
+    await earning.save();
+    await logEarningApproved(moderatorId, earning._id?.toString(), earning.earnedAmount || 0, { userId: adminId });
+  }
+
+  const summary = await reconcileEarningsSummaryFromLedger(moderatorId, moderatorName);
+  return {
+    approvedCount: earningsToApprove.length,
+    approvedAmount: Number(approvedAmount.toFixed(2)),
+    earnings: earningsToApprove,
+    scheduledPayoutDate,
+    summary
+  };
+};
+
+const processApprovedPayouts = async ({ moderatorId, runDate = new Date(), adminId }) => {
+  if (!isPayoutDayReached(runDate)) {
+    throw new Error(`Monthly payouts can only be processed on or after day ${MONTHLY_PAYOUT_DAY}`);
+  }
+
+  const moderatorQuery = moderatorId ? { id: moderatorId } : { role: { $in: ['MODERATOR', 'ADMIN'] } };
+  const moderators = await User.find(moderatorQuery).select('id name username email role').lean();
+  const results = [];
+
+  for (const moderator of moderators) {
+    const approvedEarnings = await ModeratorEarnings.find({
+      moderatorId: moderator.id,
+      status: 'approved'
+    }).sort({ repliedAt: 1 });
+
+    if (approvedEarnings.length === 0) {
+      results.push({
+        moderatorId: moderator.id,
+        moderatorName: moderator.name || moderator.username || moderator.email || moderator.id,
+        status: 'skipped',
+        reason: 'No approved earnings ready for payout'
+      });
+      continue;
+    }
+
+    const payoutMethod = await getDefaultPaymentMethod(moderator.id);
+    if (!payoutMethod) {
+      results.push({
+        moderatorId: moderator.id,
+        moderatorName: moderator.name || moderator.username || moderator.email || moderator.id,
+        status: 'skipped',
+        reason: 'No default payout method configured'
+      });
+      continue;
+    }
+
+    const amount = Number(approvedEarnings.reduce((sum, earning) => sum + (earning.earnedAmount || 0), 0).toFixed(2));
+    const transactionId = `payout_${moderator.id}_${runDate.getTime()}`;
+    const paymentTransaction = await PaymentTransaction.create({
+      id: transactionId,
+      moderatorId: moderator.id,
+      paymentMethodId: payoutMethod.id,
+      amount,
+      processingFee: 0,
+      netAmount: amount,
+      status: 'completed',
+      transactionType: 'payout',
+      description: `Monthly moderator payout for ${runDate.toLocaleString('default', { month: 'long' })}`,
+      scheduledFor: getNextPayoutDate(runDate),
+      processedAt: runDate,
+      completedAt: runDate,
+      metadata: {
+        earningIds: approvedEarnings.map(earning => earning._id?.toString()),
+        earningCount: approvedEarnings.length,
+        payoutMethod: describePaymentMethod(payoutMethod)
+      },
+      events: [
+        { status: 'pending', notes: 'Monthly payout scheduled', timestamp: runDate },
+        { status: 'processing', notes: 'Monthly payout processing started', timestamp: runDate },
+        { status: 'completed', notes: 'Monthly payout completed', timestamp: runDate }
+      ],
+      createdBy: adminId || 'system'
+    });
+
+    await ModeratorEarnings.updateMany(
+      { _id: { $in: approvedEarnings.map(earning => earning._id) } },
+      {
+        $set: {
+          status: 'paid',
+          paymentMethod: payoutMethod.type === 'mpesa' ? 'mobile_money' : payoutMethod.type === 'bank_transfer' ? 'bank_transfer' : 'wallet',
+          transactionId: paymentTransaction.id,
+          paidAt: runDate,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    await logPaymentStatusChanged(moderator.id, 'approved', 'paid', amount, { userId: adminId });
+    await logPaymentProcessed(
+      moderator.id,
+      amount,
+      payoutMethod.name || payoutMethod.type,
+      paymentTransaction.id,
+      approvedEarnings.map(earning => earning._id?.toString()),
+      { userId: adminId }
+    );
+    sendModeratorSystemNotification(moderator.id, {
+      category: 'payout_processed',
+      title: 'Monthly Payout Sent',
+      message: `Your monthly payout of $${amount.toFixed(2)} has been processed.`,
+      metadata: {
+        amount,
+        transactionId: paymentTransaction.id,
+        payoutMethod: describePaymentMethod(payoutMethod)
+      }
+    });
+
+    await reconcileEarningsSummaryFromLedger(moderator.id, moderator.name || moderator.username || moderator.email || moderator.id);
+
+    results.push({
+      moderatorId: moderator.id,
+      moderatorName: moderator.name || moderator.username || moderator.email || moderator.id,
+      status: 'paid',
+      amount,
+      earningsCount: approvedEarnings.length,
+      transactionId: paymentTransaction.id,
+      payoutMethod: describePaymentMethod(payoutMethod)
+    });
+  }
+
+  return results;
+};
+
+const updateChatEarningReview = async ({ chatId, moderatorId, action, reason = '', adminId }) => {
+  const normalizedAction = action === 'reject' ? 'rejected' : 'approved';
+  const chat = await Chat.findOne({ id: chatId });
+  if (!chat) {
+    throw new Error('Chat not found');
+  }
+
+  const effectiveModeratorId = moderatorId || chat.assignedModerator || chat.repliedBy;
+  if (!effectiveModeratorId) {
+    throw new Error('No moderator is associated with this replied chat');
+  }
+
+  const earning = await ModeratorEarnings.findOne({ chatId, moderatorId: effectiveModeratorId });
+  if (!earning) {
+    throw new Error('No earning record found for this replied chat');
+  }
+
+  if (normalizedAction === 'rejected' && !reason.trim()) {
+    throw new Error('Rejection reason is required');
+  }
+
+  if (normalizedAction === 'approved') {
+    earning.status = 'approved';
+    earning.approvedAt = new Date();
+    earning.approvedBy = adminId;
+    earning.scheduledPayoutDate = getNextPayoutDate(new Date());
+    earning.rejectedAt = undefined;
+    earning.rejectedBy = undefined;
+    earning.rejectionReason = undefined;
+    await earning.save();
+    await logEarningApproved(effectiveModeratorId, earning._id?.toString(), earning.earnedAmount || 0, { userId: adminId });
+    sendModeratorSystemNotification(effectiveModeratorId, {
+      category: 'earning_approved',
+      title: 'Chat Approved for Payout',
+      message: `Your reply for chat ${chatId.slice(0, 8)} was approved for payout.`,
+      metadata: {
+        chatId,
+        amount: earning.earnedAmount || 0,
+        scheduledPayoutDate: earning.scheduledPayoutDate
+      }
+    });
+  } else {
+    earning.status = 'rejected';
+    earning.rejectedAt = new Date();
+    earning.rejectedBy = adminId;
+    earning.rejectionReason = reason.trim();
+    earning.approvedAt = undefined;
+    earning.approvedBy = undefined;
+    earning.scheduledPayoutDate = undefined;
+    await earning.save();
+    await logModeratorAction(
+      effectiveModeratorId,
+      'earning-rejected',
+      chatId,
+      `Earning rejected for replied chat. Reason: ${reason.trim()}`,
+      adminId
+    );
+    sendModeratorSystemNotification(effectiveModeratorId, {
+      category: 'earning_rejected',
+      title: 'Chat Rejected for Payout',
+      message: `Your reply for chat ${chatId.slice(0, 8)} was rejected.`,
+      metadata: {
+        chatId,
+        amount: earning.earnedAmount || 0,
+        rejectionReason: reason.trim()
+      }
+    });
+  }
+
+  const moderator = await User.findOne({ id: effectiveModeratorId }).select('name username email');
+  const summary = await reconcileEarningsSummaryFromLedger(
+    effectiveModeratorId,
+    moderator?.name || moderator?.username || moderator?.email || effectiveModeratorId
+  );
+
+  return {
+    chat,
+    earning,
+    moderatorId: effectiveModeratorId,
+    summary
+  };
 };
 
 // Warn user
@@ -394,6 +801,38 @@ router.post('/send-response/:chatId', modOnlyMiddleware, async (req, res) => {
     chat.messages.push(message);
     chat.lastUpdated = Date.now();
 
+    // Auto-assign and record earnings on the first moderator reply only.
+    if (!chat.assignedModerator) {
+      chat.assignedModerator = req.userId;
+      chat.repliedBy = req.userId;
+      chat.isReplied = true;
+      chat.replyStatus = 'replied';
+      chat.markedAsRepliedAt = Date.now();
+      console.log('[DEBUG] Chat auto-assigned to moderator on first reply:', {
+        chatId,
+        moderatorId: req.userId,
+        assignedModerator: chat.assignedModerator
+      });
+      try {
+        const moderator = await User.findOne({ id: req.userId });
+        const repliedAt = new Date(chat.markedAsRepliedAt);
+        const earningResult = await applyReplyEarning({
+          moderatorId: req.userId,
+          moderatorName: moderator?.name || moderator?.username || 'Unknown',
+          chatId,
+          repliedAt
+        });
+        console.log('[DEBUG] Reply earning processed for auto-assigned chat:', {
+          userId: req.userId,
+          amount: EARNING_PER_CHAT_REPLY,
+          chatId,
+          created: earningResult.created
+        });
+      } catch (earningError) {
+        console.error('[ERROR] Failed to create earning record:', earningError);
+      }
+    }
+
     // Update unread counts
     const now = Date.now();
     if (!chat.unreadCounts) chat.unreadCounts = new Map();
@@ -437,28 +876,38 @@ router.post('/send-response/:chatId', modOnlyMiddleware, async (req, res) => {
 router.get('/unreplied-chats', modOnlyMiddleware, async (req, res) => {
   try {
     const moderatorId = req.userId;
-    console.log('[DEBUG] Fetching unreplied chats for moderator:', moderatorId);
+    console.log('[DEBUG] Fetching all unreplied chats for moderator:', moderatorId);
     
-    // Get chats assigned to this moderator OR unassigned chats
-    const unrepliedChats = await Chat.find({
-      $and: [
-        {
-          $or: [
-            { replyStatus: 'unreplied' },
-            { isReplied: false }
-          ]
-        },
-        {
-          $or: [
-            { assignedModerator: moderatorId },
-            { assignedModerator: { $exists: false } },
-            { assignedModerator: null }
-          ]
+    // First, initialize reply status on chats that don't have it
+    await Chat.updateMany(
+      {
+        $or: [
+          { replyStatus: { $exists: false } },
+          { isReplied: { $exists: false } }
+        ]
+      },
+      {
+        $set: {
+          replyStatus: 'unreplied',
+          isReplied: false
         }
+      }
+    );
+    console.log('[DEBUG] Initialized reply status fields on chats that were missing them');
+
+    // Get ALL unreplied chats - return chats that are NOT marked as replied
+    // A chat is unreplied if: NOT (replyStatus === 'replied' AND isReplied === true)
+    const unrepliedChats = await Chat.find({
+      $or: [
+        { replyStatus: { $ne: 'replied' } },
+        { isReplied: { $ne: true } }
       ]
     })
     .sort({ lastUpdated: -1 })
     .lean();
+
+    console.log('[DEBUG] Found unreplied chats count:', unrepliedChats.length);
+    console.log('[DEBUG] Found unreplied chat IDs:', unrepliedChats.map(c => c.id));
 
     // Transform chats to match expected format
     const formattedChats = unrepliedChats.map(chat => ({
@@ -468,8 +917,14 @@ router.get('/unreplied-chats', modOnlyMiddleware, async (req, res) => {
       lastUpdated: chat.lastUpdated,
       flaggedCount: (chat.messages || []).filter(msg => msg.isFlagged).length,
       replyStatus: chat.replyStatus || 'unreplied',
+      isReplied: chat.isReplied || false,
       assignedModerator: chat.assignedModerator || null
     }));
+
+    console.log('[DEBUG] Formatted unreplied chats:', {
+      count: formattedChats.length,
+      ids: formattedChats.map(c => c.id)
+    });
 
     res.json({
       success: true,
@@ -492,7 +947,7 @@ router.put('/moderator-profile', modOnlyMiddleware, async (req, res) => {
 
     console.log('[DEBUG moderation] Updating moderator profile:', { moderatorId, name, email, age, location, phone });
 
-    const user = await User.findById(moderatorId);
+    const user = await User.findOne({ id: moderatorId });
     if (!user) {
       return res.status(404).json({ error: 'Moderator not found' });
     }
@@ -566,35 +1021,36 @@ router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
       replyStatus: chat.replyStatus
     });
 
-    // Mark as replied
-    chat.isReplied = true;
-    chat.replyStatus = 'replied';
-    chat.markedAsRepliedAt = Date.now();
-    chat.assignedModerator = req.userId; // Capture which moderator replied
-    chat.repliedBy = req.userId; // Track who replied
+    const wasAlreadyReplied = chat.replyStatus === 'replied' || chat.isReplied === true;
+    if (!wasAlreadyReplied) {
+      chat.isReplied = true;
+      chat.replyStatus = 'replied';
+      chat.markedAsRepliedAt = Date.now();
+    }
+    chat.assignedModerator = req.userId;
+    chat.repliedBy = req.userId;
     
     await chat.save();
 
-    // Create earning record for moderator
     const moderator = await User.findOne({ id: req.userId });
-    const earningAmount = 0.50; // $0.50 per chat replied
+    let earningsSummary = null;
     
     try {
-      const earning = new ModeratorEarnings({
+      const earningResult = await applyReplyEarning({
         moderatorId: req.userId,
         moderatorName: moderator?.name || moderator?.username || 'Unknown',
-        chatId: chatId,
-        earnedAmount: earningAmount,
-        status: 'approved',
-        repliedAt: new Date(chat.markedAsRepliedAt),
-        notes: `Chat reply by moderator ${moderator?.name || moderator?.username}`
+        chatId,
+        repliedAt: new Date(chat.markedAsRepliedAt || Date.now())
       });
-      
-      await earning.save();
-      console.log('[DEBUG] Earning record created:', { userId: req.userId, amount: earningAmount, chatId });
+      earningsSummary = earningResult.summary;
+      console.log('[DEBUG] Reply earning processed:', {
+        userId: req.userId,
+        amount: EARNING_PER_CHAT_REPLY,
+        chatId,
+        created: earningResult.created
+      });
     } catch (earningError) {
       console.error('[ERROR] Failed to create earning record:', earningError);
-      // Don't fail the entire operation if earning record fails
     }
 
     // Log moderator action
@@ -612,9 +1068,28 @@ router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
       message: 'Chat marked as replied',
       chat: {
         id: chat.id,
+        participants: chat.participants,
+        messages: chat.messages || [],
+        lastUpdated: chat.lastUpdated,
+        flaggedCount: (chat.messages || []).filter(msg => msg.isFlagged).length,
         isReplied: chat.isReplied,
         replyStatus: chat.replyStatus,
-        markedAsRepliedAt: chat.markedAsRepliedAt
+        markedAsRepliedAt: chat.markedAsRepliedAt,
+        assignedModerator: chat.assignedModerator,
+        repliedBy: chat.repliedBy,
+        earningPerReply: EARNING_PER_CHAT_REPLY,
+        earnings: earningsSummary ? {
+          sessionEarnings: earningsSummary.sessionEarnings,
+          totalEarnings: earningsSummary.totalEarnings,
+          totalReplies: earningsSummary.totalReplies
+        } : null,
+        moderatorDetails: moderator ? {
+          id: moderator.id,
+          name: moderator.name,
+          email: moderator.email,
+          username: moderator.username,
+          role: moderator.role
+        } : null
       }
     });
   } catch (error) {
@@ -627,10 +1102,10 @@ router.put('/mark-replied/:chatId', modOnlyMiddleware, async (req, res) => {
 router.get('/replied-chats', modOnlyMiddleware, async (req, res) => {
   try {
     const moderatorId = req.userId;
-    console.log('[DEBUG] Fetching replied chats for moderator:', moderatorId);
+    const isAdmin = req.userRole === 'ADMIN';
+    console.log('[DEBUG] Fetching replied chats:', { moderatorId, isAdmin });
 
-    // Only get chats assigned to THIS moderator
-    const repliedChats = await Chat.find({
+    const repliedQuery = {
       $and: [
         {
           $or: [
@@ -638,11 +1113,23 @@ router.get('/replied-chats', modOnlyMiddleware, async (req, res) => {
             { isReplied: true }
           ]
         },
-        {
-          assignedModerator: moderatorId
-        }
+        isAdmin
+          ? {
+              $or: [
+                { assignedModerator: { $exists: true, $ne: null } },
+                { repliedBy: { $exists: true, $ne: null } }
+              ]
+            }
+          : {
+              $or: [
+                { assignedModerator: moderatorId },
+                { repliedBy: moderatorId }
+              ]
+            }
       ]
-    })
+    };
+
+    const repliedChats = await Chat.find(repliedQuery)
     .sort({ markedAsRepliedAt: -1 });
 
     console.log('[DEBUG] Found replied chats:', {
@@ -658,12 +1145,12 @@ router.get('/replied-chats', modOnlyMiddleware, async (req, res) => {
     });
 
     // Fetch moderator details for all assigned moderators
-    const moderatorIds = [...new Set(repliedChats.map(c => c.assignedModerator).filter(Boolean))];
+    const moderatorIds = [...new Set(repliedChats.map(c => c.assignedModerator || c.repliedBy).filter(Boolean))];
     const moderatorMap = {};
     
     for (const modId of moderatorIds) {
       try {
-        const mod = await User.findById(modId).select('id name email username role');
+        const mod = await User.findOne({ id: modId }).select('id name email username role');
         if (mod) {
           moderatorMap[modId] = {
             id: mod.id,
@@ -678,18 +1165,38 @@ router.get('/replied-chats', modOnlyMiddleware, async (req, res) => {
       }
     }
 
+    const chatIds = repliedChats.map(chat => chat.id);
+    const earnings = await ModeratorEarnings.find({ chatId: { $in: chatIds } }).lean();
+    const earningsMap = new Map(
+      earnings.map(entry => [`${entry.chatId}_${entry.moderatorId}`, entry])
+    );
+
     // Transform chats to match expected format
-    const formattedChats = repliedChats.map(chat => ({
-      id: chat.id,
-      participants: chat.participants,
-      messages: chat.messages || [],
-      lastUpdated: chat.lastUpdated,
-      markedAsRepliedAt: chat.markedAsRepliedAt,
-      flaggedCount: (chat.messages || []).filter(msg => msg.isFlagged).length,
-      replyStatus: chat.replyStatus || 'replied',
-      assignedModerator: chat.assignedModerator,
-      moderatorDetails: moderatorMap[chat.assignedModerator] || null
-    }));
+    const formattedChats = repliedChats.map(chat => {
+      const assignedModeratorId = chat.assignedModerator || chat.repliedBy || null;
+      const earningEntry = assignedModeratorId ? earningsMap.get(`${chat.id}_${assignedModeratorId}`) : null;
+
+      return {
+        id: chat.id,
+        participants: chat.participants,
+        messages: chat.messages || [],
+        lastUpdated: chat.lastUpdated,
+        markedAsRepliedAt: chat.markedAsRepliedAt,
+        flaggedCount: (chat.messages || []).filter(msg => msg.isFlagged).length,
+        replyStatus: chat.replyStatus || 'replied',
+        assignedModerator: chat.assignedModerator || chat.repliedBy || null,
+        moderatorDetails: moderatorMap[chat.assignedModerator || chat.repliedBy] || null,
+        earningReview: earningEntry ? {
+          id: earningEntry._id?.toString(),
+          amount: earningEntry.earnedAmount || 0,
+          status: earningEntry.status || 'pending',
+          approvedAt: earningEntry.approvedAt || null,
+          rejectedAt: earningEntry.rejectedAt || null,
+          rejectionReason: earningEntry.rejectionReason || '',
+          scheduledPayoutDate: earningEntry.scheduledPayoutDate || null
+        } : null
+      };
+    });
 
     res.json({
       success: true,
@@ -707,55 +1214,8 @@ router.get('/replied-chats', modOnlyMiddleware, async (req, res) => {
 router.get('/session-earnings', modOnlyMiddleware, async (req, res) => {
   try {
     const moderatorId = req.userId;
-    
-    console.log('[DEBUG] Fetching earnings for moderator:', moderatorId);
-    
-    let earnings = await ModeratorEarnings.findOne({ moderatorId });
-    
-    console.log('[DEBUG] Found earnings record:', !!earnings, 'moderatorId:', earnings?.moderatorId);
-    
-    if (!earnings) {
-      // Create new earnings record if doesn't exist
-      console.log('[DEBUG] Creating new earnings record for moderator:', moderatorId);
-      earnings = new ModeratorEarnings({ 
-        moderatorId,
-        sessionEarnings: 0,
-        totalEarnings: 0,
-        dailyEarnings: [],
-        lastResetAt: new Date(),
-        replyRate: 0
-      });
-      await earnings.save();
-    }
-
-    // Check if we need to reset (12:00 hrs = 12:00 UTC)
-    const now = new Date();
-    const today = new Date(now);
-    today.setUTCHours(12, 0, 0, 0);
-    
-    if (earnings.lastResetAt < today) {
-      // Move currentSessionEarnings to history and reset
-      const today_str = new Date().toISOString().split('T')[0];
-      const existingDaily = earnings.dailyEarnings.find(d => 
-        new Date(d.date).toISOString().split('T')[0] === today_str
-      );
-      
-      if (existingDaily) {
-        existingDaily.amount = earnings.sessionEarnings;
-      } else {
-        earnings.dailyEarnings.push({
-          date: new Date(),
-          amount: earnings.sessionEarnings,
-          chatsModerated: 0,
-          repliesCount: 0
-        });
-      }
-      
-      earnings.totalEarnings = (earnings.totalEarnings || 0) + earnings.sessionEarnings;
-      earnings.sessionEarnings = 0;
-      earnings.lastResetAt = new Date();
-      await earnings.save();
-    }
+    const moderator = await User.findOne({ id: moderatorId }).select('name username');
+    const earnings = await reconcileEarningsSummaryFromLedger(moderatorId, moderator?.name || moderator?.username || 'Unknown');
 
     res.json({
       success: true,
@@ -773,26 +1233,13 @@ router.get('/session-earnings', modOnlyMiddleware, async (req, res) => {
 // Update moderator session earnings (called when moderator replies)
 router.post('/session-earnings/add', modOnlyMiddleware, async (req, res) => {
   try {
-    const { amount } = req.body;
     const moderatorId = req.userId;
-    
-    if (!amount || typeof amount !== 'number') {
-      return res.status(400).json({ error: 'Invalid amount' });
-    }
-
-    let earnings = await ModeratorEarnings.findOne({ moderatorId });
-    
-    if (!earnings) {
-      earnings = new ModeratorEarnings({ moderatorId });
-    }
-
-    earnings.sessionEarnings = (earnings.sessionEarnings || 0) + amount;
-    earnings.lastEarningsUpdate = new Date();
-    
-    await earnings.save();
+    const moderator = await User.findOne({ id: moderatorId }).select('name username');
+    const earnings = await reconcileEarningsSummaryFromLedger(moderatorId, moderator?.name || moderator?.username || 'Unknown');
 
     res.json({
       success: true,
+      message: 'Session earnings are now ledger-driven and refresh automatically',
       newSessionEarnings: earnings.sessionEarnings,
       totalEarnings: earnings.totalEarnings
     });
@@ -806,42 +1253,18 @@ router.post('/session-earnings/add', modOnlyMiddleware, async (req, res) => {
 router.post('/session-earnings/clear', modOnlyMiddleware, async (req, res) => {
   try {
     const moderatorId = req.userId;
-    
-    let earnings = await ModeratorEarnings.findOne({ moderatorId });
-    
-    if (!earnings) {
-      return res.status(404).json({ error: 'Earnings record not found' });
-    }
-
-    // Save current session earnings to daily history
-    const today_str = new Date().toISOString().split('T')[0];
-    const existingDaily = earnings.dailyEarnings.find(d => 
-      new Date(d.date).toISOString().split('T')[0] === today_str
-    );
-    
-    if (existingDaily) {
-      existingDaily.amount = earnings.sessionEarnings;
-    } else {
-      earnings.dailyEarnings.push({
-        date: new Date(),
-        amount: earnings.sessionEarnings,
-        chatsModerated: 0,
-        repliesCount: 0
-      });
-    }
-    
-    earnings.totalEarnings = (earnings.totalEarnings || 0) + earnings.sessionEarnings;
-    const clearedAmount = earnings.sessionEarnings;
-    earnings.sessionEarnings = 0;
+    const moderator = await User.findOne({ id: moderatorId }).select('name username');
+    const earnings = await getOrCreateEarningsSummary(moderatorId, moderator?.name || moderator?.username || 'Unknown');
     earnings.lastResetAt = new Date();
     
     await earnings.save();
+    const reconciled = await reconcileEarningsSummaryFromLedger(moderatorId, moderator?.name || moderator?.username || 'Unknown');
 
     res.json({
       success: true,
-      clearedAmount,
-      totalEarnings: earnings.totalEarnings,
-      message: 'Session earnings cleared and added to total earnings'
+      clearedAmount: 0,
+      totalEarnings: reconciled.totalEarnings,
+      message: 'Session reset timestamp updated. Earnings remain ledger-controlled.'
     });
   } catch (error) {
     console.error('[ERROR moderation] Failed to clear session earnings:', error);
@@ -924,13 +1347,8 @@ router.get('/moderated-chats', modOnlyMiddleware, async (req, res) => {
 router.get('/earnings-history', modOnlyMiddleware, async (req, res) => {
   try {
     const moderatorId = req.userId;
-    
-    let earnings = await ModeratorEarnings.findOne({ moderatorId });
-    
-    if (!earnings) {
-      earnings = new ModeratorEarnings({ moderatorId });
-      await earnings.save();
-    }
+    const moderator = await User.findOne({ id: moderatorId }).select('name username');
+    const earnings = await reconcileEarningsSummaryFromLedger(moderatorId, moderator?.name || moderator?.username || 'Unknown');
 
     res.json({
       success: true,
@@ -1193,16 +1611,39 @@ router.get('/payment-balance/:moderatorId', modOnlyMiddleware, async (req, res) 
       }
     });
 
+    const [pendingApprovalAggregate, approvedAggregate, defaultPaymentMethod] = await Promise.all([
+      ModeratorEarnings.aggregate([
+        { $match: { moderatorId, status: 'pending' } },
+        { $group: { _id: null, total: { $sum: '$earnedAmount' }, count: { $sum: 1 } } }
+      ]),
+      ModeratorEarnings.aggregate([
+        { $match: { moderatorId, status: 'approved' } },
+        { $group: { _id: null, total: { $sum: '$earnedAmount' }, count: { $sum: 1 } } }
+      ]),
+      getDefaultPaymentMethod(moderatorId)
+    ]);
+
     // Also get from earnings
-    let earnings = await ModeratorEarnings.findOne({ moderatorId });
+    const moderator = await User.findOne({ id: moderatorId }).select('name username');
+    const earnings = await reconcileEarningsSummaryFromLedger(moderatorId, moderator?.name || moderator?.username || 'Unknown');
     if (earnings) {
       balance += earnings.sessionEarnings || 0;
     }
 
+    const pendingApprovalAmount = Number(((pendingApprovalAggregate[0]?.total) || 0).toFixed(2));
+    const approvedAmount = Number(((approvedAggregate[0]?.total) || 0).toFixed(2));
+    const nextPayoutDate = getNextPayoutDate(new Date());
+
     res.json({
       success: true,
       balance: Math.max(0, balance),
+      approvedBalance: approvedAmount,
+      pendingApprovalBalance: pendingApprovalAmount,
       pendingPayments: pendingTransactions.length,
+      nextPayoutDate,
+      payoutDayOfMonth: MONTHLY_PAYOUT_DAY,
+      canProcessPayoutToday: isPayoutDayReached(new Date()),
+      defaultPaymentMethod: describePaymentMethod(defaultPaymentMethod),
       currency: 'USD'
     });
   } catch (error) {
@@ -1483,6 +1924,9 @@ router.get('/moderator/:userId/earnings', modOnlyMiddleware, async (req, res) =>
       }
     ]);
     
+    const defaultPaymentMethod = await getDefaultPaymentMethod(userId);
+    const nextPayoutDate = getNextPayoutDate(new Date());
+
     res.json({
       success: true,
       userId,
@@ -1492,8 +1936,12 @@ router.get('/moderator/:userId/earnings', modOnlyMiddleware, async (req, res) =>
         totalPending: pendingEarnings[0]?.totalPending || 0,
         totalPaid: paidEarnings[0]?.totalPaid || 0,
         chatsCompleted: approvedEarnings[0]?.count || 0,
-        pendingChats: pendingEarnings[0]?.count || 0
-      }
+        pendingChats: pendingEarnings[0]?.count || 0,
+        nextPayoutDate,
+        payoutDayOfMonth: MONTHLY_PAYOUT_DAY,
+        defaultPaymentMethod: describePaymentMethod(defaultPaymentMethod)
+      },
+      paymentMethod: describePaymentMethod(defaultPaymentMethod)
     });
   } catch (error) {
     console.error('[ERROR moderation] Failed to fetch moderator earnings:', error);
@@ -1536,31 +1984,115 @@ router.get('/moderator/:userId/earnings/history', modOnlyMiddleware, async (req,
 router.get('/earnings/summary', modOnlyMiddleware, async (req, res) => {
   try {
     console.log('[DEBUG] Fetching all moderators earnings summary');
-    
-    const earnings = await ModeratorEarnings.aggregate([
-      {
-        $match: {
-          status: { $in: ['approved', 'paid'] }
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const [ledgerByModerator, summaries, moderators, paymentMethods] = await Promise.all([
+      ModeratorEarnings.aggregate([
+        {
+          $group: {
+            _id: '$moderatorId',
+            moderatorName: { $first: '$moderatorName' },
+            chatsCompleted: { $sum: 1 },
+            totalEarnedLedger: { $sum: '$earnedAmount' },
+            totalPending: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'pending'] }, '$earnedAmount', 0]
+              }
+            },
+            totalApprovedUnpaid: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'approved'] }, '$earnedAmount', 0]
+              }
+            },
+            totalPaid: {
+              $sum: {
+                $cond: [{ $eq: ['$status', 'paid'] }, '$earnedAmount', 0]
+              }
+            },
+            thisMonth: {
+              $sum: {
+                $cond: [{ $gte: ['$repliedAt', startOfMonth] }, '$earnedAmount', 0]
+              }
+            },
+            lastRepliedAt: { $max: '$repliedAt' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$moderatorId',
-          moderatorName: { $first: '$moderatorName' },
-          totalEarned: { $sum: '$earnedAmount' },
-          chatsCompleted: { $sum: 1 },
-          lastRepliedAt: { $max: '$repliedAt' }
-        }
-      },
-      {
-        $sort: { totalEarned: -1 }
-      }
+      ]),
+      ModeratorEarningsSummary.find({}).lean(),
+      User.find({ role: { $in: ['MODERATOR', 'ADMIN'] } }).select('id name username email role').lean(),
+      PaymentMethod.find({ isActive: true }).sort({ isDefault: -1, createdAt: 1 }).lean()
     ]);
-    
+
+    const summaryMap = new Map(summaries.map(summary => [summary.moderatorId, summary]));
+    const moderatorMap = new Map(moderators.map(moderator => [moderator.id, moderator]));
+    const paymentMethodMap = new Map();
+    paymentMethods.forEach(method => {
+      if (!paymentMethodMap.has(method.moderatorId)) {
+        paymentMethodMap.set(method.moderatorId, method);
+      }
+    });
+    const nextPayoutDate = getNextPayoutDate(new Date());
+
+    const earnings = ledgerByModerator.map(entry => {
+      const summary = summaryMap.get(entry._id);
+      const moderator = moderatorMap.get(entry._id);
+      const paymentMethod = paymentMethodMap.get(entry._id);
+      const balanceDue = entry.totalApprovedUnpaid || 0;
+      const awaitingApproval = entry.totalPending || 0;
+
+      return {
+        moderatorId: entry._id,
+        moderatorName: moderator?.name || entry.moderatorName || summary?.moderatorName || moderator?.username || 'Unknown',
+        email: moderator?.email || '',
+        role: moderator?.role || 'MODERATOR',
+        chatsCompleted: entry.chatsCompleted || 0,
+        thisMonth: Number((entry.thisMonth || 0).toFixed(2)),
+        totalEarned: Number(((summary?.totalEarnings ?? entry.totalEarnedLedger) || 0).toFixed(2)),
+        totalPending: Number(awaitingApproval.toFixed(2)),
+        totalApprovedUnpaid: Number((entry.totalApprovedUnpaid || 0).toFixed(2)),
+        totalPaid: Number((entry.totalPaid || 0).toFixed(2)),
+        balanceDue: Number(balanceDue.toFixed(2)),
+        awaitingApproval: Number(awaitingApproval.toFixed(2)),
+        approvedForNextPayout: Number((entry.totalApprovedUnpaid || 0).toFixed(2)),
+        sessionEarnings: Number((summary?.sessionEarnings || 0).toFixed(2)),
+        totalReplies: summary?.totalReplies || entry.chatsCompleted || 0,
+        lastRepliedAt: entry.lastRepliedAt || summary?.lastReplyAt || null,
+        nextPayoutDate,
+        payoutDayOfMonth: MONTHLY_PAYOUT_DAY,
+        paymentMethod: describePaymentMethod(paymentMethod),
+        status: awaitingApproval > 0 ? 'awaiting_approval' : balanceDue > 0 ? 'approved_for_payout' : 'settled'
+      };
+    }).sort((a, b) => b.totalEarned - a.totalEarned);
+
+    const totals = earnings.reduce((acc, moderator) => {
+      acc.totalDistributed += moderator.totalPaid;
+      acc.pendingPayouts += moderator.balanceDue;
+      acc.awaitingApproval += moderator.awaitingApproval;
+      acc.monthlyBudget += moderator.thisMonth;
+      return acc;
+    }, {
+      totalDistributed: 0,
+      pendingPayouts: 0,
+      awaitingApproval: 0,
+      monthlyBudget: 0
+    });
+
     res.json({
       success: true,
       count: earnings.length,
-      earnings
+      earnings,
+      totals: {
+        totalDistributed: Number(totals.totalDistributed.toFixed(2)),
+        pendingPayouts: Number(totals.pendingPayouts.toFixed(2)),
+        awaitingApproval: Number(totals.awaitingApproval.toFixed(2)),
+        monthlyBudget: Number(totals.monthlyBudget.toFixed(2)),
+        activeModerators: earnings.length,
+        nextPayoutDate,
+        payoutDayOfMonth: MONTHLY_PAYOUT_DAY
+      }
     });
   } catch (error) {
     console.error('[ERROR moderation] Failed to fetch earnings summary:', error);
@@ -1568,20 +2100,142 @@ router.get('/earnings/summary', modOnlyMiddleware, async (req, res) => {
   }
 });
 
+router.post('/moderator/:userId/approve-earnings', adminOnlyMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { earningIds = [] } = req.body;
+
+    if (!Array.isArray(earningIds) || earningIds.length === 0) {
+      return res.status(400).json({
+        error: 'Bulk approval is disabled. Approve replied chats one by one from the Replied Chats tab.'
+      });
+    }
+
+    const moderator = await User.findOne({ id: userId }).select('id name username email');
+    if (!moderator) {
+      return res.status(404).json({ error: 'Moderator not found' });
+    }
+
+    const result = await approveEarningsForModerator({
+      moderatorId: userId,
+      moderatorName: moderator.name || moderator.username || moderator.email || userId,
+      earningIds,
+      adminId: req.userId
+    });
+
+    res.json({
+      success: true,
+      message: result.approvedCount > 0
+        ? `Approved ${result.approvedCount} earning entries for monthly payout`
+        : 'No pending earnings found to approve',
+      approvedCount: result.approvedCount,
+      approvedAmount: result.approvedAmount,
+      scheduledPayoutDate: result.scheduledPayoutDate || getNextPayoutDate(new Date()),
+      summary: result.summary || null
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to approve earnings:', error);
+    res.status(500).json({ error: 'Failed to approve earnings' });
+  }
+});
+
+router.post('/replied-chats/:chatId/review', adminOnlyMiddleware, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { moderatorId, action, reason = '' } = req.body;
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'Action must be approve or reject' });
+    }
+
+    const result = await updateChatEarningReview({
+      chatId,
+      moderatorId,
+      action,
+      reason,
+      adminId: req.userId
+    });
+
+    res.json({
+      success: true,
+      message: action === 'approve'
+        ? 'Chat earning approved successfully'
+        : 'Chat earning rejected successfully',
+      chatId,
+      moderatorId: result.moderatorId,
+      review: {
+        id: result.earning._id?.toString(),
+        status: result.earning.status,
+        amount: result.earning.earnedAmount,
+        approvedAt: result.earning.approvedAt || null,
+        rejectedAt: result.earning.rejectedAt || null,
+        rejectionReason: result.earning.rejectionReason || '',
+        scheduledPayoutDate: result.earning.scheduledPayoutDate || null
+      },
+      summary: result.summary
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to review replied chat earning:', error);
+    res.status(500).json({ error: error.message || 'Failed to review replied chat earning' });
+  }
+});
+
+router.post('/payouts/process-monthly', adminOnlyMiddleware, async (req, res) => {
+  try {
+    const { moderatorId, runDate } = req.body;
+    const payoutRunDate = runDate ? new Date(runDate) : new Date();
+    if (Number.isNaN(payoutRunDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid payout run date' });
+    }
+
+    const results = await processApprovedPayouts({
+      moderatorId,
+      runDate: payoutRunDate,
+      adminId: req.userId
+    });
+
+    res.json({
+      success: true,
+      payoutDate: payoutRunDate,
+      processedCount: results.filter(result => result.status === 'paid').length,
+      skippedCount: results.filter(result => result.status === 'skipped').length,
+      results
+    });
+  } catch (error) {
+    console.error('[ERROR moderation] Failed to process monthly payouts:', error);
+    res.status(500).json({ error: error.message || 'Failed to process monthly payouts' });
+  }
+});
+
 // Mark earnings as paid
-router.post('/moderator/:userId/mark-paid', modOnlyMiddleware, async (req, res) => {
+router.post('/moderator/:userId/mark-paid', adminOnlyMiddleware, async (req, res) => {
   try {
     const { userId } = req.params;
     const { earningIds, paymentMethod, transactionId } = req.body;
     
     console.log(`[DEBUG] Marking earnings as paid for moderator: ${userId}`, { earningIds });
+
+    const defaultPaymentMethod = await getDefaultPaymentMethod(userId);
+    const selectedPaymentMethod = paymentMethod || (defaultPaymentMethod?.type === 'mpesa'
+      ? 'mobile_money'
+      : defaultPaymentMethod?.type === 'bank_transfer'
+        ? 'bank_transfer'
+        : defaultPaymentMethod
+          ? 'wallet'
+          : 'pending');
+
+    const earningsToUpdate = await ModeratorEarnings.find({
+      _id: { $in: earningIds },
+      moderatorId: userId
+    });
+    const totalAmount = Number(earningsToUpdate.reduce((sum, earning) => sum + (earning.earnedAmount || 0), 0).toFixed(2));
     
     const updateResult = await ModeratorEarnings.updateMany(
-      { _id: { $in: earningIds } },
+      { _id: { $in: earningIds }, moderatorId: userId },
       {
         $set: {
           status: 'paid',
-          paymentMethod: paymentMethod || 'pending',
+          paymentMethod: selectedPaymentMethod,
           transactionId: transactionId,
           paidAt: new Date(),
           updatedAt: new Date()
@@ -1589,10 +2243,23 @@ router.post('/moderator/:userId/mark-paid', modOnlyMiddleware, async (req, res) 
       }
     );
     
+    const moderator = await User.findOne({ id: userId }).select('name username');
+    await reconcileEarningsSummaryFromLedger(userId, moderator?.name || moderator?.username || 'Unknown');
+    await logPaymentStatusChanged(userId, 'approved', 'paid', totalAmount, { userId: req.userId });
+    await logPaymentProcessed(
+      userId,
+      totalAmount,
+      defaultPaymentMethod?.name || selectedPaymentMethod,
+      transactionId || 'manual',
+      earningIds,
+      { userId: req.userId }
+    );
+
     res.json({
       success: true,
       message: 'Earnings marked as paid',
-      modifiedCount: updateResult.modifiedCount
+      modifiedCount: updateResult.modifiedCount,
+      paymentMethod: describePaymentMethod(defaultPaymentMethod) || selectedPaymentMethod
     });
   } catch (error) {
     console.error('[ERROR moderation] Failed to mark earnings as paid:', error);
@@ -1701,6 +2368,7 @@ router.put('/users/:userId/suspend', adminOnlyMiddleware, async (req, res) => {
       user.suspended = true;
       user.suspendedReason = reason || 'Account suspended by admin';
       user.suspendedAt = new Date();
+      user.isOnline = false; // Force offline
       console.log(`[DEBUG moderation] Suspending user: ${userId}`);
     } else {
       // Unsuspend user
@@ -1712,18 +2380,21 @@ router.put('/users/:userId/suspend', adminOnlyMiddleware, async (req, res) => {
     
     await user.save();
     
-    // Log the action
-    await logModeratorAction(user.id, suspend ? 'suspended' : 'unsuspended', user.id, `User ${suspend ? 'suspended' : 'unsuspended'} by admin`, req.userId);
+    // Log the action - logModeratorAction(userId, actionType, chatId, details, moderatorId)
+    await logModeratorAction(user.id, suspend ? 'suspended' : 'unsuspended', null, `User ${suspend ? 'suspended' : 'unsuspended'} - Reason: ${reason || 'No reason provided'}`, req.userId);
+    
+    console.log(`[INFO] User ${userId} suspension status updated: ${suspend ? 'SUSPENDED' : 'UNSUSPENDED'}`);
     
     res.json({
       success: true,
-      message: `User ${suspend ? 'suspended' : 'unsuspended'} successfully`,
+      message: `User ${suspend ? 'suspended' : 'unsuspended'} successfully. User will be signed out if currently logged in.`,
       user: {
         id: user.id,
         username: user.username,
         suspended: user.suspended,
         suspendedReason: user.suspendedReason,
-        suspendedAt: user.suspendedAt
+        suspendedAt: user.suspendedAt,
+        isOnline: user.isOnline
       }
     });
   } catch (error) {
@@ -1752,6 +2423,13 @@ router.put('/users/:userId/role', adminOnlyMiddleware, async (req, res) => {
     
     const oldRole = user.role;
     user.role = newRole;
+    
+    // ✅ Auto-verify email when promoting to moderator/admin (they use company emails)
+    if ((newRole === 'MODERATOR' || newRole === 'ADMIN') && !user.emailVerified) {
+      user.emailVerified = true;
+      console.log(`[INFO moderation] Email auto-verified for ${userId} due to role promotion to ${newRole}`);
+    }
+    
     await user.save();
     
     console.log(`[DEBUG moderation] Role changed: ${userId} from ${oldRole} to ${newRole}`);
@@ -2162,7 +2840,7 @@ router.post('/users/create', adminOnlyMiddleware, async (req, res) => {
       id: uuidv4(),
       username: username.toLowerCase(),
       email: email.toLowerCase(),
-      password: hashedPassword,
+      passwordHash: hashedPassword,
       name: name || username,
       age: age || 25,
       bio: bio || 'Onboarded by admin',
@@ -2174,13 +2852,15 @@ router.post('/users/create', adminOnlyMiddleware, async (req, res) => {
       suspended: false,
       coins: 0,
       isPremium: false,
+      // ✅ Auto-verify email for moderators and admins (they use company emails)
+      emailVerified: (role === 'MODERATOR' || role === 'ADMIN') ? true : false,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
     await newUser.save();
 
-    console.log('[DEBUG moderation] New user created successfully:', { userId: newUser._id, username: newUser.username, email: newUser.email, imagesCount: newUser.images?.length || 0 });
+    console.log('[DEBUG moderation] New user created successfully:', { userId: newUser._id, username: newUser.username, email: newUser.email, role: newUser.role, emailVerified: newUser.emailVerified, imagesCount: newUser.images?.length || 0 });
 
     res.json({
       success: true,

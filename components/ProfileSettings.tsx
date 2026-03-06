@@ -58,6 +58,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [selectedMethod, setSelectedMethod] = useState<string>('card');
   const [momoNumber, setMomoNumber] = useState<string>('');  // mobile money phone number
   const [lipanaMessage, setLipanaMessage] = useState<string | null>(null);  // feedback from initiate
+  const [coinEmailSent, setCoinEmailSent] = useState<boolean | null>(null);
+  const [coinEmailError, setCoinEmailError] = useState<string | null>(null);
   const [openModal, setOpenModal] = useState<string | null>(null);
   const [editData, setEditData] = useState({
     bio: user.bio || '',
@@ -101,6 +103,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [premiumPaymentStep, setPremiumPaymentStep] = useState<'SELECT_METHOD' | 'PROCESSING' | 'SUCCESS'>('SELECT_METHOD');
   const [premiumSelectedMethod, setPremiumSelectedMethod] = useState<string>('card');
   const [premiumMomoNumber, setPremiumMomoNumber] = useState<string>('');
+  const [premiumEmailSent, setPremiumEmailSent] = useState<boolean | null>(null);
+  const [premiumEmailError, setPremiumEmailError] = useState<string | null>(null);
 
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
@@ -181,6 +185,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     setSelectedPack(pack);
     setPaymentStep('SELECT_METHOD');
     setMomoNumber(''); // reset mobile money number when opening
+    setCoinEmailSent(null);
+    setCoinEmailError(null);
   };
 
   const handleConfirmPayment = async () => {
@@ -204,7 +210,40 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         packageId: selectedPack.id
       });
 
-      const isPremium = selectedPack.coins > 1000;
+      setLipanaMessage(null);
+      const resp: any = await apiClient.post('/transactions/purchase', {
+        userId: user.id,
+        packageId: selectedPack.id,
+        method: selectedMethod,
+        phoneNumber: selectedMethod === 'momo' ? momoNumber : undefined,
+      });
+      setCoinEmailSent(resp.emailSent === true);
+      setCoinEmailError(resp.emailSent === true ? null : (resp.emailError || 'Confirmation email could not be delivered.'));
+      console.log('[ProfileSettings] Payment successful:', {
+        transactionId: resp.transactionId || resp.id,
+        coins: selectedPack.coins,
+        userEmail: user.email,
+        method: selectedMethod,
+        emailSent: resp.emailSent
+      });
+
+      try {
+        const refreshedUser = await apiClient.refreshUserProfile();
+        console.log('[ProfileSettings] User profile refreshed:', { coins: refreshedUser.coins, isPremium: refreshedUser.isPremium });
+        setUser(refreshedUser);
+      } catch (refreshErr) {
+        console.error('[ProfileSettings] Failed to refresh user profile, using local state:', refreshErr);
+        const updatedUser = {
+          ...user,
+          coins: resp.coins ?? user.coins,
+          isPremium: resp.isPremium ?? user.isPremium,
+        };
+        setUser(updatedUser);
+      }
+
+      setPaymentStep('SUCCESS');
+      setIsProcessing(false);
+      return;
 
       if (selectedMethod === 'momo') {
         // start Lipana mobile‑money flow; backend requires packageId rather than raw amount
@@ -335,6 +374,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
       setPaymentStep('SELECT_METHOD');
       setMomoNumber('');
       setLipanaMessage(null);
+      setCoinEmailSent(null);
+      setCoinEmailError(null);
       setError(null);
     }
   };
@@ -343,6 +384,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     setSelectedPremiumPackage(pkg);
     setPremiumPaymentStep('SELECT_METHOD');
     setPremiumMomoNumber('');
+    setPremiumEmailSent(null);
+    setPremiumEmailError(null);
   };
 
   const closePremiumCheckout = () => {
@@ -350,6 +393,8 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
       setSelectedPremiumPackage(null);
       setPremiumPaymentStep('SELECT_METHOD');
       setPremiumMomoNumber('');
+      setPremiumEmailSent(null);
+      setPremiumEmailError(null);
       setError(null);
     }
   };
@@ -374,6 +419,35 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         userEmail: user.email,
         method: premiumSelectedMethod
       });
+
+      const resp: any = await apiClient.post('/transactions/purchase-premium', {
+        userId: user.id,
+        packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
+        method: premiumSelectedMethod,
+        phoneNumber: premiumSelectedMethod === 'momo' ? premiumMomoNumber : undefined,
+      });
+      setPremiumEmailSent(resp.emailSent === true);
+      setPremiumEmailError(resp.emailSent === true ? null : (resp.emailError || 'Confirmation email could not be delivered.'));
+      
+      console.log('[ProfileSettings] Premium payment successful:', {
+        packageId: selectedPremiumPackage._id,
+        plan: selectedPremiumPackage.plan,
+        userEmail: user.email,
+        method: premiumSelectedMethod,
+        emailSent: resp.emailSent
+      });
+      
+      try {
+        const refreshedUser = await apiClient.refreshUserProfile();
+        console.log('[ProfileSettings] User profile refreshed after premium:', { isPremium: refreshedUser.isPremium, premiumExpiresAt: refreshedUser.premiumExpiresAt });
+        setUser(refreshedUser);
+      } catch (refreshErr) {
+        console.error('[ProfileSettings] Failed to refresh user profile:', refreshErr);
+      }
+      
+      setPremiumPaymentStep('SUCCESS');
+      setIsProcessing(false);
+      return;
 
       if (premiumSelectedMethod === 'momo') {
         // Initiate mobile money for premium  
@@ -867,13 +941,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         </div>
                       </div>
                       <h3 className="text-xl font-black text-gray-900 mb-2">Processing Transaction</h3>
-                      {selectedMethod === 'momo' ? (
-                        <p className="text-sm text-gray-500 max-w-[240px]">
-                          A prompt has been sent to <strong>{momoNumber}</strong>. Enter your PIN on your phone to complete the payment.
-                        </p>
-                      ) : (
-                        <p className="text-sm text-gray-500 max-w-[240px]">Connecting to secure gateway. Please do not close or refresh this window.</p>
-                      )}
+                      <p className="text-sm text-gray-500 max-w-[240px]">
+                        Processing your {selectedMethod === 'momo' ? 'mobile money' : 'payment'} checkout in test mode. Please wait a moment.
+                      </p>
                       <p className="text-xs text-gray-400 mt-4 max-w-[240px]">
                         <i className="fa-solid fa-envelope text-gray-400 mr-1"></i>
                         Confirmation email will be sent to your inbox
@@ -890,12 +960,24 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       <p className="text-sm text-gray-500 mb-2">
                         We've added <span className="font-bold text-gray-900">{selectedPack.coins} Spark Coins</span> to your wallet.
                       </p>
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mx-4 mb-8">
-                        <p className="text-xs text-blue-700 flex items-center justify-center gap-2">
-                          <i className="fa-solid fa-envelope text-blue-600"></i>
-                          <span>Confirmation email sent to <strong>{user.email}</strong></span>
-                        </p>
-                      </div>
+                      {coinEmailSent ? (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mx-4 mb-8">
+                          <p className="text-xs text-blue-700 flex items-center justify-center gap-2">
+                            <i className="fa-solid fa-envelope text-blue-600"></i>
+                            <span>Confirmation email sent to <strong>{user.email}</strong></span>
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mx-4 mb-8">
+                          <p className="text-xs text-amber-800 flex items-center justify-center gap-2">
+                            <i className="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                            <span>Purchase completed, but confirmation email was not delivered.</span>
+                          </p>
+                          {coinEmailError && (
+                            <p className="text-[11px] text-amber-700 mt-2 text-center">{coinEmailError}</p>
+                          )}
+                        </div>
+                      )}
                       <button 
                         onClick={closeCheckout}
                         className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl active:scale-95 transition-transform"
@@ -1016,13 +1098,9 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         </div>
                       </div>
                       <h3 className="text-xl font-black text-gray-900 mb-2">Processing Premium Purchase</h3>
-                      {premiumSelectedMethod === 'momo' ? (
-                        <p className="text-sm text-gray-500 max-w-[240px]">
-                          A prompt has been sent to <strong>{premiumMomoNumber}</strong>. Enter your PIN on your phone to complete the payment.
-                        </p>
-                      ) : (
-                        <p className="text-sm text-gray-500 max-w-[240px]">Connecting to secure gateway. Please do not close or refresh this window.</p>
-                      )}
+                      <p className="text-sm text-gray-500 max-w-[240px]">
+                        Processing your {premiumSelectedMethod === 'momo' ? 'mobile money' : 'payment'} checkout in test mode. Please wait a moment.
+                      </p>
                       <p className="text-xs text-gray-400 mt-4 max-w-[240px]">
                         <i className="fa-solid fa-envelope text-gray-400 mr-1"></i>
                         Confirmation email will be sent to your inbox
@@ -1044,12 +1122,24 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                         <div className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500"></i> Unlimited Super Likes</div>
                         <div className="flex items-center gap-2"><i className="fa-solid fa-check text-purple-500"></i> No Coin Costs</div>
                       </div>
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mx-4 mb-8">
-                        <p className="text-xs text-blue-700 flex items-center justify-center gap-2">
-                          <i className="fa-solid fa-envelope text-blue-600"></i>
-                          <span>Confirmation email sent to <strong>{user.email}</strong></span>
-                        </p>
-                      </div>
+                      {premiumEmailSent ? (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mx-4 mb-8">
+                          <p className="text-xs text-blue-700 flex items-center justify-center gap-2">
+                            <i className="fa-solid fa-envelope text-blue-600"></i>
+                            <span>Confirmation email sent to <strong>{user.email}</strong></span>
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mx-4 mb-8">
+                          <p className="text-xs text-amber-800 flex items-center justify-center gap-2">
+                            <i className="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                            <span>Premium activated, but confirmation email was not delivered.</span>
+                          </p>
+                          {premiumEmailError && (
+                            <p className="text-[11px] text-amber-700 mt-2 text-center">{premiumEmailError}</p>
+                          )}
+                        </div>
+                      )}
                       <button 
                         onClick={closePremiumCheckout}
                         className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl active:scale-95 transition-transform"
@@ -1196,31 +1286,57 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
             )}
 
             {/* Account Settings */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Account Settings</h4>
+            <div className="space-y-3 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
+              <div className="flex items-center justify-between mb-1">
+                <div>
+                  <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Account Settings</h4>
+                  <p className="mt-1 text-sm text-slate-500">Profile, billing, notifications, and trust controls.</p>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
+                  Managed tools
+                </span>
+              </div>
               
               {/* Edit Profile Button */}
               <button 
                 onClick={() => { setError(null); setOpenModal('profile'); }}
-                className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 active:bg-gray-100 transition-colors"
+                className="group w-full flex items-center justify-between p-4 bg-slate-50 rounded-[1.5rem] hover:bg-blue-50 border border-slate-200 hover:border-blue-200 transition-all"
               >
                 <div className="flex items-center gap-4 text-gray-700">
-                  <i className="fa-solid fa-user-pen text-sm text-gray-400 w-5 text-center"></i>
-                  <span className="text-sm font-semibold">Edit Profile</span>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+                    <i className="fa-solid fa-user-pen text-sm w-5 text-center"></i>
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-900">Edit Profile</span>
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Identity</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Update photos, bio, username, and profile details.</p>
+                  </div>
                 </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+                <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-blue-500"></i>
               </button>
 
               {/* Notifications Button */}
               <button 
                 onClick={() => { setError(null); setOpenModal('notifications'); }}
-                className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 active:bg-gray-100 transition-colors"
+                className="group w-full flex items-center justify-between p-4 bg-slate-50 rounded-[1.5rem] hover:bg-amber-50 border border-slate-200 hover:border-amber-200 transition-all"
               >
                 <div className="flex items-center gap-4 text-gray-700">
-                  <i className="fa-solid fa-bell text-sm text-gray-400 w-5 text-center"></i>
-                  <span className="text-sm font-semibold">Notifications</span>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
+                    <i className="fa-solid fa-bell text-sm w-5 text-center"></i>
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-900">Notifications</span>
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                        {Object.values(notificationSettings).filter(Boolean).length}/4 active
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Control matches, messages, activity, and promotional alerts.</p>
+                  </div>
                 </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+                <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-amber-500"></i>
               </button>
 
               {/* Desktop / PWA Push Toggle */}
@@ -1229,18 +1345,25 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                   <button
                     onClick={pushEnabled ? handleDisablePush : handleEnablePush}
                     disabled={pushProcessing}
-                    className={`w-full flex items-center justify-between p-4 rounded-2xl transition-colors ${pushEnabled ? 'bg-emerald-50 hover:bg-emerald-100' : 'bg-indigo-50 hover:bg-indigo-100'}`}
+                    className={`w-full flex items-center justify-between p-4 rounded-[1.5rem] border transition-all ${pushEnabled ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200' : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200'}`}
                   >
                     <div className="flex items-center gap-4 text-gray-700">
-                      <i className={`fa-solid ${pushEnabled ? 'fa-bell' : 'fa-bell-slash'} text-sm text-gray-400 w-5 text-center`}></i>
+                      <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${pushEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                        <i className={`fa-solid ${pushEnabled ? 'fa-bell' : 'fa-bell-slash'} text-sm w-5 text-center`}></i>
+                      </div>
                       <div className="text-left">
-                        <span className="text-sm font-semibold">Desktop & PWA Notifications</span>
-                        <div className="text-xs text-gray-500">{pushEnabled ? 'Enabled' : 'Disabled'}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-black text-slate-900">Desktop & PWA Notifications</span>
+                          <span className={`rounded-full border bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${pushEnabled ? 'border-emerald-200 text-emerald-700' : 'border-indigo-200 text-indigo-700'}`}>
+                            {pushEnabled ? 'Enabled' : 'Disabled'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">{pushEnabled ? 'This device receives instant browser alerts.' : 'Enable browser push for immediate account updates.'}</div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {pushProcessing && <i className="fa-solid fa-spinner fa-spin text-gray-400"></i>}
-                      <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+                      <i className={`fa-solid fa-chevron-right text-[10px] ${pushEnabled ? 'text-emerald-400' : 'text-indigo-400'}`}></i>
                     </div>
                   </button>
                   {pushEndpoint && (
@@ -1257,68 +1380,132 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                   // Load transactions when opening the modal
                   setTimeout(() => loadTransactions(), 100);
                 }}
-                className="w-full flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 active:bg-gray-100 transition-colors"
+                className="group w-full flex items-center justify-between p-4 bg-slate-50 rounded-[1.5rem] hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 transition-all"
               >
                 <div className="flex items-center gap-4 text-gray-700">
-                  <i className="fa-solid fa-credit-card text-sm text-gray-400 w-5 text-center"></i>
-                  <span className="text-sm font-semibold">Purchase History</span>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+                    <i className="fa-solid fa-credit-card text-sm w-5 text-center"></i>
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-900">Purchase History</span>
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Billing</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Review completed transactions, premium upgrades, and wallet purchases.</p>
+                  </div>
                 </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+                <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-emerald-500"></i>
               </button>
 
               {/* Photo Verification Button */}
               <button 
                 onClick={() => { setError(null); setShowPhotoVerification(true); }}
-                className={`w-full flex items-center justify-between p-4 rounded-2xl transition-colors ${
+                className={`group w-full flex items-center justify-between p-4 rounded-[1.5rem] border transition-all ${
                   user.isPhotoVerified 
-                    ? 'bg-green-50 hover:bg-green-100' 
-                    : 'bg-purple-50 hover:bg-purple-100'
+                    ? 'bg-green-50 hover:bg-green-100 border-green-200' 
+                    : 'bg-purple-50 hover:bg-purple-100 border-purple-200'
                 }`}
               >
                 <div className="flex items-center gap-4">
-                  <i className={`fa-solid fa-camera text-sm w-5 text-center ${
-                    user.isPhotoVerified ? 'text-green-600' : 'text-purple-600'
-                  }`}></i>
+                  <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
+                    user.isPhotoVerified ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'
+                  }`}>
+                    <i className="fa-solid fa-camera text-sm w-5 text-center"></i>
+                  </div>
                   <div className="text-left">
-                    <span className={`text-sm font-semibold block ${
-                      user.isPhotoVerified ? 'text-green-700' : 'text-purple-700'
-                    }`}>Photo Verification</span>
-                    <span className="text-xs opacity-75">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-sm font-black ${
+                        user.isPhotoVerified ? 'text-green-900' : 'text-purple-900'
+                      }`}>Photo Verification</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        user.isPhotoVerified
+                          ? 'border-green-200 bg-white/80 text-green-700'
+                          : 'border-purple-200 bg-white/70 text-purple-700'
+                      }`}>
+                        {user.isPhotoVerified ? 'Verified' : 'Recommended'}
+                      </span>
+                    </div>
+                    <p className="hidden">
                       {user.isPhotoVerified ? '✓ Verified' : 'Get verified badge'}
-                    </span>
+                    </p>
+                    <p className={`mt-1 text-xs ${
+                      user.isPhotoVerified ? 'text-green-800/80' : 'text-purple-800/80'
+                    }`}>
+                      {user.isPhotoVerified
+                        ? 'Your profile carries a visible trust badge that improves credibility.'
+                        : 'Submit a guided selfie review to unlock a trust badge for your profile.'}
+                    </p>
                   </div>
                 </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+                <i className={`fa-solid fa-arrow-up-right-from-square text-[11px] ${
+                  user.isPhotoVerified ? 'text-green-300 group-hover:text-green-600' : 'text-purple-300 group-hover:text-purple-600'
+                }`}></i>
               </button>
             </div>
 
             {/* Password Management Section */}
-            <div className="mt-8 pt-8 border-t-2 border-gray-100">
-              <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Security</h4>
+            <div className="mt-8 border-t border-slate-100 pt-8">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">Security</h4>
+                  <p className="mt-2 text-sm text-slate-500">Access control and credential recovery.</p>
+                </div>
+                <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">
+                  Protected
+                </span>
+              </div>
               <button 
                 onClick={() => setShowPasswordResetModal('change')}
-                className="w-full flex items-center justify-between p-4 bg-blue-50 rounded-2xl hover:bg-blue-100 active:bg-blue-100 transition-colors border border-blue-200"
+                className="group w-full flex items-center justify-between rounded-[1.5rem] border border-blue-200 bg-gradient-to-r from-blue-50 to-white p-4 transition-all hover:border-blue-300 hover:from-blue-100 hover:to-blue-50"
               >
-                <div className="flex items-center gap-4 text-blue-700">
-                  <i className="fa-solid fa-lock text-sm text-blue-500 w-5 text-center"></i>
-                  <span className="text-sm font-semibold">Change Password</span>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+                    <i className="fa-solid fa-lock text-sm w-5 text-center"></i>
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-900">Change Password</span>
+                      <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+                        Credentials
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Update your sign-in password and keep unauthorized access out.</p>
+                  </div>
                 </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-blue-400"></i>
+                <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-blue-300 group-hover:text-blue-600"></i>
               </button>
             </div>
 
             {/* Logout Section */}
-            <div className="mt-8 pt-8 border-t-2 border-gray-100">
-              <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Logout</h4>
+            <div className="mt-8 border-t border-slate-100 pt-8">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-[0.24em] text-slate-400">Session</h4>
+                  <p className="mt-2 text-sm text-slate-500">End this device session safely when you are done.</p>
+                </div>
+                <span className="rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-rose-700">
+                  Sensitive
+                </span>
+              </div>
               <button 
                 onClick={() => setShowLogoutConfirm(true)}
-                className="w-full flex items-center justify-between p-4 bg-rose-50 rounded-2xl hover:bg-rose-100 active:bg-rose-100 transition-colors border border-rose-200"
+                className="group w-full flex items-center justify-between rounded-[1.5rem] border border-rose-200 bg-gradient-to-r from-rose-50 to-white p-4 transition-all hover:border-rose-300 hover:from-rose-100 hover:to-rose-50"
               >
-                <div className="flex items-center gap-4 text-rose-700">
-                  <i className="fa-solid fa-door-open text-sm text-rose-500 w-5 text-center"></i>
-                  <span className="text-sm font-semibold">Logout</span>
+                <div className="flex items-center gap-4">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-100 text-rose-700">
+                    <i className="fa-solid fa-door-open text-sm w-5 text-center"></i>
+                  </div>
+                  <div className="text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-slate-900">Logout</span>
+                      <span className="rounded-full border border-rose-200 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-700">
+                        Session end
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Sign out from this device and return to the authentication screen.</p>
+                  </div>
                 </div>
-                <i className="fa-solid fa-chevron-right text-[10px] text-rose-400"></i>
+                <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-rose-300 group-hover:text-rose-600"></i>
               </button>
             </div>
             </div>

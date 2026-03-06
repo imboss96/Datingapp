@@ -13,6 +13,9 @@ import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
 import ModeratorPanel from './components/ModeratorPanel';
 import ModeratorChatPanel from './components/ModeratorChatPanel';
+import StandaloneModerationDashboard from './components/StandaloneModerationDashboard';
+import StandaloneModeratorDashboard from './components/StandaloneModeratorDashboard';
+import ModeratorPortal from './components/ModeratorPortal';
 import ProfileSettings from './components/ProfileSettings';
 import ProfileSetup from './components/ProfileSetup';
 import Navigation from './components/Navigation';
@@ -89,6 +92,7 @@ const AppContent: React.FC<{
   }, [darkMode]);
   const location = useLocation();
   const isChatRoute = location.pathname.startsWith('/chat/');
+  const isModeratorPortalRoute = location.pathname === '/moderator-portal'; // ✅ Hide sidebar on moderator portal
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailToVerify, setEmailToVerify] = useState('');
   const [showTerms, setShowTerms] = useState(false);
@@ -333,11 +337,13 @@ const AppContent: React.FC<{
 
   return (
     <div className="flex h-screen w-full bg-[#f0f2f5] overflow-hidden">
-      <div className="hidden md:flex w-[375px] h-full bg-white border-r border-gray-200 flex-col shadow-lg z-20">
-        <Sidebar currentUser={currentUser} isAdmin={isAdmin} isModerator={isModerator} onOpenProfileSettings={() => setShowProfileSettings(true)} />
-      </div>
+      {!isModeratorPortalRoute && (
+        <div className="hidden md:flex w-[375px] h-full bg-white border-r border-gray-200 flex-col shadow-lg z-20">
+          <Sidebar currentUser={currentUser} isAdmin={isAdmin} isModerator={isModerator} onOpenProfileSettings={() => setShowProfileSettings(true)} />
+        </div>
+      )}
 
-      <div className="flex-1 flex flex-col h-screen bg-white md:bg-transparent overflow-hidden">
+      <div className={`${isModeratorPortalRoute ? 'w-full' : 'flex-1'} flex flex-col h-screen bg-white md:bg-transparent overflow-hidden`}>
         <Routes>
           {/* ✅ SwiperScreen now receives live coords */}
           <Route path="/" element={
@@ -367,11 +373,14 @@ const AppContent: React.FC<{
           {(isAdmin || isModerator) && (
             <Route path="/moderator" element={<div className="flex-1 overflow-y-auto"><ModeratorChatPanel /></div>} />
           )}
+          {(isAdmin || isModerator) && (
+            <Route path="/moderator-portal" element={<div className="flex-1"><ModeratorPortal currentUser={currentUser} /></div>} />
+          )}
           <Route path="/modal-preview" element={<ModalPreview />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
 
-        {!isChatRoute && (
+        {!isChatRoute && !isModeratorPortalRoute && (
           <div className="md:hidden">
             <Navigation isAdmin={isAdmin} isModerator={isModerator} coins={currentUser.coins} unreadCount={totalUnreadCount} onOpenProfileSettings={() => setShowProfileSettings(true)} />
           </div>
@@ -400,6 +409,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [totalUnreadCount, setTotalUnreadCount] = useState(0);
   const [userCoords, setUserCoords] = useState<[number, number] | null>(null); // ✅ live GPS state
+  const [suspensionError, setSuspensionError] = useState<any>(null); // ✅ Suspension/ban status
   const [toastNotifications, setToastNotifications] = useState<Array<{
     id: string;
     type: 'message' | 'success' | 'error';
@@ -496,6 +506,35 @@ const App: React.FC = () => {
     return () => {};
   }, [currentUser?.id]);
 
+  // ✅ SUSPENSION CHECK - Periodic check to detect if user is suspended/banned while logged in
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    const suspensionCheckInterval = setInterval(async () => {
+      try {
+        const userStatus = await apiClient.getCurrentUser();
+        // Check if suspension error in response
+        if ((userStatus as any).code === 'ACCOUNT_SUSPENDED' || (userStatus as any).code === 'ACCOUNT_BANNED') {
+          console.log('[INFO] User is suspended/banned - forcing logout:', (userStatus as any).code);
+          setSuspensionError(userStatus);
+          // Force logout
+          setCurrentUser(null);
+          localStorage.removeItem('token');
+        }
+      } catch (err: any) {
+        // Check if it's a suspension/ban error (403 status)
+        if (err.response?.status === 403 && (err.response?.data?.code === 'ACCOUNT_SUSPENDED' || err.response?.data?.code === 'ACCOUNT_BANNED')) {
+          console.log('[INFO] User suspension detected via error - forcing logout');
+          setSuspensionError(err.response.data);
+          setCurrentUser(null);
+          localStorage.removeItem('token');
+        }
+      }
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(suspensionCheckInterval);
+  }, [currentUser?.id]);
+
   // ✅ Debounced live location tracking — updates every 5s after movement stops
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -551,6 +590,18 @@ const App: React.FC = () => {
     );
   }
 
+  // ✅ Show suspension page if user was suspended while logged in
+  if (suspensionError) {
+    return (
+      <ErrorBoundary>
+        <AccountSuspendedPage
+          error={suspensionError}
+          email={currentUser?.name}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <AlertProvider>
@@ -558,24 +609,26 @@ const App: React.FC = () => {
           <CoinPackageProvider>
             <WebSocketProvider userId={currentUser?.id || null}>
             <HashRouter>
-            <AppContent
-              currentUser={currentUser}
-              setCurrentUser={setCurrentUser}
-              isAdmin={isAdmin}
-              isModerator={isModerator}
-              showLoginModal={showLoginModal}
-              setShowLoginModal={setShowLoginModal}
-              showProfileSetup={showProfileSetup}
-              setShowProfileSetup={setShowProfileSetup}
-              newSignupUser={newSignupUser}
-              setNewSignupUser={setNewSignupUser}
-              totalUnreadCount={totalUnreadCount}
-              userCoords={userCoords} // ✅ passed down to SwiperScreen
-            />
-
-            {currentUser?.id && (
-              <MatchNotificationCenter userId={currentUser.id} />
-            )}
+            {/* ✅ Standalone Moderation Routes - Accessible directly without App wrapper */}
+            <Routes>
+              <Route path="/moderation" element={<StandaloneModerationDashboard />} />
+              <Route path="/*" element={
+                <AppContent
+                  currentUser={currentUser}
+                  setCurrentUser={setCurrentUser}
+                  isAdmin={isAdmin}
+                  isModerator={isModerator}
+                  showLoginModal={showLoginModal}
+                  setShowLoginModal={setShowLoginModal}
+                  showProfileSetup={showProfileSetup}
+                  setShowProfileSetup={setShowProfileSetup}
+                  newSignupUser={newSignupUser}
+                  setNewSignupUser={setNewSignupUser}
+                  totalUnreadCount={totalUnreadCount}
+                  userCoords={userCoords}
+                />
+              } />
+            </Routes>
 
             {/* Toast Notifications */}
             <div className="fixed bottom-0 right-0 p-4 space-y-3 max-w-md z-50">

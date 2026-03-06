@@ -13,8 +13,11 @@ if (!rootElement) {
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID_HERE';
 
-// Check if user is accessing moderation platform
-const isModerationPath = window.location.hash.includes('#/moderation-');
+// Check if user is accessing the standalone moderation platform.
+const moderationHash = window.location.hash;
+const isModerationPath =
+  moderationHash.includes('#/moderation-') ||
+  moderationHash.includes('#/moderator-portal');
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

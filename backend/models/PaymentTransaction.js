@@ -93,6 +93,11 @@ const paymentTransactionSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    scheduledFor: {
+      type: Date,
+      default: null,
+      index: true
+    },
     // Event log for transaction history
     events: [
       {

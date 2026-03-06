@@ -39,11 +39,18 @@ export const ModerationAuthProvider: React.FC<{ children: React.ReactNode }> = (
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        const storedToken = localStorage.getItem('moderationToken');
-        const storedUser = localStorage.getItem('moderationUser');
-        const storedAccountType = localStorage.getItem('moderationAccountType') as 'APP' | 'STANDALONE' | null;
+        const storedToken = localStorage.getItem('moderationToken') || localStorage.getItem('token');
+        const storedUser = localStorage.getItem('moderationUser') || localStorage.getItem('user');
+        const storedAccountType = (localStorage.getItem('moderationAccountType') ||
+          localStorage.getItem('accountType')) as 'APP' | 'STANDALONE' | null;
 
         if (storedToken && storedUser) {
+          localStorage.setItem('moderationToken', storedToken);
+          localStorage.setItem('moderationUser', storedUser);
+          if (storedAccountType) {
+            localStorage.setItem('moderationAccountType', storedAccountType);
+          }
+
           // Verify token is still valid
           const response = await fetch('/api/moderation-auth/verify-token', {
             method: 'POST',

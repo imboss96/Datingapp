@@ -134,7 +134,7 @@ export async function logModeratorAssigned(chatId, moderatorId, assignedBy, acto
   });
 }
 
-export async function logModeratorReplied(chatId, moderatorId, amountEarned = 0.50, actor = {}) {
+export async function logModeratorReplied(chatId, moderatorId, amountEarned = 0.10, actor = {}) {
   return logActivity({
     action: 'moderator_replied',
     actor: { ...actor, userId: moderatorId, role: 'moderator' },
@@ -178,7 +178,7 @@ export async function logModeratorStatusChanged(moderatorId, oldStatus, newStatu
 
 // ==================== PAYMENTS & EARNINGS ====================
 
-export async function logEarningRecorded(moderatorId, chatId, amount = 0.50, actor = {}) {
+export async function logEarningRecorded(moderatorId, chatId, amount = 0.10, actor = {}) {
   return logActivity({
     action: 'earning_recorded',
     actor: { ...actor, userId: moderatorId, role: 'system' },

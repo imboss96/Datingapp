@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import User from '../models/User.js';
-import ModeratorEarnings from '../models/ModeratorEarnings.js';
+import ModeratorEarningsSummary from '../models/ModeratorEarningsSummary.js';
 
 const router = express.Router();
 
@@ -197,9 +197,10 @@ router.post('/register', async (req, res) => {
 
     await newUser.save();
 
-    // Create ModeratorEarnings record for new user
-    const earnings = new ModeratorEarnings({
+    // Create moderator earnings summary record for new user
+    const earnings = new ModeratorEarningsSummary({
       moderatorId: newUser.id,
+      moderatorName: newUser.name || newUser.username,
       sessionEarnings: 0,
       totalEarnings: 0,
       dailyEarnings: [],

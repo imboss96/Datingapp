@@ -10,8 +10,17 @@ import CoinPackage from '../models/CoinPackage.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { PACKAGES } from './lipana.js';
 import { completePaymentWithEmail, validatePaymentData } from '../utils/paymentHelper.js';
+import { sendPaymentConfirmationEmail } from '../utils/email.js';
 
 const router = Router();
+
+const findUserForTransaction = async (userId) => {
+  let user = await User.findOne({ id: userId });
+  if (user) return user;
+
+  user = await User.findById(userId);
+  return user;
+};
 
 // simple sanity check
 router.get('/', (req, res) => {
@@ -102,7 +111,7 @@ router.post('/test-payment/:method', async (req, res) => {
 // NOTE: removed authMiddleware for testing - in production should verify auth
 router.post('/purchase', async (req, res) => {
   try {
-    const { userId, packageId, method } = req.body;
+    const { userId, packageId, method, phoneNumber } = req.body;
     if (!userId) {
       return res.status(400).json({ error: 'Missing userId' });
     }
@@ -172,6 +181,7 @@ router.post('/purchase', async (req, res) => {
       method: method || 'card',
       status: 'COMPLETED',
       description: 'Coin purchase',
+      phoneNumber: phoneNumber || undefined
     });
     await tx.save();
 
@@ -180,44 +190,42 @@ router.post('/purchase', async (req, res) => {
     // try to update user if they exist
     let user = null;
     try {
-      user = await User.findOne({ _id: userId }).lean();
+      user = await findUserForTransaction(userId);
       if (user) {
         if (isPremium) user.isPremium = true;
         else user.coins = (user.coins || 0) + coins;
-        await User.updateOne({ _id: userId }, user);
+        await user.save();
         console.log('[DEBUG transactions.purchase] User updated with coins:', { userId, coins: user.coins });
 
         // Send confirmation email
+        let emailResult = { success: false, error: null };
         try {
-          if (isPremium) {
-            // Get plan duration from packageId
-            const planMap = {
-              'premium_1m': { duration: '1 Month', price: '$4.99' },
-              'premium_3m': { duration: '3 Months', price: '$12.99' },
-              'premium_6m': { duration: '6 Months', price: '$19.99' },
-              'premium_12m': { duration: '12 Months', price: '$29.99' }
-            };
-            const planInfo = planMap[packageId] || { duration: 'Premium', price };
-            const emailResult = await sendPremiumUpgradeEmail(user.email, user.name, planInfo.duration, planInfo.price);
-            console.log('[DEBUG transactions.purchase] Email result:', emailResult);
-            if (emailResult.success) {
-              console.log('[DEBUG transactions.purchase] Premium upgrade email sent to:', user.email);
-            } else {
-              console.warn('[DEBUG transactions.purchase] Premium email failed:', emailResult.error);
-            }
-          } else {
-            const emailResult = await sendCoinPurchaseEmail(user.email, user.name, coins, price, tx.id);
-            console.log('[DEBUG transactions.purchase] Email result:', emailResult);
-            if (emailResult.success) {
-              console.log('[DEBUG transactions.purchase] Coin purchase email sent to:', user.email);
-            } else {
-              console.warn('[DEBUG transactions.purchase] Coin purchase email failed:', emailResult.error);
-            }
-          }
+          emailResult = await sendPaymentConfirmationEmail({
+            email: user.email,
+            userName: user.name,
+            purchaseType: isPremium ? 'premium' : 'coins',
+            packageName: isPremium ? (pkg.name || 'Premium Membership') : `${coins} Spark Coins`,
+            price: typeof price === 'string' ? price : `$${price.toFixed(2)}`,
+            transactionId: tx.id,
+            method: method || 'card',
+            coins: isPremium ? 0 : coins,
+            planDuration: isPremium ? (pkg.duration || pkg.name || 'Premium') : '',
+            premiumExpiresAt: user.premiumExpiresAt || null
+          });
+          console.log('[DEBUG transactions.purchase] Email result:', emailResult);
         } catch (emailErr) {
           console.warn('[WARN transactions.purchase] Email sending failed (non-blocking):', emailErr.message);
           // Don't fail the transaction if email fails
         }
+
+        return res.json({ 
+          ok: true, 
+          transactionId: tx.id,
+          coins: user?.coins ?? coins, 
+          isPremium: user?.isPremium ?? isPremium,
+          emailSent: emailResult.success === true,
+          emailError: emailResult.success === true ? null : emailResult.error
+        });
       }
     } catch (userErr) {
       // user not found or update failed; that's ok for testing
@@ -228,7 +236,9 @@ router.post('/purchase', async (req, res) => {
       ok: true, 
       transactionId: tx.id,
       coins: user?.coins ?? coins, 
-      isPremium: user?.isPremium ?? isPremium 
+      isPremium: user?.isPremium ?? isPremium,
+      emailSent: false,
+      emailError: user ? 'Confirmation email could not be delivered.' : 'User account could not be loaded for email delivery.'
     });
   } catch (err) {
     console.error('[ERROR transactions.purchase]', err.message, err);
@@ -239,7 +249,7 @@ router.post('/purchase', async (req, res) => {
 // Premium package purchase endpoint
 router.post('/purchase-premium', async (req, res) => {
   try {
-    const { userId, packageId, method } = req.body;
+    const { userId, packageId, method, phoneNumber } = req.body;
     if (!userId) {
       return res.status(400).json({ error: 'Missing userId' });
     }
@@ -266,6 +276,7 @@ router.post('/purchase-premium', async (req, res) => {
       method: method || 'card',
       status: 'COMPLETED',
       description: `Premium ${premiumPkg.plan} purchase`,
+      phoneNumber: phoneNumber || undefined
     });
     await tx.save();
 
@@ -274,13 +285,44 @@ router.post('/purchase-premium', async (req, res) => {
     // Update user with premium status
     let user = null;
     try {
-      user = await User.findOne({ _id: userId });
+      user = await findUserForTransaction(userId);
       if (user) {
         await upgradeUserToPremium(user, premiumPkg.plan);
+        await user.save();
         console.log('[DEBUG transactions.purchase-premium] User upgraded to premium:', {
           userId,
           plan: premiumPkg.plan,
           expiresAt: user.premiumExpiresAt
+        });
+
+        let emailResult = { success: false, error: null };
+        try {
+          emailResult = await sendPaymentConfirmationEmail({
+            email: user.email,
+            userName: user.name,
+            purchaseType: 'premium',
+            packageName: premiumPkg.name,
+            price: `$${premiumPkg.price.toFixed(2)}`,
+            transactionId: tx.id,
+            method: method || 'card',
+            coins: 0,
+            planDuration: premiumPkg.name || premiumPkg.plan,
+            premiumExpiresAt: user.premiumExpiresAt
+          });
+          console.log('[DEBUG transactions.purchase-premium] Email result:', emailResult);
+        } catch (emailErr) {
+          console.warn('[WARN transactions.purchase-premium] Email sending failed (non-blocking):', emailErr.message);
+        }
+
+        return res.json({
+          ok: true,
+          success: true,
+          transactionId: tx.id,
+          isPremium: user?.isPremium ?? true,
+          premiumExpiresAt: user?.premiumExpiresAt,
+          plan: premiumPkg.plan,
+          emailSent: emailResult.success === true,
+          emailError: emailResult.success === true ? null : emailResult.error
         });
       }
     } catch (userErr) {
@@ -293,7 +335,9 @@ router.post('/purchase-premium', async (req, res) => {
       transactionId: tx.id,
       isPremium: user?.isPremium ?? true,
       premiumExpiresAt: user?.premiumExpiresAt,
-      plan: premiumPkg.plan
+      plan: premiumPkg.plan,
+      emailSent: false,
+      emailError: user ? 'Confirmation email could not be delivered.' : 'User account could not be loaded for email delivery.'
     });
   } catch (err) {
     console.error('[ERROR transactions.purchase-premium]', err.message, err);

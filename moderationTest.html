@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moderation Dashboard - Test Access</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        html {
+            height: 100%;
+        }
+
+        .container {
+            max-width: 500px;
+            width: 100%;
+            margin: auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            padding: 40px 20px;
+            text-align: center;
+            color: white;
+        }
+
+        .header i {
+            font-size: 48px;
+            color: #fbbf24;
+            margin-bottom: 16px;
+            display: block;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+
+        .content {
+            padding: 40px 30px;
+        }
+
+        .info-box {
+            background: #f1f5f9;
+            border-left: 4px solid #3b82f6;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: #334155;
+            line-height: 1.6;
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #1e293b;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e1;
+            transform: translateY(-2px);
+        }
+
+        .input-group {
+            margin-bottom: 24px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #334155;
+            margin-bottom: 8px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .footer {
+            background: #f8fafc;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #64748b;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .loading i {
+            font-size: 48px;
+            color: #3b82f6;
+            animation: spin 2s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee2e2;
+            border: 2px solid #fca5a5;
+            color: #991b1b;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success {
+            background: #dcfce7;
+            border: 2px solid #86efac;
+            color: #166534;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <i class="fa-solid fa-shield-halved"></i>
+                <h1>Moderation Dashboard</h1>
+                <p>Moderator Access Portal</p>
+            </div>
+
+            <div class="content">
+                <div class="success" id="successMessage">
+                    <i class="fa-solid fa-check-circle" style="margin-right: 8px;"></i>
+                    <span id="successText"></span>
+                </div>
+
+                <div class="error" id="errorMessage">
+                    <i class="fa-solid fa-exclamation-circle" style="margin-right: 8px;"></i>
+                    <span id="errorText"></span>
+                </div>
+
+                <div class="info-box">
+                    <strong>Third-Party Moderator Access</strong><br>
+                    This is a dedicated portal for external moderators to access the moderation dashboard without accessing the main application.
+                </div>
+
+                <div id="loginForm">
+                    <div class="input-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" placeholder="moderator@example.com" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" placeholder="Enter your password" required>
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="handleLogin()">
+                            <i class="fa-solid fa-sign-in-alt"></i>
+                            Access Moderation Panel
+                        </button>
+                        <button class="btn btn-secondary" onclick="openMainApp()">
+                            <i class="fa-solid fa-home"></i>
+                            Back to Main App
+                        </button>
+                    </div>
+                </div>
+
+                <div class="loading" id="loadingState">
+                    <i class="fa-solid fa-spinner"></i>
+                    <p>Authenticating...</p>
+                </div>
+            </div>
+
+            <div class="footer">
+                <p>Secured Moderation Portal • Direct Access System</p>
+                <p style="margin-top: 8px;">© 2026 Lunesa Love. All rights reserved.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ✅ Dynamic API_BASE - works on any port
+        const API_BASE = `http://${window.location.hostname}:${window.location.port}/api`;
+        console.log('[DEBUG] API Base:', API_BASE);
+
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            document.getElementById('errorText').textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 5000);
+        }
+
+        function showSuccess(message) {
+            const successEl = document.getElementById('successMessage');
+            document.getElementById('successText').textContent = message;
+            successEl.style.display = 'block';
+            setTimeout(() => {
+                successEl.style.display = 'none';
+            }, 5000);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loginForm').style.display = show ? 'none' : 'block';
+            document.getElementById('loadingState').style.display = show ? 'block' : 'none';
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            if (!email || !password) {
+                showError('Please enter email and password');
+                return;
+            }
+
+            showLoading(true);
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showLoading(false);
+                    showError(data.error || 'Login failed');
+                    return;
+                }
+
+                if (!data.token) {
+                    showLoading(false);
+                    showError('No token received from server');
+                    return;
+                }
+
+                // Check if user is moderator or admin
+                if (data.user && data.user.role && (data.user.role === 'ADMIN' || data.user.role === 'MODERATOR')) {
+                    // Save standalone moderation auth state
+                    localStorage.setItem('moderationToken', data.token);
+                    localStorage.setItem('moderationUser', JSON.stringify(data.user));
+                    localStorage.setItem('moderationAccountType', data.accountType || data.user.accountType || 'STANDALONE');
+                    showSuccess('Login successful! Redirecting to moderator portal...');
+                    
+                    // Redirect into the standalone moderation React app.
+                    setTimeout(() => {
+                        window.location.href = '/#/moderation-test';
+                    }, 1000);
+                } else {
+                    showLoading(false);
+                    showError('Access Denied: Your account does not have moderator permissions');
+                }
+            } catch (error) {
+                showLoading(false);
+                console.error('Login error:', error);
+                showError('Network error: ' + error.message);
+            }
+        }
+
+        function openMainApp() {
+            window.location.href = '/';
+        }
+
+        // Allow Enter key to submit
+        document.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                handleLogin();
+            }
+        });
+
+        // Check if already logged in
+        window.addEventListener('load', () => {
+            const token = localStorage.getItem('moderationToken');
+            if (token) {
+                // Verify standalone moderation token is still valid
+                console.log('[DEBUG] Found token, verifying...');
+                fetch(`${API_BASE}/moderation-auth/verify-token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ token })
+                }).then(res => {
+                    console.log('[DEBUG] Token verification response:', res.status);
+                    if (res.ok) {
+                        // Token is valid, redirect to standalone moderation app
+                        console.log('[DEBUG] Token valid, redirecting...');
+                        window.location.href = '/#/moderation-test';
+                    } else {
+                        console.log('[DEBUG] Token invalid, staying on login');
+                    }
+                }).catch(err => {
+                    // Token invalid, stay on login
+                    console.log('[DEBUG] Token verification error:', err);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

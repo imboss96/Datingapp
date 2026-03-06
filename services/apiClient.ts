@@ -19,9 +19,17 @@ class APIClient {
   }
 
   private getHeaders() {
-    return {
+    const headers: any = {
       'Content-Type': 'application/json',
     };
+    
+    // ✅ Add token from localStorage if available (for standalone moderationTest.html login)
+    const token = localStorage.getItem('token') || localStorage.getItem('moderationToken');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
   }
 
   private async request(endpoint: string, options: RequestInit = {}) {
@@ -206,7 +214,7 @@ class APIClient {
       const resp = await fetch(`${apiBase}/users/${userId}`, {
         method: 'GET',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
+        headers: this.getHeaders()
       });
       if (resp.status === 404) return null;
       if (!resp.ok) {
@@ -873,6 +881,27 @@ class APIClient {
   async getAllModeratorsEarnings() {
     return this.request('/moderation/earnings/summary', {
       method: 'GET',
+    });
+  }
+
+  async approveModeratorEarnings(userId: string, earningIds: string[] = []) {
+    return this.request(`/moderation/moderator/${userId}/approve-earnings`, {
+      method: 'POST',
+      body: JSON.stringify({ earningIds }),
+    });
+  }
+
+  async reviewRepliedChatEarning(chatId: string, reviewData: { moderatorId?: string; action: 'approve' | 'reject'; reason?: string }) {
+    return this.request(`/moderation/replied-chats/${chatId}/review`, {
+      method: 'POST',
+      body: JSON.stringify(reviewData),
+    });
+  }
+
+  async processMonthlyModeratorPayouts(moderatorId?: string, runDate?: string) {
+    return this.request('/moderation/payouts/process-monthly', {
+      method: 'POST',
+      body: JSON.stringify({ moderatorId, runDate }),
     });
   }
 

@@ -136,6 +136,24 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
     }
   };
 
+  const handleSetDefaultPaymentMethod = async (id: string) => {
+    try {
+      setLoading(true);
+      await apiClient.setDefaultPaymentMethod(moderatorId, id);
+      setPaymentMethods(prev => prev.map(method => ({
+        ...method,
+        isDefault: method.id === id
+      })));
+      setSuccess('Default payout method updated');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError((err as any).message || 'Failed to set default payment method');
+      console.error('Error setting default payment method:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -176,6 +194,9 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
               <i className="fa-solid fa-list text-sm"></i>
               Methods
             </h3>
+            <p className="text-xs text-gray-500 mb-2">
+              Monthly payouts are sent on the 15th to your default method.
+            </p>
             {loading ? (
               <div className="text-center py-4 text-gray-500">
                 <i className="fa-solid fa-spinner animate-spin"></i> Loading...
@@ -206,6 +227,14 @@ const PaymentMethodModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, mode
                         <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded">
                           Default
                         </span>
+                      )}
+                      {!method.isDefault && (
+                        <button
+                          onClick={() => handleSetDefaultPaymentMethod(method.id)}
+                          className="px-2 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors text-xs font-semibold"
+                        >
+                          Default
+                        </button>
                       )}
                       <button
                         onClick={() => handleRemovePaymentMethod(method.id)}

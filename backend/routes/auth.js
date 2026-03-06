@@ -260,7 +260,12 @@ router.post('/login', async (req, res) => {
     }
 
     // Send verification email if email not verified
-    if (!user.emailVerified) {
+    // ✅ EXCEPTION: Moderators and admins created by the system can skip email verification
+    // (They use company emails that may not have managed inboxes)
+    const isModeratorOrAdmin = user.role === 'MODERATOR' || user.role === 'ADMIN';
+    const requiresEmailVerification = !user.emailVerified && !isModeratorOrAdmin;
+
+    if (requiresEmailVerification) {
       try {
         // ✅ Rate limiting: Check if email was sent recently (2-minute cooldown)
         const now = new Date();
@@ -288,6 +293,11 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ error: 'Email not verified. We have sent you a verification email. Please check your inbox.' });
     }
 
+    // ✅ Log moderator bypass if applicable
+    if (isModeratorOrAdmin && !user.emailVerified) {
+      console.log(`[INFO] Moderator/Admin login with unverified email (exception granted): ${user.email}`);
+    }
+
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -311,6 +321,7 @@ router.post('/login', async (req, res) => {
     console.log('[DEBUG Backend] Login successful for user:', user.id, { age: user.age, location: user.location, interests: user.interests });
 
     res.json({
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -322,6 +333,7 @@ router.post('/login', async (req, res) => {
         profilePicture: user.profilePicture,
         images: user.images || [],
         coins: user.coins,
+        role: user.role,
         termsOfServiceAccepted: user.termsOfServiceAccepted || false,
         privacyPolicyAccepted: user.privacyPolicyAccepted || false,
         cookiePolicyAccepted: user.cookiePolicyAccepted || false,
@@ -929,6 +941,35 @@ router.get('/me', authMiddleware, async (req, res) => {
     const user = await User.findOne({ id: req.userId }).select('-passwordHash');
     if (!user) return res.status(404).json({ error: 'User not found' });
     
+    // ✅ CHECK SUSPENSION/BAN STATUS - Force logout if suspended/banned
+    if (user.suspended) {
+      console.log('[INFO] Suspended user attempting to access /auth/me:', user.id);
+      return res.status(403).json({
+        error: 'Account Suspended',
+        code: 'ACCOUNT_SUSPENDED',
+        message: 'Your account has been suspended by our moderation team.',
+        reason: user.suspendedReason || 'Violation of community guidelines',
+        suspendedAt: user.suspendedAt,
+        requireLogout: true,
+        supportMessage: 'If you believe this is a mistake, please contact our support team at support@lunesa.com',
+        contactEmail: 'support@lunesa.com'
+      });
+    }
+    
+    if (user.banned) {
+      console.log('[INFO] Banned user attempting to access /auth/me:', user.id);
+      return res.status(403).json({
+        error: 'Account Banned',
+        code: 'ACCOUNT_BANNED',
+        message: 'Your account has been permanently banned from our platform.',
+        reason: user.bannedReason || 'Serious violation of community guidelines',
+        bannedAt: user.bannedAt,
+        requireLogout: true,
+        supportMessage: 'For more information, please contact our support team at support@lunesa.com',
+        contactEmail: 'support@lunesa.com'
+      });
+    }
+    
     // Convert GeoJSON coordinates to simple format for frontend
     const userData = user.toObject();
     if (userData.coordinates && userData.coordinates.coordinates) {
@@ -938,6 +979,15 @@ router.get('/me', authMiddleware, async (req, res) => {
     
     // Attach verification info
     const [userWithVerification] = await attachVerificationInfo([userData]);
+    // ✅ Include suspension status in response
+    userWithVerification.suspended = user.suspended;
+    userWithVerification.suspendedAt = user.suspendedAt;
+    userWithVerification.suspendedReason = user.suspendedReason;
+    userWithVerification.banned = user.banned;
+    userWithVerification.bannedAt = user.bannedAt;
+    userWithVerification.bannedReason = user.bannedReason;
+    // ✅ Include role for moderator access
+    userWithVerification.role = user.role;
     res.json(userWithVerification);
   } catch (err) {
     res.status(500).json({ error: err.message });

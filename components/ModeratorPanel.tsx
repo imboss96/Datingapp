@@ -39,7 +39,15 @@ interface ModeratorChat {
 const INITIAL_FLAGS: FlaggedItem[] = [];
 
 const ModeratorPanel: React.FC = () => {
+  const storedModeratorUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('moderationUser') || localStorage.getItem('user') || 'null');
+    } catch {
+      return null;
+    }
+  })();
   const [activeTab, setActiveTab] = useState<'PENDING' | 'RESOLVED' | 'CHATS' | 'OPERATORS' | 'STALLED' | 'USERS' | 'PAYMENTS' | 'REVENUE' | 'SUPPORT' | 'SETTINGS'>('CHATS');
+  const [currentViewerRole, setCurrentViewerRole] = useState<string>(storedModeratorUser?.role || '');
   const [flaggedItems, setFlaggedItems] = useState<FlaggedItem[]>(INITIAL_FLAGS);
   const [resolvedItems, setResolvedItems] = useState<FlaggedItem[]>([]);
   const [chats, setChats] = useState<ModeratorChat[]>([]);
@@ -160,10 +168,18 @@ const ModeratorPanel: React.FC = () => {
 
   // Earnings tracking state
   const [allModeratorsEarnings, setAllModeratorsEarnings] = useState<any[]>([]);
+  const [revenueSummary, setRevenueSummary] = useState<{ totalDistributed: number; pendingPayouts: number; awaitingApproval: number; monthlyBudget: number; activeModerators: number; nextPayoutDate?: string; payoutDayOfMonth?: number }>({
+    totalDistributed: 0,
+    pendingPayouts: 0,
+    awaitingApproval: 0,
+    monthlyBudget: 0,
+    activeModerators: 0
+  });
   const [selectedModeratorEarnings, setSelectedModeratorEarnings] = useState<any>(null);
   const [earningsHistory, setEarningsHistory] = useState<any[]>([]);
   const [loadingEarnings, setLoadingEarnings] = useState(false);
   const [earningHistoryLoading, setEarningHistoryLoading] = useState(false);
+  const [rejectionReasonsByChat, setRejectionReasonsByChat] = useState<Record<string, string>>({});
 
   // Activity Log state
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
@@ -177,6 +193,28 @@ const ModeratorPanel: React.FC = () => {
   });
   const [activityLogSummary, setActivityLogSummary] = useState<any>(null);
   const [activityLogTotalCount, setActivityLogTotalCount] = useState(0);
+
+  const formatMoney = (value: any) => Number(value || 0).toFixed(2);
+  const isAdminUser = currentViewerRole === 'ADMIN';
+
+  useEffect(() => {
+    const loadViewerRole = async () => {
+      if (storedModeratorUser?.role) {
+        setCurrentViewerRole(storedModeratorUser.role);
+      }
+
+      try {
+        const me = await apiClient.getCurrentUser();
+        if (me?.role) {
+          setCurrentViewerRole(me.role);
+        }
+      } catch (error) {
+        console.warn('[ModeratorPanel] Could not load current viewer role from server:', error);
+      }
+    };
+
+    loadViewerRole();
+  }, []);
 
   // Helper function to safely format dates
   const formatDate = (dateInput: any, includeTime = false) => {
@@ -293,11 +331,27 @@ const ModeratorPanel: React.FC = () => {
       setLoadingEarnings(true);
       const response = await apiClient.getAllModeratorsEarnings();
       setAllModeratorsEarnings(response.earnings || []);
+      const normalizedTotals = {
+        totalDistributed: 0,
+        pendingPayouts: 0,
+        awaitingApproval: 0,
+        monthlyBudget: 0,
+        activeModerators: 0,
+        ...(response.totals || {})
+      };
+      setRevenueSummary(normalizedTotals);
       console.log('[DEBUG] Fetched earnings for', response.count, 'moderators');
     } catch (error) {
       console.error('Failed to fetch earnings:', error);
       showNotification('Failed to fetch earnings data', 'error');
       setAllModeratorsEarnings([]);
+      setRevenueSummary({
+        totalDistributed: 0,
+        pendingPayouts: 0,
+        awaitingApproval: 0,
+        monthlyBudget: 0,
+        activeModerators: 0
+      });
     } finally {
       setLoadingEarnings(false);
     }
@@ -405,6 +459,8 @@ const ModeratorPanel: React.FC = () => {
     } else if (activeTab === 'OPERATORS') {
       fetchOperators();
       fetchAllModeratorsEarnings();
+    } else if (activeTab === 'REVENUE') {
+      fetchAllModeratorsEarnings();
     } else if (activeTab === 'RESOLVED') {
       fetchActivityLogs();
       fetchActivityLogSummary();
@@ -430,14 +486,16 @@ const ModeratorPanel: React.FC = () => {
       setChatError(null);
       const response = await apiClient.getChats();
       
-      // Transform chats to include flagged count
-      const transformedChats: ModeratorChat[] = response.map((chat: any) => {
-        const flaggedCount = chat.messages?.filter((msg: Message) => msg.isFlagged).length || 0;
-        return {
-          ...chat,
-          flaggedCount,
-        };
-      });
+      // Transform chats to include flagged count, and keep only unreplied chats for this tab.
+      const transformedChats: ModeratorChat[] = response
+        .map((chat: any) => {
+          const flaggedCount = chat.messages?.filter((msg: Message) => msg.isFlagged).length || 0;
+          return {
+            ...chat,
+            flaggedCount,
+          };
+        })
+        .filter((chat: any) => chat.replyStatus !== 'replied' && chat.isReplied !== true);
 
       // Collect all unique participant IDs
       const participantIds = new Set<string>();
@@ -862,7 +920,7 @@ const ModeratorPanel: React.FC = () => {
     }
   };
 
-  // Filter function for Live Chats tab
+  // Filter function for Unreplied Chats tab
   const getFilteredLiveChats = () => {
     if (!searchQuery.trim()) return chats;
     const query = searchQuery.toLowerCase();
@@ -900,6 +958,89 @@ const ModeratorPanel: React.FC = () => {
         participantIds.toLowerCase().includes(query)
       );
     });
+  };
+
+  const handleApproveModeratorEarnings = async (moderatorId: string) => {
+    setActiveTab('PENDING');
+    setSelectedModeratorInPending(moderatorId);
+    showNotification('Approve replied chats one by one from this moderator list', 'info');
+  };
+
+  const handleProcessMonthlyPayouts = async (moderatorId?: string) => {
+    try {
+      await apiClient.processMonthlyModeratorPayouts(moderatorId);
+      showNotification('Monthly payouts processed successfully', 'success');
+      await fetchAllModeratorsEarnings();
+      if (moderatorId && selectedModeratorEarnings?.id === moderatorId) {
+        await fetchModeratorEarningsHistory(moderatorId);
+      }
+    } catch (error: any) {
+      console.error('Failed to process monthly payouts:', error);
+      showNotification(error?.message || 'Failed to process monthly payouts', 'error');
+    }
+  };
+
+  const handleReviewRepliedChat = async (chat: any, action: 'approve' | 'reject') => {
+    try {
+      const reason = rejectionReasonsByChat[chat.id] || '';
+      if (action === 'reject' && !reason.trim()) {
+        showNotification('Provide a rejection reason before rejecting this chat earning', 'error');
+        return;
+      }
+
+      await apiClient.reviewRepliedChatEarning(chat.id, {
+        moderatorId: chat.assignedModerator || chat.repliedBy,
+        action,
+        reason: reason.trim()
+      });
+
+      showNotification(
+        action === 'approve'
+          ? 'Chat earning approved successfully'
+          : 'Chat earning rejected successfully',
+        'success'
+      );
+
+      setRejectionReasonsByChat(prev => {
+        const next = { ...prev };
+        delete next[chat.id];
+        return next;
+      });
+
+      await Promise.all([
+        fetchRepliedChats(),
+        fetchAllModeratorsEarnings(),
+        chat.assignedModerator ? fetchModeratorEarningsHistory(chat.assignedModerator) : Promise.resolve()
+      ]);
+    } catch (error: any) {
+      console.error('Failed to review replied chat earning:', error);
+      showNotification(error?.message || 'Failed to review replied chat earning', 'error');
+    }
+  };
+
+  const handleModeratorChatReplied = (repliedChat: ModeratorChat) => {
+    setChats(prev => prev.filter(chat => chat.id !== repliedChat.id));
+    setSelectedChat(prev => (prev?.id === repliedChat.id ? null : prev));
+    setViewingChatModal(null);
+    setRepliedChats(prev => {
+      const next = [repliedChat, ...prev.filter(chat => chat.id !== repliedChat.id)];
+      return next.sort((a: any, b: any) =>
+        (b.markedAsRepliedAt || b.lastUpdated || 0) - (a.markedAsRepliedAt || a.lastUpdated || 0)
+      );
+    });
+    setRepliedChatsByModerator(prev => {
+      const next = new Map(prev);
+      const moderatorId = repliedChat.assignedModerator || 'unassigned';
+      const existing = next.get(moderatorId) || [];
+      next.set(
+        moderatorId,
+        [repliedChat, ...existing.filter(chat => chat.id !== repliedChat.id)].sort((a: any, b: any) =>
+          (b.markedAsRepliedAt || b.lastUpdated || 0) - (a.markedAsRepliedAt || a.lastUpdated || 0)
+        )
+      );
+      return next;
+    });
+    fetchRepliedChats();
   };
 
   // Filter function for Flagged/Pending items
@@ -1405,7 +1546,7 @@ const ModeratorPanel: React.FC = () => {
               }`}
             >
               <i className="fa-solid fa-comments"></i>
-              <span>Live Chats</span>
+              <span>Unreplied Chats</span>
             </button>
             <button 
               onClick={() => setActiveTab('PENDING')}
@@ -1617,6 +1758,8 @@ const ModeratorPanel: React.FC = () => {
                         const user2 = userMap.get(chat.participants[1]) || { id: chat.participants[1], username: chat.participants[1], name: chat.participants[1] };
                         const participantNames = `${user1.name || user1.username} & ${user2.name || user2.username}`;
                         const replyTime = formatDate(chat.markedAsRepliedAt, true);
+                        const reviewStatus = chat.earningReview?.status || 'pending';
+                        const reviewAmount = Number(chat.earningReview?.amount || 0).toFixed(2);
                         
                         return (
                           <div 
@@ -1633,12 +1776,31 @@ const ModeratorPanel: React.FC = () => {
                                   <p className="text-xs text-gray-500">Chat ID: {chat.id.slice(0, 10)}...</p>
                                 </div>
                               </div>
-                              <span className="bg-emerald-50 text-emerald-700 text-xs px-2.5 py-1 rounded-lg font-black border border-emerald-200">
-                                <i className="fa-solid fa-check mr-1"></i>Replied
+                              <span className={`text-xs px-2.5 py-1 rounded-lg font-black border ${
+                                reviewStatus === 'approved'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  : reviewStatus === 'rejected'
+                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                    : reviewStatus === 'paid'
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}>
+                                {reviewStatus === 'approved' && <i className="fa-solid fa-badge-check mr-1"></i>}
+                                {reviewStatus === 'rejected' && <i className="fa-solid fa-ban mr-1"></i>}
+                                {reviewStatus === 'paid' && <i className="fa-solid fa-money-bill-wave mr-1"></i>}
+                                {reviewStatus === 'pending' && <i className="fa-solid fa-hourglass-half mr-1"></i>}
+                                {reviewStatus.charAt(0).toUpperCase() + reviewStatus.slice(1)}
                               </span>
                             </div>
                             
                             <div className="bg-gray-50 p-3 rounded-lg mb-4 border border-gray-200">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs text-gray-600 font-semibold">
+                                  <i className="fa-solid fa-dollar-sign mr-1"></i>
+                                  Review Amount
+                                </p>
+                                <span className="text-sm font-black text-emerald-600">${reviewAmount}</span>
+                              </div>
                               <p className="text-xs text-gray-600 font-semibold mb-2">
                                 <i className="fa-solid fa-message mr-1"></i>
                                 Last Message:
@@ -1649,6 +1811,51 @@ const ModeratorPanel: React.FC = () => {
                                 <p className="text-xs text-gray-500 italic">No messages</p>
                               )}
                             </div>
+
+                            {chat.earningReview?.rejectionReason && (
+                              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3">
+                                <p className="text-xs font-bold text-red-700 mb-1">
+                                  <i className="fa-solid fa-circle-exclamation mr-1"></i>
+                                  Rejection Reason
+                                </p>
+                                <p className="text-xs text-red-700">{chat.earningReview.rejectionReason}</p>
+                              </div>
+                            )}
+
+                            {isAdminUser && reviewStatus === 'pending' && (
+                              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+                                <p className="text-xs font-bold text-amber-800">
+                                  Admin review required before this chat contributes to approved moderator earnings.
+                                </p>
+                                <textarea
+                                  value={rejectionReasonsByChat[chat.id] || ''}
+                                  onChange={(e) => setRejectionReasonsByChat(prev => ({ ...prev, [chat.id]: e.target.value }))}
+                                  onClick={(e) => e.stopPropagation()}
+                                  placeholder="Required only if you reject this chat earning"
+                                  className="w-full min-h-[72px] resize-none rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                />
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleReviewRepliedChat(chat, 'approve');
+                                    }}
+                                    className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all"
+                                  >
+                                    Approve Chat Pay
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleReviewRepliedChat(chat, 'reject');
+                                    }}
+                                    className="px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all"
+                                  >
+                                    Reject Chat Pay
+                                  </button>
+                                </div>
+                              </div>
+                            )}
 
                             <div className="flex items-center justify-between pt-2 border-t border-gray-200">
                               <div className="text-xs text-gray-500">
@@ -1724,7 +1931,7 @@ const ModeratorPanel: React.FC = () => {
                   <i className="fa-solid fa-comments"></i>
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Live Chats</h3>
+                  <h3 className="text-lg font-bold text-gray-900">Unreplied Chats</h3>
                   <p className="text-xs text-gray-500">Real-time conversations requiring moderation</p>
                 </div>
               </div>
@@ -1755,7 +1962,7 @@ const ModeratorPanel: React.FC = () => {
                 <div className="inline-block">
                   <div className="w-12 h-12 rounded-full border-4 border-gray-200 border-t-blue-600 animate-spin"></div>
                 </div>
-                <p className="text-gray-500 text-sm mt-4 font-medium">Loading live chats...</p>
+                <p className="text-gray-500 text-sm mt-4 font-medium">Loading unreplied chats...</p>
               </div>
             ) : chats.length === 0 ? (
               <div className="text-center py-12 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
@@ -2240,12 +2447,18 @@ const ModeratorPanel: React.FC = () => {
                                 <span className={`inline-block text-xs px-2.5 py-1 rounded-md font-bold mt-1 ${
                                   earning.status === 'paid' ? 'bg-green-100 text-green-700' :
                                   earning.status === 'approved' ? 'bg-blue-100 text-blue-700' :
+                                  earning.status === 'rejected' ? 'bg-red-100 text-red-700' :
                                   earning.status === 'pending' ? 'bg-amber-100 text-amber-700' :
                                   'bg-red-100 text-red-700'
                                 }`}>
                                   {earning.status.charAt(0).toUpperCase() + earning.status.slice(1)}
                                 </span>
                               </div>
+                              {earning.rejectionReason && (
+                                <div className="mt-2 w-full rounded-md border border-red-200 bg-red-50 px-2 py-1">
+                                  <p className="text-[11px] font-semibold text-red-700">Reason: {earning.rejectionReason}</p>
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -3514,10 +3727,24 @@ const ModeratorPanel: React.FC = () => {
 
         {activeTab === 'REVENUE' && (
           <div className="space-y-6">
-            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <i className="fa-solid fa-hand-holding-dollar text-amber-600 text-xl"></i>
-              Revenue & Moderator Payouts
-            </h3>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <i className="fa-solid fa-hand-holding-dollar text-amber-600 text-xl"></i>
+                  Revenue & Moderator Payouts
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Earnings are approved by admin, then paid on the 15th to each moderator&apos;s default payout method.
+                </p>
+              </div>
+              <button
+                onClick={() => handleProcessMonthlyPayouts()}
+                disabled={loadingEarnings}
+                className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold transition-all disabled:opacity-50"
+              >
+                Run Monthly Payouts
+              </button>
+            </div>
 
             {/* Summary Cards - Moderator */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -3525,7 +3752,7 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Total Distributed</p>
-                    <p className="text-3xl font-bold text-amber-600 mt-2">$0.00</p>
+                    <p className="text-3xl font-bold text-amber-600 mt-2">${formatMoney(revenueSummary.totalDistributed)}</p>
                     <p className="text-xs text-gray-500 mt-1">To moderators</p>
                   </div>
                   <div className="bg-amber-100 rounded-full p-4">
@@ -3538,8 +3765,8 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Pending Payouts</p>
-                    <p className="text-3xl font-bold text-orange-600 mt-2">$0.00</p>
-                    <p className="text-xs text-gray-500 mt-1">Awaiting approval</p>
+                    <p className="text-3xl font-bold text-orange-600 mt-2">${formatMoney(revenueSummary.pendingPayouts)}</p>
+                    <p className="text-xs text-gray-500 mt-1">Approved for {revenueSummary.nextPayoutDate ? formatDate(revenueSummary.nextPayoutDate) : 'the 15th'}</p>
                   </div>
                   <div className="bg-orange-100 rounded-full p-4">
                     <i className="fa-solid fa-clock text-orange-600 text-2xl"></i>
@@ -3551,8 +3778,8 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Active Moderators</p>
-                    <p className="text-3xl font-bold text-blue-600 mt-2">0</p>
-                    <p className="text-xs text-gray-500 mt-1">Earning commissions</p>
+                    <p className="text-3xl font-bold text-blue-600 mt-2">{revenueSummary.activeModerators}</p>
+                    <p className="text-xs text-gray-500 mt-1">With earnings activity</p>
                   </div>
                   <div className="bg-blue-100 rounded-full p-4">
                     <i className="fa-solid fa-users text-blue-600 text-2xl"></i>
@@ -3564,7 +3791,7 @@ const ModeratorPanel: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-xs font-semibold uppercase tracking-wide">Monthly Budget</p>
-                    <p className="text-3xl font-bold text-rose-600 mt-2">$0.00</p>
+                    <p className="text-3xl font-bold text-rose-600 mt-2">${formatMoney(revenueSummary.monthlyBudget)}</p>
                     <p className="text-xs text-gray-500 mt-1">Allocated</p>
                   </div>
                   <div className="bg-rose-100 rounded-full p-4">
@@ -3574,30 +3801,45 @@ const ModeratorPanel: React.FC = () => {
               </div>
             </div>
 
+            <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Awaiting Approval</p>
+                  <p className="text-2xl font-bold text-amber-600 mt-1">${formatMoney(revenueSummary.awaitingApproval)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Next Payout Date</p>
+                  <p className="text-lg font-bold text-gray-900 mt-1">
+                    {revenueSummary.nextPayoutDate ? formatDate(revenueSummary.nextPayoutDate) : `Every ${revenueSummary.payoutDayOfMonth || 15}th`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Commission Structure */}
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-6">
               <h4 className="font-bold text-gray-800 text-sm mb-4 flex items-center gap-2">
                 <i className="fa-solid fa-percent text-amber-600"></i>
-                Commission Structure
+                Payout Structure
               </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-lg p-4 border border-amber-100">
-                  <p className="text-xs text-gray-600 font-semibold mb-2">Chat Moderation</p>
-                  <p className="text-2xl font-bold text-amber-600">15%</p>
-                  <p className="text-xs text-gray-500 mt-1">Per flagged message resolved</p>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-amber-100">
-                  <p className="text-xs text-gray-600 font-semibold mb-2">Photo Verification</p>
-                  <p className="text-2xl font-bold text-amber-600">20%</p>
-                  <p className="text-xs text-gray-500 mt-1">Per verified photo package</p>
-                </div>
-                <div className="bg-white rounded-lg p-4 border border-amber-100">
-                  <p className="text-xs text-gray-600 font-semibold mb-2">User Reports</p>
-                  <p className="text-2xl font-bold text-amber-600">10%</p>
-                  <p className="text-xs text-gray-500 mt-1">Per resolved report</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white rounded-lg p-4 border border-amber-100">
+                    <p className="text-xs text-gray-600 font-semibold mb-2">Chat Moderation</p>
+                    <p className="text-2xl font-bold text-amber-600">$0.10</p>
+                    <p className="text-xs text-gray-500 mt-1">Per first replied chat</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border border-amber-100">
+                  <p className="text-xs text-gray-600 font-semibold mb-2">Approval Stage</p>
+                  <p className="text-2xl font-bold text-amber-600">Pending</p>
+                  <p className="text-xs text-gray-500 mt-1">All new replies wait for admin approval</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border border-amber-100">
+                  <p className="text-xs text-gray-600 font-semibold mb-2">Payout Schedule</p>
+                  <p className="text-2xl font-bold text-amber-600">15th</p>
+                  <p className="text-xs text-gray-500 mt-1">Approved earnings pay to the moderator&apos;s default method</p>
+                  </div>
                 </div>
               </div>
-            </div>
 
             {/* Moderator Earnings Table */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -3615,18 +3857,98 @@ const ModeratorPanel: React.FC = () => {
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">Tasks Completed</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">This Month</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">Total Earned</th>
+                      <th className="px-6 py-3 text-left font-semibold text-gray-600">Awaiting Approval</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">Balance Due</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">Status</th>
                       <th className="px-6 py-3 text-left font-semibold text-gray-600">Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b border-gray-200">
-                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
-                        <i className="fa-solid fa-inbox text-3xl text-gray-300 mb-2 block"></i>
-                        <p className="text-sm font-medium">No moderators with activity yet</p>
-                      </td>
-                    </tr>
+                    {loadingEarnings ? (
+                      <tr className="border-b border-gray-200">
+                        <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                          <i className="fa-solid fa-spinner animate-spin text-3xl text-gray-300 mb-2 block"></i>
+                          <p className="text-sm font-medium">Loading moderator earnings...</p>
+                        </td>
+                      </tr>
+                    ) : allModeratorsEarnings.length === 0 ? (
+                      <tr className="border-b border-gray-200">
+                        <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                          <i className="fa-solid fa-inbox text-3xl text-gray-300 mb-2 block"></i>
+                          <p className="text-sm font-medium">No moderators with activity yet</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      allModeratorsEarnings.map((earning: any) => (
+                        <tr key={earning.moderatorId} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div>
+                              <p className="font-semibold text-gray-900">{earning.moderatorName}</p>
+                              <p className="text-xs text-gray-500">{earning.email || earning.moderatorId}</p>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-gray-700">{earning.chatsCompleted || 0}</td>
+                          <td className="px-6 py-4 font-semibold text-rose-600">${(earning.thisMonth || 0).toFixed(2)}</td>
+                          <td className="px-6 py-4 font-semibold text-green-600">${(earning.totalEarned || 0).toFixed(2)}</td>
+                          <td className="px-6 py-4 font-semibold text-amber-600">${(earning.awaitingApproval || 0).toFixed(2)}</td>
+                          <td className="px-6 py-4 font-semibold text-amber-600">${(earning.balanceDue || 0).toFixed(2)}</td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                              earning.status === 'awaiting_approval'
+                                ? 'bg-amber-100 text-amber-700'
+                                : earning.status === 'approved_for_payout'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {earning.status === 'awaiting_approval'
+                                ? 'Awaiting Approval'
+                                : earning.status === 'approved_for_payout'
+                                  ? 'Approved'
+                                  : 'Settled'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedModeratorEarnings({
+                                    id: earning.moderatorId,
+                                    name: earning.moderatorName,
+                                    email: earning.email,
+                                    earnings: {
+                                      totalEarned: earning.totalEarned || 0,
+                                      totalPending: earning.totalPending || 0,
+                                      totalPaid: earning.totalPaid || 0,
+                                      chatsCompleted: earning.chatsCompleted || 0
+                                    }
+                                  });
+                                  fetchModeratorEarningsHistory(earning.moderatorId);
+                                }}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all"
+                              >
+                                View
+                              </button>
+                              {(earning.awaitingApproval || 0) > 0 && (
+                                <button
+                                  onClick={() => handleApproveModeratorEarnings(earning.moderatorId)}
+                                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-all"
+                                >
+                                  Review Chats
+                                </button>
+                              )}
+                              {(earning.balanceDue || 0) > 0 && (
+                                <button
+                                  onClick={() => handleProcessMonthlyPayouts(earning.moderatorId)}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all"
+                                >
+                                  Pay
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -4085,7 +4407,7 @@ const ModeratorPanel: React.FC = () => {
           currentUserId={currentUserId}
           onClose={() => setViewingChatModal(null)}
           onRefresh={() => fetchChats()}
-          onRepliedChatAdded={() => fetchRepliedChats()}
+          onRepliedChatAdded={handleModeratorChatReplied}
         />
       )}
     </div>

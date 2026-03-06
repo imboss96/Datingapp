@@ -3,6 +3,7 @@ import {
   sendEmailVerificationAutomation,
   sendCoinPurchaseEmailAutomation,
   sendPremiumUpgradeEmailAutomation,
+  sendPaymentConfirmationEmailAutomation,
   sendCustomTransactionalEmail
 } from '../../services/email/emailAutomation.js';
 
@@ -60,7 +61,16 @@ export async function sendEmailVerificationEmail(email, verificationToken) {
 // Send coin purchase confirmation email
 export async function sendCoinPurchaseEmail(email, userName, coins, price, transactionId) {
   try {
-    const result = await sendCoinPurchaseEmailAutomation(email, userName, coins, price, transactionId);
+    const result = await sendPaymentConfirmationEmailAutomation({
+      email,
+      userName,
+      purchaseType: 'coins',
+      packageName: `${coins} Spark Coins`,
+      price,
+      transactionId,
+      method: 'card',
+      coins
+    });
     if (result.success) {
       console.log('[EMAIL] Coin purchase email sent to:', email, 'Coins:', coins, 'Message ID:', result.messageId);
       return result;
@@ -77,7 +87,17 @@ export async function sendCoinPurchaseEmail(email, userName, coins, price, trans
 // Send premium membership upgrade confirmation email
 export async function sendPremiumUpgradeEmail(email, userName, planDuration, price) {
   try {
-    const result = await sendPremiumUpgradeEmailAutomation(email, userName, planDuration, price);
+    const result = await sendPaymentConfirmationEmailAutomation({
+      email,
+      userName,
+      purchaseType: 'premium',
+      packageName: `${planDuration} Premium`,
+      price,
+      transactionId: null,
+      method: 'card',
+      coins: 0,
+      planDuration
+    });
     if (result.success) {
       console.log('[EMAIL] Premium upgrade email sent to:', email, 'Plan:', planDuration, 'Message ID:', result.messageId);
       return result;
@@ -87,6 +107,22 @@ export async function sendPremiumUpgradeEmail(email, userName, planDuration, pri
     }
   } catch (error) {
     console.error('[EMAIL ERROR] Failed to send premium upgrade email:', error);
+    throw error;
+  }
+}
+
+export async function sendPaymentConfirmationEmail(paymentData) {
+  try {
+    const result = await sendPaymentConfirmationEmailAutomation(paymentData);
+    if (result.success) {
+      console.log('[EMAIL] Shared payment confirmation email sent to:', paymentData.email, 'Message ID:', result.messageId);
+      return result;
+    }
+
+    console.error('[EMAIL ERROR] Failed to send shared payment confirmation email:', result.error);
+    throw new Error(result.error);
+  } catch (error) {
+    console.error('[EMAIL ERROR] Failed to send shared payment confirmation email:', error);
     throw error;
   }
 }

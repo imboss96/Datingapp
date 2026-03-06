@@ -1049,10 +1049,23 @@ router.get('/assigned', async (req, res) => {
       return res.status(403).json({ error: 'Moderator access required' });
     }
 
+    console.log('[DEBUG] Fetching assigned chats for moderator:', req.userId);
+
+    // ✅ Filter out replied chats - only show unreplied assigned chats
     const assignedChats = await Chat.find({
       assignedModerator: req.userId,
-      supportStatus: { $in: ['assigned', 'active'] }
+      supportStatus: { $in: ['assigned', 'active'] },
+      $and: [
+        {
+          $or: [
+            { replyStatus: { $ne: 'replied' } },
+            { isReplied: { $ne: true } }
+          ]
+        }
+      ]
     }).sort({ lastUpdated: -1 });
+
+    console.log('[DEBUG] Found assigned chats:', assignedChats.length, 'IDs:', assignedChats.map(c => c.id));
 
     // Enrich with user data
     const enrichedChats = await Promise.all(
