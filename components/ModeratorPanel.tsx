@@ -3645,6 +3645,7 @@ const ModeratorPanel: React.FC = () => {
                         <th className="px-4 py-3 text-left font-semibold text-gray-600">Type</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-600">Amount</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-600">Method</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-600">Phone Number</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-600">Date</th>
                       </tr>
@@ -3684,6 +3685,11 @@ const ModeratorPanel: React.FC = () => {
                                 tx.method === 'momo' || tx.method === 'lipana' ? 'fa-mobile' : 'fa-credit-card'
                               } text-gray-600`}></i>
                               {tx.method === 'momo' || tx.method === 'lipana' ? 'Mobile Money' : 'Card'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs font-medium text-gray-700">
+                              {(tx.method === 'momo' || tx.method === 'lipana') ? (tx.phoneNumber || 'Not provided') : 'N/A'}
                             </span>
                           </td>
                           <td className="px-4 py-3">
