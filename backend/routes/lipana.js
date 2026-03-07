@@ -666,21 +666,36 @@ router.post('/webhook', async (req, res) => {
       eventType,
     });
     
-    // Process webhook event based on type (case-insensitive)
+    // Process webhook event based on type/status (case-insensitive).
+    // Some providers send status-only callbacks or slightly different event names.
     const normalizedEventType = eventType ? eventType.toLowerCase() : '';
-    if (normalizedEventType === 'payment.success' || normalizedEventType === 'transaction.success') {
-      console.log(`[LIPANA /webhook] Processing payment success`);
+    const normalizedStatus = String(event.status || event.data?.status || '').toLowerCase();
+
+    const isSuccessEvent =
+      ['payment.success', 'transaction.success', 'payment.completed', 'transaction.completed'].includes(normalizedEventType) ||
+      ['success', 'completed', 'paid'].includes(normalizedStatus);
+
+    const isFailedEvent =
+      ['payment.failed', 'transaction.failed'].includes(normalizedEventType) ||
+      ['failed', 'error'].includes(normalizedStatus);
+
+    const isCancelledEvent =
+      ['payment.cancelled', 'transaction.cancelled', 'payment.canceled', 'transaction.canceled'].includes(normalizedEventType) ||
+      ['cancelled', 'canceled'].includes(normalizedStatus);
+
+    if (isSuccessEvent) {
+      console.log(`[LIPANA /webhook] Processing payment success`, { normalizedEventType, normalizedStatus });
       await finalizeSuccessfulPayment(tx, 'webhook');
-    } else if (normalizedEventType === 'payment.failed' || normalizedEventType === 'transaction.failed') {
-      console.log(`[LIPANA /webhook] ✗ Processing payment failure`);
+    } else if (isFailedEvent) {
+      console.log(`[LIPANA /webhook] Processing payment failure`, { normalizedEventType, normalizedStatus });
       tx.status = 'FAILED';
       await tx.save();
-    } else if (normalizedEventType === 'payment.cancelled' || normalizedEventType === 'transaction.cancelled') {
-      console.log(`[LIPANA /webhook] ✗ Processing payment cancellation`);
+    } else if (isCancelledEvent) {
+      console.log(`[LIPANA /webhook] Processing payment cancellation`, { normalizedEventType, normalizedStatus });
       tx.status = 'CANCELLED';
       await tx.save();
     } else {
-      console.warn(`[LIPANA /webhook] Unknown event type: ${eventType}`);
+      console.warn(`[LIPANA /webhook] Unknown event type/status`, { eventType, normalizedStatus });
     }
     
     const duration = Date.now() - startTime;
