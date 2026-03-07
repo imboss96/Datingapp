@@ -239,7 +239,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
 
         const txId = init.transactionId;
         const pollStartTime = Date.now();
-        const pollTimeoutMs = 120000;
+        const pollTimeoutMs = 45000;
         setLipanaMessage(init.message || null);
 
         const poll = setInterval(async () => {
@@ -272,7 +272,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
               setIsProcessing(false);
             } else if (Date.now() - pollStartTime > pollTimeoutMs) {
               clearInterval(poll);
-              setError('Payment confirmation timed out. Please check transaction history.');
+              setError('Payment confirmation timed out after 45 seconds. Please check transaction history.');
               setPaymentStep('SELECT_METHOD');
               setIsProcessing(false);
             }
@@ -411,7 +411,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
 
         const txId = init.transactionId;
         const pollStartTime = Date.now();
-        const pollTimeoutMs = 120000;
+        const pollTimeoutMs = 45000;
 
         const poll = setInterval(async () => {
           try {
@@ -438,7 +438,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
               setIsProcessing(false);
             } else if (Date.now() - pollStartTime > pollTimeoutMs) {
               clearInterval(poll);
-              setError('Premium payment confirmation timed out. Please check transaction history.');
+              setError('Premium payment confirmation timed out after 45 seconds. Please check transaction history.');
               setPremiumPaymentStep('SELECT_METHOD');
               setIsProcessing(false);
             }
