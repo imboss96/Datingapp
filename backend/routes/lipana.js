@@ -212,6 +212,24 @@ async function resolvePackageForPayment(packageId) {
 }
 
 async function finalizeSuccessfulPayment(tx, source = 'unknown') {
+  // Resolve user first to avoid locking a transaction as COMPLETED when user lookup fails.
+  const resolveUser = async (userId) => {
+    let found = null;
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      found = await User.findById(userId);
+    }
+    if (!found) {
+      found = await User.findOne({ id: userId });
+    }
+    return found;
+  };
+
+  const user = await resolveUser(tx.userId);
+  if (!user) {
+    console.warn(`[LIPANA finalize] User not found for tx ${tx.id} (userId=${tx.userId})`);
+    return { alreadyCompleted: false, user: null };
+  }
+
   const updatedTx = await Transaction.findOneAndUpdate(
     { _id: tx._id, status: { $ne: 'COMPLETED' } },
     { $set: { status: 'COMPLETED', updatedAt: new Date() } },
@@ -223,22 +241,22 @@ async function finalizeSuccessfulPayment(tx, source = 'unknown') {
     return { alreadyCompleted: true };
   }
 
-  let user = await User.findById(updatedTx.userId);
-  if (!user) {
-    user = await User.findOne({ id: updatedTx.userId });
+  try {
+    if (updatedTx.type === 'PREMIUM_UPGRADE') {
+      const plan = tx.description?.startsWith('premium_plan:') ? tx.description.split(':')[1] : '1_month';
+      upgradeUserToPremium(user, plan);
+    } else {
+      user.coins = (user.coins || 0) + (updatedTx.amount || 0);
+    }
+    await user.save();
+  } catch (creditErr) {
+    // Re-open transaction so webhook/status poll can retry safely.
+    await Transaction.updateOne(
+      { _id: updatedTx._id, status: 'COMPLETED' },
+      { $set: { status: 'PENDING', updatedAt: new Date() } }
+    );
+    throw creditErr;
   }
-  if (!user) {
-    console.warn(`[LIPANA finalize] User not found for tx ${updatedTx.id}`);
-    return { alreadyCompleted: false, user: null };
-  }
-
-  if (updatedTx.type === 'PREMIUM_UPGRADE') {
-    const plan = tx.description?.startsWith('premium_plan:') ? tx.description.split(':')[1] : '1_month';
-    upgradeUserToPremium(user, plan);
-  } else {
-    user.coins = (user.coins || 0) + (updatedTx.amount || 0);
-  }
-  await user.save();
 
   try {
     if (updatedTx.type === 'PREMIUM_UPGRADE') {
