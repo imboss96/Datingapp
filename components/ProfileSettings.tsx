@@ -327,6 +327,39 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     }
   };
 
+  const getCheckoutErrorMeta = (message: string | null) => {
+    const normalized = String(message || '').toLowerCase();
+    if (normalized.includes('timed out')) {
+      return {
+        title: 'Confirmation Taking Too Long',
+        icon: 'fa-clock-rotate-left',
+        tone: 'from-amber-50 to-orange-50 border-amber-200 text-amber-800',
+      };
+    }
+    if (normalized.includes('cancel')) {
+      return {
+        title: 'Payment Was Cancelled',
+        icon: 'fa-ban',
+        tone: 'from-slate-50 to-gray-50 border-slate-200 text-slate-800',
+      };
+    }
+    return {
+      title: 'Payment Failed',
+      icon: 'fa-triangle-exclamation',
+      tone: 'from-rose-50 to-red-50 border-rose-200 text-rose-800',
+    };
+  };
+
+  const openTransactionHistory = () => {
+    setSelectedPack(null);
+    setSelectedPremiumPackage(null);
+    setPaymentStep('SELECT_METHOD');
+    setPremiumPaymentStep('SELECT_METHOD');
+    setError(null);
+    setTransactions([]);
+    setOpenModal('purchases');
+  };
+
   const handleConfirmPremiumPayment = async () => {
     console.log('[DEBUG ProfileSettings] Premium payment clicked', { selectedMethod: premiumSelectedMethod, selectedPremiumPackage });
     setError(null);
@@ -733,8 +766,32 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                   {paymentStep === 'SELECT_METHOD' && (
                     <>
                       {error && (
-                        <div className="p-3 mb-4 bg-rose-50 border border-rose-200 rounded-lg">
-                          <p className="text-xs text-rose-700 font-medium">{error}</p>
+                        <div className={`mb-5 rounded-2xl border bg-gradient-to-r p-4 ${getCheckoutErrorMeta(error).tone}`}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-9 h-9 rounded-full bg-white/70 flex items-center justify-center shrink-0 mt-0.5">
+                              <i className={`fa-solid ${getCheckoutErrorMeta(error).icon}`}></i>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-extrabold">{getCheckoutErrorMeta(error).title}</p>
+                              <p className="text-xs mt-1 leading-relaxed opacity-90">{error}</p>
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setError(null)}
+                                  className="px-3 py-1.5 rounded-lg bg-white/90 text-[11px] font-bold uppercase tracking-wide"
+                                >
+                                  Try Again
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={openTransactionHistory}
+                                  className="px-3 py-1.5 rounded-lg bg-white/60 text-[11px] font-bold uppercase tracking-wide"
+                                >
+                                  View History
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                       <div className="flex justify-between items-center mb-6">
@@ -893,8 +950,32 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                   {premiumPaymentStep === 'SELECT_METHOD' && (
                     <>
                       {error && (
-                        <div className="p-3 mb-4 bg-rose-50 border border-rose-200 rounded-lg">
-                          <p className="text-xs text-rose-700 font-medium">{error}</p>
+                        <div className={`mb-5 rounded-2xl border bg-gradient-to-r p-4 ${getCheckoutErrorMeta(error).tone}`}>
+                          <div className="flex items-start gap-3">
+                            <div className="w-9 h-9 rounded-full bg-white/70 flex items-center justify-center shrink-0 mt-0.5">
+                              <i className={`fa-solid ${getCheckoutErrorMeta(error).icon}`}></i>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-extrabold">{getCheckoutErrorMeta(error).title}</p>
+                              <p className="text-xs mt-1 leading-relaxed opacity-90">{error}</p>
+                              <div className="mt-3 flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setError(null)}
+                                  className="px-3 py-1.5 rounded-lg bg-white/90 text-[11px] font-bold uppercase tracking-wide"
+                                >
+                                  Try Again
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={openTransactionHistory}
+                                  className="px-3 py-1.5 rounded-lg bg-white/60 text-[11px] font-bold uppercase tracking-wide"
+                                >
+                                  View History
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       )}
                       <div className="flex justify-between items-center mb-6">
