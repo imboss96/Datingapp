@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 // Load environment variables FIRST before any other imports
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(__dirname, '.env'), override: true });
 
 import mongoose from 'mongoose';
 import { createServer } from 'http';
@@ -60,7 +60,15 @@ app.use(cors({
 app.use(cookieParser());
 
 // Apply JSON body parser BEFORE routes (needed for test endpoints)
-app.use(express.json({ limit: '50mb' }));
+// Preserve raw body for Lipana webhook signature verification.
+app.use(express.json({
+  limit: '50mb',
+  verify: (req, _res, buf) => {
+    if (req.originalUrl?.includes('/api/lipana/webhook')) {
+      req.rawBody = Buffer.from(buf);
+    }
+  }
+}));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Register routes

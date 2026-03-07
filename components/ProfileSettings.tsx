@@ -202,109 +202,51 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         return;
       }
 
-      console.log('[ProfileSettings] Processing coin purchase:', {
-        coins: selectedPack.coins,
-        price: selectedPack.price,
-        userEmail: user.email,
-        method: selectedMethod,
-        packageId: selectedPack.id
-      });
-
-      setLipanaMessage(null);
-      const resp: any = await apiClient.post('/transactions/purchase', {
-        userId: user.id,
-        packageId: selectedPack.id,
-        method: selectedMethod,
-        phoneNumber: selectedMethod === 'momo' ? momoNumber : undefined,
-      });
-      setCoinEmailSent(resp.emailSent === true);
-      setCoinEmailError(resp.emailSent === true ? null : (resp.emailError || 'Confirmation email could not be delivered.'));
-      console.log('[ProfileSettings] Payment successful:', {
-        transactionId: resp.transactionId || resp.id,
-        coins: selectedPack.coins,
-        userEmail: user.email,
-        method: selectedMethod,
-        emailSent: resp.emailSent
-      });
-
-      try {
-        const refreshedUser = await apiClient.refreshUserProfile();
-        console.log('[ProfileSettings] User profile refreshed:', { coins: refreshedUser.coins, isPremium: refreshedUser.isPremium });
-        setUser(refreshedUser);
-      } catch (refreshErr) {
-        console.error('[ProfileSettings] Failed to refresh user profile, using local state:', refreshErr);
-        const updatedUser = {
-          ...user,
-          coins: resp.coins ?? user.coins,
-          isPremium: resp.isPremium ?? user.isPremium,
-        };
-        setUser(updatedUser);
-      }
-
-      setPaymentStep('SUCCESS');
-      setIsProcessing(false);
-      return;
-
       if (selectedMethod === 'momo') {
-        // start Lipana mobile‑money flow; backend requires packageId rather than raw amount
-        console.log('[DEBUG ProfileSettings] Starting momo flow with:', { phone: momoNumber, packageId: selectedPack.id });
+        setLipanaMessage(null);
         const init = await apiClient.lipanaInitiate(user.id, momoNumber, selectedPack.id);
         if (!init || !init.transactionId) {
           throw new Error('Failed to initiate mobile money prompt');
         }
-        const txId = init.transactionId;
-        setLipanaMessage(init.message || null);
-        console.log('[DEBUG ProfileSettings] Lipana prompt sent, txId=', txId, 'message=', init.message);
 
-        // poll the status until webhook updates the backend
+        const txId = init.transactionId;
+        const pollStartTime = Date.now();
+        const pollTimeoutMs = 120000;
+        setLipanaMessage(init.message || null);
+
         const poll = setInterval(async () => {
           try {
             const status = await apiClient.lipanaStatus(txId);
             const s = status.status?.toLowerCase();
-            
+
             if (s === 'success') {
               clearInterval(poll);
-              console.log('[DEBUG ProfileSettings] Payment SUCCESS - Email confirmation being sent');
-              
-              // Refresh user profile from server to get updated coins
               try {
                 const refreshedUser = await apiClient.refreshUserProfile();
-                console.log('[ProfileSettings] User profile refreshed:', { coins: refreshedUser.coins, isPremium: refreshedUser.isPremium });
                 setUser(refreshedUser);
               } catch (refreshErr) {
                 console.error('[ProfileSettings] Failed to refresh user profile, using local state:', refreshErr);
-                // Fallback to local state update
-                const updatedUser = {
+                setUser({
                   ...user,
                   coins: status.coins ?? user.coins,
                   isPremium: status.isPremium ?? user.isPremium,
-                };
-                setUser(updatedUser);
+                });
               }
-              
-              console.log('[ProfileSettings] Lipana payment successful:', {
-                transactionId: txId,
-                coins: selectedPack.coins,
-                userEmail: user.email,
-                status: 'COMPLETED',
-                emailSent: true
-              });
+
+              setCoinEmailSent(true);
+              setCoinEmailError(null);
               setPaymentStep('SUCCESS');
               setIsProcessing(false);
-            } else if (s === 'failed') {
+            } else if (s === 'failed' || s === 'cancelled') {
               clearInterval(poll);
-              console.log('[DEBUG ProfileSettings] Payment FAILED');
-              setError(status.message || 'Mobile money payment failed');
+              setError(status.message || 'Mobile money payment failed or cancelled');
               setPaymentStep('SELECT_METHOD');
               setIsProcessing(false);
-            } else if (s === 'cancelled') {
+            } else if (Date.now() - pollStartTime > pollTimeoutMs) {
               clearInterval(poll);
-              console.log('[DEBUG ProfileSettings] Payment CANCELLED');
-              setError('Payment cancelled. Please try again.');
+              setError('Payment confirmation timed out. Please check transaction history.');
               setPaymentStep('SELECT_METHOD');
               setIsProcessing(false);
-            } else {
-              console.log('[DEBUG ProfileSettings] Poll status:', s);
             }
           } catch (pollErr) {
             console.error('[ERROR ProfileSettings] polling lipana status failed:', pollErr);
@@ -313,58 +255,44 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
             setPaymentStep('SELECT_METHOD');
             setIsProcessing(false);
           }
-        }, 2000);  // Poll every 2 seconds instead of 5 for faster response
+        }, 2000);
 
-        // keep function returning; poll handles completion
-        return;
-      } else {
-        // non-mobile money route uses the dummy purchase endpoint
-        console.log('[DEBUG ProfileSettings] processing non-momo purchase', { method: selectedMethod, packageId: selectedPack.id });
-        const resp: any = await apiClient.post('/transactions/purchase', {
-          userId: user.id,
-          packageId: selectedPack.id,
-          method: selectedMethod,
-        });
-        console.log('[ProfileSettings] Payment successful:', {
-          transactionId: resp.transactionId || resp.id,
-          coins: selectedPack.coins,
-          userEmail: user.email,
-          method: selectedMethod,
-          emailSent: true
-        });
-        
-        // Refresh user profile from server to get updated coins
-        try {
-          const refreshedUser = await apiClient.refreshUserProfile();
-          console.log('[ProfileSettings] User profile refreshed:', { coins: refreshedUser.coins, isPremium: refreshedUser.isPremium });
-          setUser(refreshedUser);
-        } catch (refreshErr) {
-          console.error('[ProfileSettings] Failed to refresh user profile, using local state:', refreshErr);
-          // Fallback to local state update
-          const updatedUser = {
-            ...user,
-            coins: resp.coins ?? user.coins,
-            isPremium: resp.isPremium ?? user.isPremium,
-          };
-          setUser(updatedUser);
-        }
-        
-        setPaymentStep('SUCCESS');
-        setIsProcessing(false);
         return;
       }
+
+      const resp: any = await apiClient.post('/transactions/purchase', {
+        userId: user.id,
+        packageId: selectedPack.id,
+        method: selectedMethod,
+      });
+
+      setCoinEmailSent(resp.emailSent === true);
+      setCoinEmailError(resp.emailSent === true ? null : (resp.emailError || 'Confirmation email could not be delivered.'));
+
+      try {
+        const refreshedUser = await apiClient.refreshUserProfile();
+        setUser(refreshedUser);
+      } catch (refreshErr) {
+        console.error('[ProfileSettings] Failed to refresh user profile, using local state:', refreshErr);
+        setUser({
+          ...user,
+          coins: resp.coins ?? user.coins,
+          isPremium: resp.isPremium ?? user.isPremium,
+        });
+      }
+
+      setPaymentStep('SUCCESS');
+      setIsProcessing(false);
     } catch (err: any) {
       console.error('[ERROR ProfileSettings] Payment processing failed:', err);
-      const errorMsg = err?.response?.data?.error 
-        || err?.response?.error 
-        || err?.message 
-        || String(err) 
+      const errorMsg = err?.response?.data?.error
+        || err?.response?.error
+        || err?.message
+        || String(err)
         || 'Payment failed. Please try again.';
       setError(errorMsg);
       setPaymentStep('SELECT_METHOD');
       setIsProcessing(false);
-    } finally {
-      // setIsProcessing already handled in catch, but keep finally for non-error paths
     }
   };
 
@@ -412,123 +340,77 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         return;
       }
 
-      console.log('[ProfileSettings] Processing premium purchase:', {
-        packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
-        price: selectedPremiumPackage.price,
-        plan: selectedPremiumPackage.plan,
-        userEmail: user.email,
-        method: premiumSelectedMethod
-      });
-
-      const resp: any = await apiClient.post('/transactions/purchase-premium', {
-        userId: user.id,
-        packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
-        method: premiumSelectedMethod,
-        phoneNumber: premiumSelectedMethod === 'momo' ? premiumMomoNumber : undefined,
-      });
-      setPremiumEmailSent(resp.emailSent === true);
-      setPremiumEmailError(resp.emailSent === true ? null : (resp.emailError || 'Confirmation email could not be delivered.'));
-      
-      console.log('[ProfileSettings] Premium payment successful:', {
-        packageId: selectedPremiumPackage._id,
-        plan: selectedPremiumPackage.plan,
-        userEmail: user.email,
-        method: premiumSelectedMethod,
-        emailSent: resp.emailSent
-      });
-      
-      try {
-        const refreshedUser = await apiClient.refreshUserProfile();
-        console.log('[ProfileSettings] User profile refreshed after premium:', { isPremium: refreshedUser.isPremium, premiumExpiresAt: refreshedUser.premiumExpiresAt });
-        setUser(refreshedUser);
-      } catch (refreshErr) {
-        console.error('[ProfileSettings] Failed to refresh user profile:', refreshErr);
-      }
-      
-      setPremiumPaymentStep('SUCCESS');
-      setIsProcessing(false);
-      return;
+      const premiumPackageId = selectedPremiumPackage._id || selectedPremiumPackage.id;
 
       if (premiumSelectedMethod === 'momo') {
-        // Initiate mobile money for premium  
-        console.log('[DEBUG ProfileSettings] Starting momo flow for premium with:', { phone: premiumMomoNumber });
-        const init = await apiClient.post('/transactions/initiate-premium', {
-          userId: user.id,
-          packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
-          phoneNumber: premiumMomoNumber
-        });
-        
+        const init = await apiClient.lipanaInitiate(user.id, premiumMomoNumber, premiumPackageId);
         if (!init || !init.transactionId) {
           throw new Error('Failed to initiate mobile money prompt');
         }
-        
-        const txId = init.transactionId;
-        console.log('[DEBUG ProfileSettings] Premium Lipana prompt sent, txId=', txId);
 
-        // Poll status
+        const txId = init.transactionId;
+        const pollStartTime = Date.now();
+        const pollTimeoutMs = 120000;
+
         const poll = setInterval(async () => {
           try {
             const status = await apiClient.lipanaStatus(txId);
             const s = status.status?.toLowerCase();
-            
+
             if (s === 'success') {
               clearInterval(poll);
-              console.log('[DEBUG ProfileSettings] Premium payment SUCCESS');
-              
-              // Refresh user profile to get updated premium status
               try {
                 const refreshedUser = await apiClient.refreshUserProfile();
-                console.log('[ProfileSettings] User profile refreshed after premium:', { isPremium: refreshedUser.isPremium, premiumExpiresAt: refreshedUser.premiumExpiresAt });
                 setUser(refreshedUser);
               } catch (refreshErr) {
                 console.error('[ProfileSettings] Failed to refresh user profile:', refreshErr);
               }
-              
+
+              setPremiumEmailSent(true);
+              setPremiumEmailError(null);
               setPremiumPaymentStep('SUCCESS');
               setIsProcessing(false);
             } else if (s === 'failed' || s === 'cancelled') {
               clearInterval(poll);
-              setError('Premium payment failed or cancelled');
+              setError(status.message || 'Premium payment failed or cancelled');
+              setPremiumPaymentStep('SELECT_METHOD');
+              setIsProcessing(false);
+            } else if (Date.now() - pollStartTime > pollTimeoutMs) {
+              clearInterval(poll);
+              setError('Premium payment confirmation timed out. Please check transaction history.');
               setPremiumPaymentStep('SELECT_METHOD');
               setIsProcessing(false);
             }
           } catch (pollErr) {
             console.error('[ERROR ProfileSettings] polling premium payment status failed:', pollErr);
             clearInterval(poll);
-            setError('Error checking payment status');
+            setError('Error checking premium payment status. Please refresh.');
             setPremiumPaymentStep('SELECT_METHOD');
             setIsProcessing(false);
           }
         }, 2000);
-        
-        return;
-      } else {
-        // Card payment for premium
-        const resp: any = await apiClient.post('/transactions/purchase-premium', {
-          userId: user.id,
-          packageId: selectedPremiumPackage._id || selectedPremiumPackage.id,
-          method: premiumSelectedMethod,
-        });
-        
-        console.log('[ProfileSettings] Premium payment successful:', {
-          packageId: selectedPremiumPackage._id,
-          plan: selectedPremiumPackage.plan,
-          userEmail: user.email
-        });
-        
-        // Refresh user profile to get updated premium status
-        try {
-          const refreshedUser = await apiClient.refreshUserProfile();
-          console.log('[ProfileSettings] User profile refreshed after premium:', { isPremium: refreshedUser.isPremium });
-          setUser(refreshedUser);
-        } catch (refreshErr) {
-          console.error('[ProfileSettings] Failed to refresh user profile:', refreshErr);
-        }
-        
-        setPremiumPaymentStep('SUCCESS');
-        setIsProcessing(false);
+
         return;
       }
+
+      const resp: any = await apiClient.post('/transactions/purchase-premium', {
+        userId: user.id,
+        packageId: premiumPackageId,
+        method: premiumSelectedMethod,
+      });
+
+      setPremiumEmailSent(resp.emailSent === true);
+      setPremiumEmailError(resp.emailSent === true ? null : (resp.emailError || 'Confirmation email could not be delivered.'));
+
+      try {
+        const refreshedUser = await apiClient.refreshUserProfile();
+        setUser(refreshedUser);
+      } catch (refreshErr) {
+        console.error('[ProfileSettings] Failed to refresh user profile:', refreshErr);
+      }
+
+      setPremiumPaymentStep('SUCCESS');
+      setIsProcessing(false);
     } catch (err: any) {
       console.error('[ERROR ProfileSettings] Premium payment processing failed:', err);
       const errorMsg = err?.response?.data?.error || err?.message || 'Premium purchase failed. Please try again.';
@@ -537,7 +419,6 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
       setIsProcessing(false);
     }
   };
-
   const handleSaveProfile = async () => {
     setSaving(true);
     setError(null);
@@ -953,7 +834,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       </div>
                       <h3 className="text-xl font-black text-gray-900 mb-2">Processing Transaction</h3>
                       <p className="text-sm text-gray-500 max-w-[240px]">
-                        Processing your {selectedMethod === 'momo' ? 'mobile money' : 'payment'} checkout in test mode. Please wait a moment.
+                        Processing your {selectedMethod === 'momo' ? 'M-Pesa' : 'payment'} checkout. Please wait a moment.
                       </p>
                       <p className="text-xs text-gray-400 mt-4 max-w-[240px]">
                         <i className="fa-solid fa-envelope text-gray-400 mr-1"></i>
@@ -1110,7 +991,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                       </div>
                       <h3 className="text-xl font-black text-gray-900 mb-2">Processing Premium Purchase</h3>
                       <p className="text-sm text-gray-500 max-w-[240px]">
-                        Processing your {premiumSelectedMethod === 'momo' ? 'mobile money' : 'payment'} checkout in test mode. Please wait a moment.
+                        Processing your {premiumSelectedMethod === 'momo' ? 'M-Pesa' : 'payment'} checkout. Please wait a moment.
                       </p>
                       <p className="text-xs text-gray-400 mt-4 max-w-[240px]">
                         <i className="fa-solid fa-envelope text-gray-400 mr-1"></i>

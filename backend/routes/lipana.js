@@ -7,9 +7,11 @@ import { v4 as uuidv4 } from 'uuid';
 import Transaction from '../models/Transaction.js';
 import User from '../models/User.js';
 import CoinPackage from '../models/CoinPackage.js';
+import PremiumPackage from '../models/PremiumPackage.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { completePaymentWithEmail, validatePaymentData } from '../utils/paymentHelper.js';
 import { sendCoinPurchaseEmail, sendPremiumUpgradeEmail } from '../utils/email.js';
+import { upgradeUserToPremium } from '../utils/premiumHelper.js';
 
 // Lazy-load Lipana SDK to ensure environment variables are available
 let lipanaClient = null;
@@ -107,7 +109,146 @@ function normalizePhone(input) {
   throw new Error('Invalid phone number. Supports: 254XXXXXXXXX (Kenya), 0704000000 (Kenya), 233XXXXXXXXX (Ghana), or 0233000000 (Ghana)');
 }
 
-// the stub "lipana" object defined above is used instead of a real SDK
+function parsePriceValue(pkg) {
+  if (typeof pkg?.priceNumber === 'number') return pkg.priceNumber;
+  if (typeof pkg?.price === 'number') return pkg.price;
+  if (typeof pkg?.price === 'string') {
+    const parsed = Number(pkg.price.replace(/[^\d.]/g, ''));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function convertToCurrencyMinorUnits(amount) {
+  const rounded = Math.round(Number(amount) * 100);
+  return Number.isFinite(rounded) && rounded > 0 ? rounded : 0;
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId));
+}
+
+async function resolvePackageForPayment(packageId) {
+  let pkg = null;
+
+  if (typeof packageId === 'string' && /^[0-9a-fA-F]{24}$/.test(packageId)) {
+    const coinPkg = await CoinPackage.findById(packageId).lean();
+    if (coinPkg) {
+      return {
+        id: String(coinPkg._id),
+        isPremium: false,
+        coins: Number(coinPkg.coins || 0),
+        price: `$${Number(coinPkg.price || 0).toFixed(2)}`,
+        priceNumber: Number(coinPkg.price || 0),
+      };
+    }
+
+    const premiumPkg = await PremiumPackage.findById(packageId).lean();
+    if (premiumPkg && premiumPkg.isActive) {
+      return {
+        id: String(premiumPkg._id),
+        isPremium: true,
+        plan: premiumPkg.plan,
+        name: premiumPkg.name,
+        coins: 0,
+        price: premiumPkg.displayPrice || `$${Number(premiumPkg.price || 0).toFixed(2)}`,
+        priceNumber: Number(premiumPkg.price || 0),
+      };
+    }
+  }
+
+  if (!pkg && !isNaN(packageId)) {
+    const numId = parseInt(packageId, 10);
+    const coinPkg = await CoinPackage.findOne({ id: numId, isActive: true }).lean();
+    if (coinPkg) {
+      pkg = {
+        id: String(coinPkg.id),
+        isPremium: false,
+        coins: Number(coinPkg.coins || 0),
+        price: `$${Number(coinPkg.price || 0).toFixed(2)}`,
+        priceNumber: Number(coinPkg.price || 0),
+      };
+    }
+  }
+
+  if (!pkg && typeof packageId === 'string' && packageId.startsWith('coins_')) {
+    const pkgNumber = parseInt(packageId.replace('coins_', ''), 10);
+    const coinPkg = await CoinPackage.findOne({ coins: pkgNumber, isActive: true }).lean();
+    if (coinPkg) {
+      pkg = {
+        id: String(coinPkg.id ?? coinPkg._id),
+        isPremium: false,
+        coins: Number(coinPkg.coins || 0),
+        price: `$${Number(coinPkg.price || 0).toFixed(2)}`,
+        priceNumber: Number(coinPkg.price || 0),
+      };
+    }
+  }
+
+  if (!pkg && PACKAGES[packageId]) {
+    const fallback = PACKAGES[packageId];
+    const fallbackPlanMap = {
+      premium_1m: '1_month',
+      premium_3m: '3_months',
+      premium_6m: '6_months',
+      premium_12m: '12_months',
+    };
+    pkg = {
+      id: packageId,
+      isPremium: Boolean(fallback.isPremium),
+      plan: fallback.plan || fallbackPlanMap[packageId] || null,
+      name: fallback.name || null,
+      coins: Number(fallback.coins || 0),
+      price: fallback.price || '$0.00',
+      priceNumber: Number(String(fallback.price || '0').replace(/[^\d.]/g, '')) || 0,
+    };
+  }
+
+  return pkg;
+}
+
+async function finalizeSuccessfulPayment(tx, source = 'unknown') {
+  const updatedTx = await Transaction.findOneAndUpdate(
+    { _id: tx._id, status: { $ne: 'COMPLETED' } },
+    { $set: { status: 'COMPLETED', updatedAt: new Date() } },
+    { new: true }
+  );
+
+  if (!updatedTx) {
+    console.log(`[LIPANA finalize] Transaction ${tx.id} already completed; skipping duplicate credit (${source})`);
+    return { alreadyCompleted: true };
+  }
+
+  const user = await User.findById(updatedTx.userId);
+  if (!user) {
+    console.warn(`[LIPANA finalize] User not found for tx ${updatedTx.id}`);
+    return { alreadyCompleted: false, user: null };
+  }
+
+  if (updatedTx.type === 'PREMIUM_UPGRADE') {
+    const plan = tx.description?.startsWith('premium_plan:') ? tx.description.split(':')[1] : '1_month';
+    upgradeUserToPremium(user, plan);
+  } else {
+    user.coins = (user.coins || 0) + (updatedTx.amount || 0);
+  }
+  await user.save();
+
+  try {
+    if (updatedTx.type === 'PREMIUM_UPGRADE') {
+      await sendPremiumUpgradeEmail(user.email, user.name, user.premiumPlan || 'Premium Plan', updatedTx.price || '$0.00');
+    } else {
+      await sendCoinPurchaseEmail(user.email, user.name, updatedTx.amount, updatedTx.price || '$0.00', updatedTx.id);
+    }
+  } catch (emailErr) {
+    console.warn('[LIPANA finalize] Email sending failed (non-blocking):', emailErr.message);
+  }
+
+  return { alreadyCompleted: false, user };
+}
 
 router.post('/initiate', async (req, res) => {
   const startTime = Date.now();
@@ -136,58 +277,8 @@ router.post('/initiate', async (req, res) => {
       return res.status(400).json({ error: 'Missing packageId' });
     }
     
-    // Try to find package in CoinPackage collection first (new system)
-    let pkg = null;
-    
-    // Check if packageId is a MongoDB ObjectId (24 hex characters)
-    if (typeof packageId === 'string' && /^[0-9a-fA-F]{24}$/.test(packageId)) {
-      const coinPkg = await CoinPackage.findById(packageId).lean();
-      if (coinPkg) {
-        pkg = {
-          coins: coinPkg.coins,
-          price: `$${coinPkg.price.toFixed(2)}`,
-          isPremium: false,
-          ...coinPkg
-        };
-        console.log(`[LIPANA /initiate] Found package in CoinPackage collection by MongoDB ID:`, { coins: pkg.coins, price: pkg.price });
-      }
-    }
-
-    // Try parsing packageId as custom numeric ID (created by admin in CoinPackage)
-    if (!pkg && !isNaN(packageId)) {
-      const numId = parseInt(packageId, 10);
-      const coinPkg = await CoinPackage.findOne({ id: numId, isActive: true }).lean();
-      if (coinPkg) {
-        pkg = {
-          coins: coinPkg.coins,
-          price: `$${coinPkg.price.toFixed(2)}`,
-          isPremium: false,
-          ...coinPkg
-        };
-        console.log(`[LIPANA /initiate] Found package by custom numeric id:`, { id: numId, coins: pkg.coins, price: pkg.price });
-      }
-    }
-
-    // Try parsing by coins number format (if format is 'coins_100')
-    if (!pkg && typeof packageId === 'string' && packageId.startsWith('coins_')) {
-      const pkgNumber = parseInt(packageId.replace('coins_', ''));
-      const coinPkg = await CoinPackage.findOne({ coins: pkgNumber, isActive: true }).lean();
-      if (coinPkg) {
-        pkg = {
-          coins: coinPkg.coins,
-          price: `$${coinPkg.price.toFixed(2)}`,
-          isPremium: false,
-          ...coinPkg
-        };
-        console.log(`[LIPANA /initiate] Found package by coins number:`, { coins: pkg.coins, price: pkg.price });
-      }
-    }
-
-    // Fallback to PACKAGES hardcoded array
-    if (!pkg && PACKAGES[packageId]) {
-      pkg = PACKAGES[packageId];
-      console.log(`[LIPANA /initiate] Using PACKAGES fallback:`, pkg);
-    }
+    // Resolve package from DB first (coin and premium), then fallback map.
+    const pkg = await resolvePackageForPayment(packageId);
 
     if (!pkg) {
       console.warn(`[LIPANA /initiate] VALIDATION FAILED: Invalid packageId '${packageId}'`);
@@ -213,6 +304,7 @@ router.post('/initiate', async (req, res) => {
       method: 'momo',
       status: 'PENDING',
       phoneNumber: normalized,
+      description: pkg.isPremium ? `premium_plan:${pkg.plan || '1_month'}` : 'coin_purchase',
     });
     await tx.save();
     console.log(`[LIPANA /initiate] Transaction created:`, {
@@ -228,13 +320,20 @@ router.post('/initiate', async (req, res) => {
     console.log(`[LIPANA /initiate] Initiating real STK push with Lipana...`);
     let lipanaRes;
     try {
-      // Format amount in KES (Lipana expects amount in the smallest currency unit)
-      const amountInKes = parseInt(pkg.price.replace(/\D/g, '')) || 1000; // Default to 1000 if parsing fails
+      // Lipana expects minor units for currency amount.
+      const amountInKes = convertToCurrencyMinorUnits(parsePriceValue(pkg));
+      if (!amountInKes) {
+        return res.status(400).json({ error: 'Invalid package amount for M-Pesa checkout' });
+      }
       
-      lipanaRes = await getLipanaClient().transactions.initiateStkPush({
-        phone: normalized,
-        amount: amountInKes,
-      });
+      lipanaRes = await withTimeout(
+        getLipanaClient().transactions.initiateStkPush({
+          phone: normalized,
+          amount: amountInKes,
+        }),
+        20000,
+        'Lipana STK initiation'
+      );
       
       console.log(`[LIPANA /initiate] FULL Lipana API response:`, {
         response_type: typeof lipanaRes,
@@ -348,7 +447,11 @@ router.get('/status/:txId', async (req, res) => {
       if (tx.lipanaTransactionId) {
         console.log(`[LIPANA /status] Querying Lipana with txId: ${tx.lipanaTransactionId}`);
         // Query Lipana API for transaction details
-        const lipanaTransaction = await getLipanaClient().transactions.retrieve(tx.lipanaTransactionId);
+        const lipanaTransaction = await withTimeout(
+          getLipanaClient().transactions.retrieve(tx.lipanaTransactionId),
+          10000,
+          'Lipana status check'
+        );
         lipanaTransactionStatus = lipanaTransaction?.status || tx.status;
         
         console.log(`[LIPANA /status] Lipana API response:`, {
@@ -378,53 +481,8 @@ router.get('/status/:txId', async (req, res) => {
     
     // If Lipana shows success and our DB shows pending, update it
     if (normalizedLipanaStatus === 'success' && txStatus === 'pending') {
-      console.log(`[LIPANA /status] ✓ Payment success detected in Lipana! Updating transaction...`);
-      
-      tx.status = 'COMPLETED';
-      await tx.save();
-      console.log(`[LIPANA /status] Transaction status updated: PENDING → COMPLETED`);
-      
-      // Update user coins/premium
-      console.log(`[LIPANA /status] Updating user ${tx.userId}...`);
-      try {
-        const user = await User.findOne({ _id: new mongoose.Types.ObjectId(tx.userId) }).lean();
-        if (user) {
-          const before = {
-            coins: user.coins || 0,
-            isPremium: user.isPremium || false,
-          };
-          
-          if (tx.type === 'PREMIUM_UPGRADE') {
-            user.isPremium = true;
-            console.log(`[LIPANA /status] User upgraded to premium`);
-          } else {
-            user.coins = (user.coins || 0) + tx.amount;
-            console.log(`[LIPANA /status] User coins updated: ${before.coins} → ${user.coins}`);
-          }
-          
-          await User.updateOne({ _id: tx.userId }, user);
-          console.log(`[LIPANA /status] User saved successfully`);
-
-          // Send confirmation email
-          try {
-            if (tx.type === 'PREMIUM_UPGRADE') {
-              await sendPremiumUpgradeEmail(user.email, user.name, 'Premium Plan', tx.price || '$4.99');
-              console.log(`[LIPANA /status] Premium upgrade email sent to: ${user.email}`);
-            } else {
-              await sendCoinPurchaseEmail(user.email, user.name, tx.amount, tx.price || '$2.99', tx.lipanaTransactionId);
-              console.log(`[LIPANA /status] Coin purchase email sent to: ${user.email}`);
-            }
-          } catch (emailErr) {
-            console.warn(`[LIPANA /status] Email sending failed (non-blocking):`, emailErr.message);
-            // Don't fail the transaction if email fails
-          }
-        } else {
-          console.warn(`[LIPANA /status] User ${tx.userId} not found for update`);
-        }
-      } catch (userErr) {
-        console.warn(`[LIPANA /status] Could not update user:`, userErr.message);
-      }
-      
+      console.log(`[LIPANA /status] Payment success detected in Lipana! Finalizing transaction...`);
+      await finalizeSuccessfulPayment(tx, 'status-poll');
       txStatus = 'success';
       statusChanged = true;
     } else if (normalizedLipanaStatus === 'failed' && txStatus === 'pending') {
@@ -452,7 +510,7 @@ router.get('/status/:txId', async (req, res) => {
     });
     
     res.json({
-      status: txStatus,
+      status: txStatus === 'completed' ? 'success' : txStatus,
       coins: tx.amount,
       isPremium: tx.type === 'PREMIUM_UPGRADE',
       message: tx.description || null,
@@ -468,13 +526,13 @@ router.get('/status/:txId', async (req, res) => {
   }
 });
 
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/webhook', async (req, res) => {
   const startTime = Date.now();
   console.log(`[LIPANA /webhook] === WEBHOOK EVENT ==== `);
   
   try {
     const signature = req.headers['x-lipana-signature'];
-    const payload = req.body;
+    const payload = req.rawBody || (Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {})));
     
     console.log(`[LIPANA /webhook] Signature verification:`, {
       signaturePresent: !!signature,
@@ -500,10 +558,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       .digest('hex');
     
     // Use constant-time comparison to prevent timing attacks
-    const signatureValid = crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    const providedSignature = String(signature).trim();
+    const signatureValid = providedSignature.length === expectedSignature.length
+      ? crypto.timingSafeEqual(Buffer.from(providedSignature), Buffer.from(expectedSignature))
+      : false;
     
     if (!signatureValid) {
       console.warn(`[LIPANA /webhook] Signature verification failed`);
@@ -543,7 +601,9 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     
     // Try each possible ID
     for (const idValue of possibleIds) {
-      tx = await Transaction.findOne({ lipanaTransactionId: idValue });
+      tx = await Transaction.findOne({
+        $or: [{ lipanaTransactionId: idValue }, { id: idValue }]
+      });
       if (tx) {
         console.log(`[LIPANA /webhook] ✓ Found transaction using ID: ${idValue}`);
         break;
@@ -586,40 +646,8 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     // Process webhook event based on type (case-insensitive)
     const normalizedEventType = eventType ? eventType.toLowerCase() : '';
     if (normalizedEventType === 'payment.success' || normalizedEventType === 'transaction.success') {
-      console.log(`[LIPANA /webhook] ✓ Processing payment success`);
-      tx.status = 'COMPLETED';
-      await tx.save();
-      console.log(`[LIPANA /webhook] Transaction saved with status COMPLETED:`, { txId: tx.id, status: tx.status });
-      
-      try {
-        const user = await User.findOne({ _id: new mongoose.Types.ObjectId(tx.userId) });
-        if (user) {
-          if (tx.type === 'PREMIUM_UPGRADE') {
-            user.isPremium = true;
-            console.log(`[LIPANA /webhook] User ${tx.userId} upgraded to premium`);
-          } else {
-            user.coins = (user.coins || 0) + tx.amount;
-            console.log(`[LIPANA /webhook] User ${tx.userId} received ${tx.amount} coins (total: ${user.coins})`);
-          }
-          await user.save();
-          console.log(`[LIPANA /webhook] User saved successfully`);
-
-          // Send confirmation email
-          try {
-            if (tx.type === 'PREMIUM_UPGRADE') {
-              await sendPremiumUpgradeEmail(user.email, user.name, 'Premium Plan', tx.price || '$4.99');
-              console.log(`[LIPANA /webhook] Premium upgrade email sent to: ${user.email}`);
-            } else {
-              await sendCoinPurchaseEmail(user.email, user.name, tx.amount, tx.price, tx.id);
-              console.log(`[LIPANA /webhook] Coin purchase email sent to: ${user.email}`);
-            }
-          } catch (emailErr) {
-            console.warn(`[LIPANA /webhook] Email sending failed (non-blocking):`, emailErr.message);
-          }
-        }
-      } catch (userErr) {
-        console.warn(`[LIPANA /webhook] Could not update user:`, userErr.message);
-      }
+      console.log(`[LIPANA /webhook] Processing payment success`);
+      await finalizeSuccessfulPayment(tx, 'webhook');
     } else if (normalizedEventType === 'payment.failed' || normalizedEventType === 'transaction.failed') {
       console.log(`[LIPANA /webhook] ✗ Processing payment failure`);
       tx.status = 'FAILED';
