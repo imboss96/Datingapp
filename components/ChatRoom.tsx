@@ -317,6 +317,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         console.log('[ChatRoom handleIncomingCall] No from field in data, returning');
         return;
       }
+
+      // Safety guard: never treat own outbound call signal as incoming call.
+      if (data.from === currentUser.id) {
+        console.log('[ChatRoom handleIncomingCall] Ignoring self-originated call_incoming event');
+        return;
+      }
       
       const active = (window as any).__activeCall;
       if (inCall || !!active) {
@@ -368,7 +374,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       console.log('[ChatRoom useEffect cleanup] Removing event listener for ws:call_incoming');
       window.removeEventListener('ws:call_incoming', handleIncomingCall);
     };
-  }, [inCall, sendMessage]);
+  }, [inCall, sendMessage, currentUser.id]);
 
   // Handle call notifications (busy, unavailable)
   useEffect(() => {

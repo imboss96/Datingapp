@@ -196,7 +196,9 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   }, [otherUserId, otherUser?.images?.[0], (otherUser as any)?.profilePicture]);
 
   useEffect(() => {
-    const shouldRing = isInitiator && callPhase === 'ringing';
+    // Professional call UX: only the recipient should hear ringtone.
+    // The initiator gets visual "Ringing..." state without local ringing audio.
+    const shouldRing = false;
     if (!shouldRing) {
       if (ringToneRef.current) {
         ringToneRef.current.pause();
