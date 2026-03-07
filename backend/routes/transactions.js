@@ -374,6 +374,7 @@ router.post('/initiate-premium', async (req, res) => {
       method: 'momo',
       status: 'PENDING',
       description: `Premium ${premiumPkg.plan} via Lipana`,
+      phoneNumber: phoneNumber || undefined,
     });
     await tx.save();
 
@@ -386,6 +387,31 @@ router.post('/initiate-premium', async (req, res) => {
   } catch (err) {
     console.error('[ERROR transactions.initiate-premium]', err.message);
     res.status(500).json({ error: err.message || 'Failed to initiate premium payment' });
+  }
+});
+
+// Transaction history (includes stored phone number for compliance/audit)
+router.get('/history/:userId', authMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Users can only read their own history unless admin/moderator.
+    const requesterId = req.userId;
+    const requesterRole = req.userRole;
+    const canReadAny = requesterRole === 'ADMIN' || requesterRole === 'MODERATOR';
+    if (!canReadAny && requesterId !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const txs = await Transaction.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .select('id userId type amount price method status description phoneNumber createdAt updatedAt');
+
+    res.json(txs);
+  } catch (err) {
+    console.error('[ERROR transactions.history]', err.message);
+    res.status(500).json({ error: 'Failed to load transaction history' });
   }
 });
 

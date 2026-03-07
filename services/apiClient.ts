@@ -540,9 +540,19 @@ class APIClient {
 
   async getTransactionHistory(userId: string) {
     console.log('[DEBUG apiClient] getTransactionHistory called for userId:', userId);
-    const result = await this.request(`/transactions/history/${userId}`, { method: 'GET' });
-    console.log('[DEBUG apiClient] getTransactionHistory response:', result);
-    return result;
+    try {
+      const result = await this.request(`/transactions/history/${userId}`, { method: 'GET' });
+      console.log('[DEBUG apiClient] getTransactionHistory response:', result);
+      return result;
+    } catch (err: any) {
+      // Backward compatibility with older deployments where history lived under /lipana.
+      if (err?.status === 404 || err?.status === 405) {
+        const fallback = await this.request(`/lipana/history/${userId}`, { method: 'GET' });
+        console.log('[DEBUG apiClient] getTransactionHistory fallback response:', fallback);
+        return fallback;
+      }
+      throw err;
+    }
   }
 
   // Lipana mobile‑money integration

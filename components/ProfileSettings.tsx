@@ -1689,9 +1689,15 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                                   <p className="text-xs text-gray-500">
                                     {transaction.method === 'card' && '💳 Card'}
                                     {transaction.method === 'momo' && '📱 Mobile Money'}
+                                    {transaction.method === 'lipana' && '📱 Mobile Money'}
                                     {transaction.method === 'apple' && '🍎 Apple Pay'}
                                     {transaction.method === 'google' && '🔵 Google Pay'}
                                   </p>
+                                  {transaction.phoneNumber && (transaction.method === 'momo' || transaction.method === 'lipana') && (
+                                    <p className="mt-1 text-[11px] font-medium text-slate-600">
+                                      Phone Used: {transaction.phoneNumber}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                               <div className="text-right">
