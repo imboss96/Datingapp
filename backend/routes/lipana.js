@@ -686,6 +686,10 @@ router.post('/webhook', async (req, res) => {
       ['payment.cancelled', 'transaction.cancelled', 'payment.canceled', 'transaction.canceled', 'payout.cancelled', 'payout.canceled'].includes(normalizedEventType) ||
       ['cancelled', 'canceled'].includes(normalizedStatus);
 
+    const isPendingEvent =
+      ['payment.initiated', 'transaction.initiated', 'payout.initiated', 'payment.pending', 'transaction.pending', 'payout.pending'].includes(normalizedEventType) ||
+      ['pending', 'processing', 'initiated'].includes(normalizedStatus);
+
     if (isSuccessEvent) {
       console.log(`[LIPANA /webhook] Processing payment success`, { normalizedEventType, normalizedStatus });
       await finalizeSuccessfulPayment(tx, 'webhook');
@@ -697,6 +701,9 @@ router.post('/webhook', async (req, res) => {
       console.log(`[LIPANA /webhook] Processing payment cancellation`, { normalizedEventType, normalizedStatus });
       tx.status = 'CANCELLED';
       await tx.save();
+    } else if (isPendingEvent) {
+      console.log(`[LIPANA /webhook] Processing payment pending`, { normalizedEventType, normalizedStatus });
+      // Keep transaction pending; final webhook (success/failed/cancelled) will settle it.
     } else {
       console.warn(`[LIPANA /webhook] Unknown event type/status`, { eventType, normalizedStatus });
     }
