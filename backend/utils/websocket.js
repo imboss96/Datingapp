@@ -10,6 +10,43 @@ const activeCalls = new Map();
 // Track user call state: userId -> { callId, status, otherUserId, startTime }
 const userCallState = new Map();
 
+const isUserBusy = (candidateUserId) => {
+  const state = userCallState.get(candidateUserId);
+  if (state && state.status !== 'ended') return true;
+
+  for (const call of activeCalls.values()) {
+    const inCall = call.initiatorId === candidateUserId || call.recipientId === candidateUserId;
+    if (inCall && (call.status === 'ringing' || call.status === 'active')) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const cleanupCallState = (userA, userB) => {
+  const stateA = userCallState.get(userA);
+  const stateB = userCallState.get(userB);
+  const callId = stateA?.callId || stateB?.callId;
+
+  if (callId) {
+    activeCalls.delete(callId);
+  } else {
+    // Fallback cleanup if maps desync: remove matching active call pair.
+    for (const [id, call] of activeCalls.entries()) {
+      const match =
+        (call.initiatorId === userA && call.recipientId === userB) ||
+        (call.initiatorId === userB && call.recipientId === userA);
+      if (match) {
+        activeCalls.delete(id);
+        break;
+      }
+    }
+  }
+
+  userCallState.delete(userA);
+  userCallState.delete(userB);
+};
+
 /**
  * Update user online status in database
  */
@@ -98,12 +135,28 @@ export function initWebSocket(server) {
         else if (message.type === 'call_incoming') {
           console.log(`[WebSocket] call_incoming: from ${userId} to ${message.to}`);
           
+          // Block if caller is already in another call
+          const callerState = userCallState.get(userId);
+          if (callerState) {
+            const callerWs = connectedUsers.get(userId);
+            if (callerWs?.readyState === 1) {
+              callerWs.send(JSON.stringify({
+                type: 'call_busy',
+                recipientId: message.to,
+                recipientName: message.toName || 'User',
+                reason: callerState.otherUserId === message.to ? 'already_in_call' : 'caller_busy',
+                timestamp: new Date().toISOString()
+              }));
+            }
+            return;
+          }
+
           // Check if recipient is already in a call
-          const recipientCallState = userCallState.get(message.to);
+          const recipientBusy = isUserBusy(message.to);
           const targetWs = connectedUsers.get(message.to);
           
-          if (recipientCallState && recipientCallState.status !== 'ended') {
-            console.log(`[WebSocket] User ${message.to} is busy (in ${recipientCallState.status} state), sending call_busy notification`);
+          if (recipientBusy) {
+            console.log(`[WebSocket] User ${message.to} is busy, sending call_busy notification`);
             
             // Send busy notification back to caller
             const callerWs = connectedUsers.get(userId);
@@ -143,6 +196,7 @@ export function initWebSocket(server) {
               type: 'call_incoming',
               from: userId,
               fromName: message.fromName,
+              fromImage: message.fromImage || null,
               isVideo: message.isVideo,
               chatId: message.chatId,
               callId: callId
@@ -201,14 +255,19 @@ export function initWebSocket(server) {
         // Call accepted - update call state
         else if (message.type === 'call_accepted') {
           console.log(`[WebSocket] call_accepted: from ${userId} to ${message.to}`);
-          const userState = userCallState.get(userId);
-          if (userState) {
-            userState.status = 'active';
-            const call = activeCalls.get(userState.callId);
+          const accepterState = userCallState.get(userId);
+          const callerState = userCallState.get(message.to);
+          const callId = accepterState?.callId || callerState?.callId;
+
+          if (accepterState) accepterState.status = 'active';
+          if (callerState) callerState.status = 'active';
+
+          if (callId) {
+            const call = activeCalls.get(callId);
             if (call) {
               call.status = 'active';
-              call.activeStartTime = new Date();
-              console.log(`[WebSocket] Call ${userState.callId} status updated to active`);
+              if (!call.activeStartTime) call.activeStartTime = new Date();
+              console.log(`[WebSocket] Call ${callId} status updated to active`);
             }
           }
           const targetWs = connectedUsers.get(message.to);
@@ -220,14 +279,7 @@ export function initWebSocket(server) {
         // Call rejected - clean up call state
         else if (message.type === 'call_rejected') {
           console.log(`[WebSocket] call_rejected: from ${userId} to ${message.to}`);
-          const userState = userCallState.get(userId);
-          if (userState) {
-            const callId = userState.callId;
-            activeCalls.delete(callId);
-            userCallState.delete(userId);
-            userCallState.delete(message.to);
-            console.log(`[WebSocket] Call ${callId} removed from tracking - rejected`);
-          }
+          cleanupCallState(userId, message.to);
           const targetWs = connectedUsers.get(message.to);
           if (targetWs?.readyState === 1) {
             targetWs.send(JSON.stringify({ type: 'call_rejected', from: userId }));
@@ -237,21 +289,14 @@ export function initWebSocket(server) {
         // Call ended - clean up call state and calculate duration
         else if (message.type === 'call_end') {
           console.log(`[WebSocket] call_end: from ${userId} to ${message.to}`);
-          const userState = userCallState.get(userId);
-          if (userState) {
-            const callId = userState.callId;
-            const call = activeCalls.get(callId);
-            
-            if (call) {
-              const durationMs = new Date() - call.activeStartTime;
-              const durationSec = Math.floor(durationMs / 1000);
-              console.log(`[WebSocket] Call ${callId} ended - duration: ${durationSec}s`);
-            }
-            
-            activeCalls.delete(callId);
-            userCallState.delete(userId);
-            userCallState.delete(message.to);
+          const state = userCallState.get(userId) || userCallState.get(message.to);
+          const call = state?.callId ? activeCalls.get(state.callId) : null;
+          if (call && call.activeStartTime) {
+            const durationMs = new Date() - call.activeStartTime;
+            const durationSec = Math.floor(durationMs / 1000);
+            console.log(`[WebSocket] Call ${state.callId} ended - duration: ${durationSec}s`);
           }
+          cleanupCallState(userId, message.to);
           const targetWs = connectedUsers.get(message.to);
           if (targetWs?.readyState === 1) {
             targetWs.send(JSON.stringify({ 

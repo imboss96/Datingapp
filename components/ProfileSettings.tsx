@@ -93,7 +93,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [pushProcessing, setPushProcessing] = useState(false);
 
   // Coin packages state
-  const [coinPackages, setCoinPackages] = useState<any[]>([]);
+  const [coinPackages, setCoinPackages] = useState<CoinPack[]>(DEFAULT_COIN_PACKS);
   const [loadingCoinPackages, setLoadingCoinPackages] = useState(false);
 
   // Premium packages state
@@ -725,19 +725,30 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     }
   }, [openModal]);
 
-  // Fetch coin packages on component mount
+  // Fetch public coin packages for end users.
   React.useEffect(() => {
     const fetchCoinPackages = async () => {
       try {
         setLoadingCoinPackages(true);
-        const response = await apiClient.getCoinPackages();
-        if (response.success && Array.isArray(response.packages)) {
-          setCoinPackages(response.packages);
-        } else if (response.packages && Array.isArray(response.packages)) {
-          setCoinPackages(response.packages);
+        const response = await apiClient.getPublicCoinPackages();
+        const rawPackages = Array.isArray(response?.packages) ? response.packages : [];
+
+        if (rawPackages.length > 0) {
+          const formatted: CoinPack[] = rawPackages.map((pkg: any, index: number) => ({
+            id: String(pkg.id ?? pkg._id ?? `coins_${pkg.coins}`),
+            coins: Number(pkg.coins ?? 0),
+            price: Number(pkg.price ?? 0),
+            icon: pkg.icon || DEFAULT_COIN_PACKS[index % DEFAULT_COIN_PACKS.length]?.icon || 'fa-coins',
+            popular: Boolean(pkg.popular),
+          })).filter((pkg) => Number.isFinite(pkg.coins) && pkg.coins > 0 && Number.isFinite(pkg.price) && pkg.price > 0);
+
+          setCoinPackages(formatted.length > 0 ? formatted : DEFAULT_COIN_PACKS);
+        } else {
+          setCoinPackages(DEFAULT_COIN_PACKS);
         }
       } catch (error) {
         console.error('[ERROR] Failed to fetch coin packages:', error);
+        setCoinPackages(DEFAULT_COIN_PACKS);
       } finally {
         setLoadingCoinPackages(false);
       }

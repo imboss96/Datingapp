@@ -11,6 +11,7 @@ import SwiperScreen from "./components/SwiperScreen";
 import DiscoveryPage from "./components/DiscoveryPage";
 import ChatList from './components/ChatList';
 import ChatRoom from './components/ChatRoom';
+import VideoCallRoom from './components/VideoCallRoom';
 import ModeratorPanel from './components/ModeratorPanel';
 import ModeratorChatPanel from './components/ModeratorChatPanel';
 import StandaloneModerationDashboard from './components/StandaloneModerationDashboard';
@@ -146,13 +147,84 @@ const AppContent: React.FC<{
   }, [darkMode]);
   const location = useLocation();
   const isChatRoute = location.pathname.startsWith('/chat/');
-  const isModeratorPortalRoute = location.pathname === '/moderator-portal'; // ✅ Hide sidebar on moderator portal
+  const isModeratorPortalRoute = location.pathname === '/moderator-portal';
+  const [isStandalonePWA, setIsStandalonePWA] = useState(false);
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailToVerify, setEmailToVerify] = useState('');
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showCookies, setShowCookies] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [activeCall, setActiveCall] = useState<{
+    otherUser?: UserProfile;
+    otherUserId: string;
+    isInitiator: boolean;
+    isVideo: boolean;
+    minimized: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleCallStart = (event: Event) => {
+      const data = (event as CustomEvent).detail || {};
+      if (!data.otherUserId) return;
+      setActiveCall((prev) => {
+        if (prev && prev.otherUserId !== data.otherUserId) {
+          window.dispatchEvent(new CustomEvent('app:call:blocked', {
+            detail: {
+              activeWithName: prev.otherUser?.username || prev.otherUser?.name || 'User'
+            }
+          }));
+          return prev;
+        }
+        return {
+          otherUser: data.otherUser,
+          otherUserId: data.otherUserId,
+          isInitiator: !!data.isInitiator,
+          isVideo: !!data.isVideo,
+          minimized: false,
+        };
+      });
+    };
+
+    const handleCallEnd = () => {
+      setActiveCall(null);
+    };
+    const handleCallRestore = () => {
+      setActiveCall((prev) => (prev ? { ...prev, minimized: false } : prev));
+    };
+
+    window.addEventListener('app:call:start', handleCallStart as EventListener);
+    window.addEventListener('app:call:end', handleCallEnd);
+    window.addEventListener('app:call:restore', handleCallRestore);
+    return () => {
+      window.removeEventListener('app:call:start', handleCallStart as EventListener);
+      window.removeEventListener('app:call:end', handleCallEnd);
+      window.removeEventListener('app:call:restore', handleCallRestore);
+    };
+  }, []);
+
+  useEffect(() => {
+    (window as any).__activeCall = activeCall;
+  }, [activeCall]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const detectStandalone = () => {
+      const standalone = mediaQuery.matches || (window.navigator as any).standalone === true;
+      setIsStandalonePWA(standalone);
+      document.documentElement.classList.toggle('standalone-pwa', standalone);
+      document.body.classList.toggle('standalone-pwa', standalone);
+    };
+
+    detectStandalone();
+    mediaQuery.addEventListener('change', detectStandalone);
+
+    return () => {
+      mediaQuery.removeEventListener('change', detectStandalone);
+      document.documentElement.classList.remove('standalone-pwa');
+      document.body.classList.remove('standalone-pwa');
+    };
+  }, []);
 
   const hasAcceptedLegal = currentUser ? (
     currentUser.termsOfServiceAccepted &&
@@ -287,85 +359,91 @@ const AppContent: React.FC<{
             />
           </div>
         )}
+
+        <PWAInstallPrompt />
       </>
     );
   }
 
   if (!hasAcceptedLegal) {
     return (
-      <div className="w-full h-screen flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Please Accept Our Policies</h1>
-          <p className="text-gray-600 mb-6">To continue using the app, you need to accept our Terms of Service, Privacy Policy, and Cookie Policy.</p>
-          <div className="space-y-3">
-            <button onClick={() => setShowTerms(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Terms of Service</button>
-            <button onClick={() => setShowPrivacy(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Privacy Policy</button>
-            <button onClick={() => setShowCookies(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Cookie Policy</button>
+      <>
+        <div className="w-full h-screen flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <h1 className="text-2xl font-bold text-gray-900 mb-4">Please Accept Our Policies</h1>
+            <p className="text-gray-600 mb-6">To continue using the app, you need to accept our Terms of Service, Privacy Policy, and Cookie Policy.</p>
+            <div className="space-y-3">
+              <button onClick={() => setShowTerms(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Terms of Service</button>
+              <button onClick={() => setShowPrivacy(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Privacy Policy</button>
+              <button onClick={() => setShowCookies(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Cookie Policy</button>
+            </div>
+            <button
+              onClick={async () => {
+                try { await apiClient.logout(); } catch (err) { console.warn('[DEBUG App] Logout failed:', err); }
+                setCurrentUser(null);
+              }}
+              className="mt-6 text-gray-600 hover:text-gray-800 underline"
+            >
+              Log Out
+            </button>
           </div>
-          <button
-            onClick={async () => {
-              try { await apiClient.logout(); } catch (err) { console.warn('[DEBUG App] Logout failed:', err); }
-              setCurrentUser(null);
-            }}
-            className="mt-6 text-gray-600 hover:text-gray-800 underline"
-          >
-            Log Out
-          </button>
+
+          {showTerms && (
+            <TermsPage
+              onAccept={() => {
+                const updated = { ...currentUser, termsOfServiceAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
+                setCurrentUser(updated);
+                setShowTerms(false);
+                (async () => {
+                  try {
+                    await apiClient.updateProfile(currentUser.id, { termsOfServiceAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
+                    const refreshed = await apiClient.getCurrentUser();
+                    setCurrentUser(refreshed as UserProfile);
+                  } catch (err) { console.warn('[DEBUG App] Failed to persist terms:', err); }
+                })();
+              }}
+              onClose={() => setShowTerms(false)}
+              isModal={true}
+            />
+          )}
+          {showPrivacy && (
+            <PrivacyPage
+              onAccept={() => {
+                const updated = { ...currentUser, privacyPolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
+                setCurrentUser(updated);
+                setShowPrivacy(false);
+                (async () => {
+                  try {
+                    await apiClient.updateProfile(currentUser.id, { privacyPolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
+                    const refreshed = await apiClient.getCurrentUser();
+                    setCurrentUser(refreshed as UserProfile);
+                  } catch (err) { console.warn('[DEBUG App] Failed to persist privacy:', err); }
+                })();
+              }}
+              onClose={() => setShowPrivacy(false)}
+              isModal={true}
+            />
+          )}
+          {showCookies && (
+            <CookiePolicyPage
+              onAccept={async () => {
+                const updated = { ...currentUser, cookiePolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
+                setCurrentUser(updated);
+                setShowCookies(false);
+                try {
+                  await apiClient.updateProfile(currentUser.id, { cookiePolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
+                  const refreshed = await apiClient.getCurrentUser();
+                  setCurrentUser(refreshed as UserProfile);
+                } catch (err) { console.warn('[DEBUG App] Failed to persist cookies:', err); }
+              }}
+              onClose={() => setShowCookies(false)}
+              isModal={true}
+            />
+          )}
         </div>
 
-        {showTerms && (
-          <TermsPage
-            onAccept={() => {
-              const updated = { ...currentUser, termsOfServiceAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
-              setCurrentUser(updated);
-              setShowTerms(false);
-              (async () => {
-                try {
-                  await apiClient.updateProfile(currentUser.id, { termsOfServiceAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
-                  const refreshed = await apiClient.getCurrentUser();
-                  setCurrentUser(refreshed as UserProfile);
-                } catch (err) { console.warn('[DEBUG App] Failed to persist terms:', err); }
-              })();
-            }}
-            onClose={() => setShowTerms(false)}
-            isModal={true}
-          />
-        )}
-        {showPrivacy && (
-          <PrivacyPage
-            onAccept={() => {
-              const updated = { ...currentUser, privacyPolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
-              setCurrentUser(updated);
-              setShowPrivacy(false);
-              (async () => {
-                try {
-                  await apiClient.updateProfile(currentUser.id, { privacyPolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
-                  const refreshed = await apiClient.getCurrentUser();
-                  setCurrentUser(refreshed as UserProfile);
-                } catch (err) { console.warn('[DEBUG App] Failed to persist privacy:', err); }
-              })();
-            }}
-            onClose={() => setShowPrivacy(false)}
-            isModal={true}
-          />
-        )}
-        {showCookies && (
-          <CookiePolicyPage
-            onAccept={async () => {
-              const updated = { ...currentUser, cookiePolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
-              setCurrentUser(updated);
-              setShowCookies(false);
-              try {
-                await apiClient.updateProfile(currentUser.id, { cookiePolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
-                const refreshed = await apiClient.getCurrentUser();
-                setCurrentUser(refreshed as UserProfile);
-              } catch (err) { console.warn('[DEBUG App] Failed to persist cookies:', err); }
-            }}
-            onClose={() => setShowCookies(false)}
-            isModal={true}
-          />
-        )}
-      </div>
+        <PWAInstallPrompt />
+      </>
     );
   }
 
@@ -429,7 +507,7 @@ const AppContent: React.FC<{
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
 
-        {!isChatRoute && !isModeratorPortalRoute && (
+        {!isStandalonePWA && !isChatRoute && !isModeratorPortalRoute && (
           <div className="md:hidden">
             <Navigation isAdmin={isAdmin} isModerator={isModerator} coins={currentUser.coins} unreadCount={totalUnreadCount} onOpenProfileSettings={() => setShowProfileSettings(true)} />
           </div>
@@ -441,6 +519,38 @@ const AppContent: React.FC<{
             setUser={setCurrentUser}
             onClose={() => setShowProfileSettings(false)}
           />
+        )}
+
+        {activeCall && (
+          <>
+            <VideoCallRoom
+              currentUser={currentUser}
+              otherUser={activeCall.otherUser}
+              otherUserId={activeCall.otherUserId}
+              isInitiator={activeCall.isInitiator}
+              isVideo={activeCall.isVideo}
+              minimized={activeCall.minimized}
+              onToggleMinimize={(minimized) => {
+                setActiveCall((prev) => (prev ? { ...prev, minimized } : prev));
+              }}
+              onCallEnd={() => {
+                setActiveCall(null);
+                window.dispatchEvent(new CustomEvent('app:call:end'));
+              }}
+            />
+            {activeCall.minimized && (
+              <button
+                onClick={() => setActiveCall((prev) => (prev ? { ...prev, minimized: false } : prev))}
+                className="fixed top-4 left-1/2 -translate-x-1/2 z-[70] bg-white/95 border border-gray-200 shadow-xl rounded-full px-4 py-2 flex items-center gap-2"
+              >
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span className="text-sm font-semibold text-gray-900 truncate max-w-[55vw]">
+                  On call with {activeCall.otherUser?.username || activeCall.otherUser?.name || 'User'}
+                </span>
+                <i className="fa-solid fa-up-right-and-down-left-from-center text-gray-500 text-xs"></i>
+              </button>
+            )}
+          </>
         )}
 
         {/* PWA Install Prompt */}
@@ -725,3 +835,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

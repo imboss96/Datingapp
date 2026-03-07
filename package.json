@@ -7,9 +7,20 @@
     "dev": "vite",
     "proxy": "node reverse-proxy.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
+    "mobile:sync": "npm run build && npx cap sync",
+    "android:open": "npx cap open android",
+    "ios:open": "npx cap open ios",
+    "android:run": "npm run mobile:sync && npx cap run android",
+    "ios:run": "npm run mobile:sync && npx cap run ios"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/ios": "^8.2.0",
     "@google/genai": "^1.41.0",
     "@react-oauth/google": "^0.13.4",
     "dotenv": "^17.3.1",

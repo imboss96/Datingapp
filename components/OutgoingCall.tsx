@@ -41,7 +41,7 @@ const OutgoingCall: React.FC<OutgoingCallProps> = ({
           <div className="relative">
             <div className="absolute inset-0 rounded-full border-2 border-blue-500 animate-pulse"></div>
             <img
-              src={recipient.images[0] || 'https://via.placeholder.com/200x200?text=User'}
+              src={recipient.images[0] || '/images/placeholders/user.svg'}
               alt={recipient.username || recipient.name}
               className="w-32 h-32 rounded-full border-4 border-white shadow-lg object-cover"
             />

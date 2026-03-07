@@ -1,10 +1,36 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { UserProfile } from '../types';
-import { useAlert } from '../services/AlertContext';
-import displayName from '../src/utils/formatName';
 import { useWebRTC } from '../services/useWebRTC';
 import { useWebSocketContext } from '../services/WebSocketProvider';
+
+const resolveMediaUrl = (rawUrl?: string | null): string => {
+  if (!rawUrl || typeof rawUrl !== 'string') return '/images/placeholders/user.svg';
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return '/images/placeholders/user.svg';
+
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:')
+  ) {
+    return trimmed;
+  }
+
+  let apiOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+  try {
+    const configuredApiUrl = import.meta.env.VITE_API_URL || '/api';
+    apiOrigin = new URL(configuredApiUrl, apiOrigin || 'http://localhost').origin;
+  } catch {
+    // Keep fallback origin.
+  }
+
+  if (trimmed.startsWith('/uploads/') || trimmed.startsWith('uploads/')) {
+    return `${apiOrigin}/${trimmed.replace(/^\/+/, '')}`;
+  }
+
+  return trimmed;
+};
 
 interface VideoCallRoomProps {
   currentUser: UserProfile;
@@ -12,6 +38,8 @@ interface VideoCallRoomProps {
   otherUserId: string;
   isInitiator: boolean;
   isVideo: boolean;
+  minimized?: boolean;
+  onToggleMinimize?: (minimized: boolean) => void;
   onCallEnd?: () => void;
 }
 
@@ -21,31 +49,36 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   otherUserId,
   isInitiator,
   isVideo,
+  minimized = false,
+  onToggleMinimize,
   onCallEnd,
 }) => {
-  const navigate = useNavigate();
-  const { showAlert } = useAlert();
 
   const [callDuration,      setCallDuration]      = useState(0);
   const [isAudioOn,         setIsAudioOn]          = useState(true);
   const [isVideoOn,         setIsVideoOn]          = useState(isVideo);
   const [connectionStatus,  setConnectionStatus]   = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
+  const [callPhase, setCallPhase] = useState<'ringing' | 'connecting' | 'connected' | 'disconnected'>(isInitiator ? 'ringing' : 'connecting');
   const [streamError,       setStreamError]        = useState<string | null>(null);
   const [otherUserJoined,   setOtherUserJoined]    = useState(false);
   const [userJoinedAlertShown, setUserJoinedAlertShown] = useState(false);
   const [isFavorited,       setIsFavorited]        = useState(false);
+  const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
 
   const localVideoRef  = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const webRtcRef      = useRef<any>(null);
+  const pendingSignalsRef = useRef<any[]>([]);
+  const ringToneRef    = useRef<HTMLAudioElement | null>(null);
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
 
   const { sendMessage, addMessageHandler } = useWebSocketContext();
 
   // ── End call ──────────────────────────────────────────────────────────────────
 
-  const endCall = useCallback(() => {
-    if (callDuration > 0) {
+  const endCall = useCallback((notifyRemote: boolean = true) => {
+    if (notifyRemote) {
       sendMessage({
         type: 'call_end',
         to: otherUserId,
@@ -55,8 +88,7 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     }
     webRtcRef.current?.hangUp();
     onCallEnd?.();
-    navigate('/chats');
-  }, [onCallEnd, navigate, callDuration, otherUserId, sendMessage]);
+  }, [onCallEnd, callDuration, otherUserId, sendMessage]);
 
   // ── WebRTC callbacks ──────────────────────────────────────────────────────────
 
@@ -65,10 +97,14 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       state === 'connected'    ? 'connected'    :
       state === 'connecting'   ? 'connecting'   : 'disconnected'
     );
+    if (state === 'connected') setCallPhase('connected');
+    else if (state === 'disconnected' || state === 'failed' || state === 'closed') setCallPhase('disconnected');
+    else setCallPhase(prev => (prev === 'ringing' ? prev : 'connecting'));
   }, []);
 
   const handleRemoteStream = useCallback((stream: MediaStream) => {
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = stream;
+    setHasRemoteVideo(stream.getVideoTracks().length > 0);
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length > 0 && remoteAudioRef.current) {
       audioTracks.forEach(t => { t.enabled = true; });
@@ -96,7 +132,19 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
     wsMessageHandler: handleWSSignaling,
   });
 
-  useEffect(() => { if (webRtcHook) webRtcRef.current = webRtcHook; }, [webRtcHook]);
+  useEffect(() => {
+    if (webRtcHook) {
+      webRtcRef.current = webRtcHook;
+      // Flush any signaling messages that arrived before WebRTC finished init.
+      const pending = [...pendingSignalsRef.current];
+      pendingSignalsRef.current = [];
+      pending.forEach((signal) => {
+        if (signal.type === 'call_offer') webRtcRef.current?.handleOffer(signal.offer);
+        else if (signal.type === 'call_answer') webRtcRef.current?.handleAnswer(signal.answer);
+        else if (signal.type === 'ice_candidate') webRtcRef.current?.handleICECandidate(signal.candidate);
+      });
+    }
+  }, [webRtcHook]);
 
   useEffect(() => {
     if (webRtcHook?.localStream && localVideoRef.current) {
@@ -107,18 +155,24 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   // WebSocket handler
   useEffect(() => {
     const handler = (data: any) => {
-      if      (data.type === 'call_offer'     && webRtcRef.current) webRtcRef.current.handleOffer(data.offer);
-      else if (data.type === 'call_answer'    && webRtcRef.current) webRtcRef.current.handleAnswer(data.answer);
-      else if (data.type === 'ice_candidate'  && webRtcRef.current) webRtcRef.current.handleICECandidate(data.candidate);
-      else if (data.type === 'call_end')       endCall();
-      else if (data.type === 'call_rejected') { showAlert('Call Rejected', 'The user declined your call.'); endCall(); }
+      if (data.type === 'call_offer' || data.type === 'call_answer' || data.type === 'ice_candidate') {
+        if (!webRtcRef.current) {
+          pendingSignalsRef.current.push(data);
+          return;
+        }
+        if (data.type === 'call_offer') webRtcRef.current.handleOffer(data.offer);
+        else if (data.type === 'call_answer') webRtcRef.current.handleAnswer(data.answer);
+        else if (data.type === 'ice_candidate') webRtcRef.current.handleICECandidate(data.candidate);
+      }
+      else if (data.type === 'call_accepted' && data.from === otherUserId) setCallPhase('connecting');
+      else if (data.type === 'call_end' && (!data.from || data.from === otherUserId)) endCall(false);
       else if (data.type === 'user_joined_call' && data.from === otherUserId && !userJoinedAlertShown) {
         setOtherUserJoined(true);
         setUserJoinedAlertShown(true);
       }
     };
     return addMessageHandler(handler);
-  }, [addMessageHandler, endCall, showAlert, otherUserId, userJoinedAlertShown]);
+  }, [addMessageHandler, endCall, otherUserId, userJoinedAlertShown]);
 
   // Send joined notification
   useEffect(() => {
@@ -132,9 +186,41 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
 
   // Timer
   useEffect(() => {
+    if (callPhase !== 'connected') return;
     const interval = setInterval(() => setCallDuration(p => p + 1), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [callPhase]);
+
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+  }, [otherUserId, otherUser?.images?.[0], (otherUser as any)?.profilePicture]);
+
+  useEffect(() => {
+    const shouldRing = isInitiator && callPhase === 'ringing';
+    if (!shouldRing) {
+      if (ringToneRef.current) {
+        ringToneRef.current.pause();
+        ringToneRef.current.currentTime = 0;
+      }
+      return;
+    }
+
+    if (!ringToneRef.current) {
+      ringToneRef.current = new Audio('/audio/ringing-tone.mp3');
+      ringToneRef.current.loop = true;
+      ringToneRef.current.volume = 0.6;
+    }
+
+    ringToneRef.current.currentTime = 0;
+    ringToneRef.current.play().catch(() => {});
+
+    return () => {
+      if (ringToneRef.current) {
+        ringToneRef.current.pause();
+        ringToneRef.current.currentTime = 0;
+      }
+    };
+  }, [callPhase, isInitiator]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -143,9 +229,17 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
   };
 
   const callerName = otherUser ? (otherUser.username || otherUser.name) : 'Calling...';
-  const callerPhoto = otherUser?.images?.[0];
+  const callerPhoto = resolveMediaUrl(otherUser?.images?.[0] || (otherUser as any)?.profilePicture);
+  const displayPhoto = photoLoadFailed ? '/images/placeholders/user.svg' : callerPhoto;
 
   // ── Render ────────────────────────────────────────────────────────────────────
+  if (minimized) {
+    return (
+      <div style={{ display: 'none' }}>
+        <audio ref={remoteAudioRef} autoPlay muted={false} />
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black overflow-hidden flex flex-col">
@@ -153,20 +247,31 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
       {/* ── Full-screen background: remote video or blurred photo ── */}
       <div className="absolute inset-0">
         {isVideo ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            muted={false}
-            className="w-full h-full object-cover"
-          />
+          <>
+            {displayPhoto && !hasRemoteVideo && (
+              <img
+                src={displayPhoto}
+                alt={callerName}
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={() => setPhotoLoadFailed(true)}
+              />
+            )}
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              muted={false}
+              className="w-full h-full object-cover"
+            />
+          </>
         ) : (
-          callerPhoto && (
+          displayPhoto && (
             <img
-              src={callerPhoto}
+              src={displayPhoto}
               alt={callerName}
               className="w-full h-full object-cover"
               style={{ filter: 'blur(0px)' }}
+              onError={() => setPhotoLoadFailed(true)}
             />
           )
         )}
@@ -194,6 +299,13 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2" fill="white"/>
           </svg>
         </div>
+        <button
+          onClick={() => onToggleMinimize?.(true)}
+          className="absolute right-4 top-16 w-10 h-10 rounded-full bg-white/20 text-white border border-white/30 hover:bg-white/30 transition-all"
+          title="Minimize call"
+        >
+          <i className="fa-solid fa-minus"></i>
+        </button>
       </div>
 
       {/* ── Local video pip (top-right, only when video call) ── */}
@@ -229,8 +341,10 @@ const VideoCallRoom: React.FC<VideoCallRoomProps> = ({
         <p className="text-white/70 text-[16px] font-medium mt-1 drop-shadow">
           {connectionStatus === 'connected'
             ? formatTime(callDuration)
-            : connectionStatus === 'connecting'
-            ? 'Connecting......'
+            : callPhase === 'ringing'
+            ? 'Ringing...'
+            : callPhase === 'connecting'
+            ? 'Connecting...'
             : 'Disconnected'}
         </p>
       </div>

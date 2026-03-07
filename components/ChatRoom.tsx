@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { UserProfile, Message, UserRole, MediaFile, VerificationStatus } from '../types';
 import apiClient from '../services/apiClient';
@@ -7,7 +7,6 @@ import { useWebSocketContext } from '../services/WebSocketProvider';
 import { formatLastSeen } from '../services/lastSeenUtils';
 import { useLikeStats } from '../services/useLikeHooks';
 import MediaRenderer from './MediaRenderer';
-import VideoCallRoom from './VideoCallRoom';
 import IncomingCall from './IncomingCall';
 import VerificationBadge from './VerificationBadge';
 import UserProfileModal from './UserProfileModal';
@@ -73,8 +72,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [confirmCall, setConfirmCall] = useState<{ isVideo: boolean } | null>(null);
   const [incomingCall, setIncomingCall] = useState<{ caller: UserProfile; isVideo: boolean } | null>(null);
+  const [callStatusModal, setCallStatusModal] = useState<{ title: string; message: string } | null>(null);
   const [inCall, setInCall] = useState(false);
   const [callIsVideo, setCallIsVideo] = useState(false);
+  const [isCallInitiator, setIsCallInitiator] = useState(false);
   const [isRecordingAudio, setIsRecordingAudio] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedAudio, setRecordedAudio] = useState<AudioRecording | null>(null);
@@ -102,6 +103,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const audioRecorderRef = useRef(createAudioRecorder());
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const scrollCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const callStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const gifPickerRef = useRef<HTMLDivElement>(null);
 
@@ -115,7 +117,60 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     }
   };
 
-  const { sendTypingStatus, sendMessage } = useWebSocketContext();
+  const { sendTypingStatus, sendMessage, addMessageHandler } = useWebSocketContext();
+
+  const showCallStatusModal = useCallback((title: string, message: string) => {
+    setCallStatusModal({ title, message });
+    if (callStatusTimeoutRef.current) {
+      clearTimeout(callStatusTimeoutRef.current);
+    }
+    callStatusTimeoutRef.current = setTimeout(() => {
+      setCallStatusModal(null);
+      callStatusTimeoutRef.current = null;
+    }, 4500);
+  }, []);
+
+  useEffect(() => {
+    const mergeMessage = (incoming: any) => {
+      if (!incoming?.id) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) return prev;
+        const next = [...prev, incoming];
+        next.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        return next;
+      });
+    };
+
+    const handler = (data: any) => {
+      if (!data) return;
+      if (data.type === 'typing_status') {
+        handleTypingIndicator(data);
+      }
+      if (data.type === 'new_message' && data.chatId === chatId && data.message) {
+        mergeMessage(data.message);
+      }
+      if (
+        incomingCall &&
+        (data.type === 'call_end' || data.type === 'call_rejected') &&
+        data.from === incomingCall.caller.id
+      ) {
+        setIncomingCall(null);
+      }
+      if (data.type === 'call_rejected' && isCallInitiator) {
+        const active = (window as any).__activeCall;
+        const isForActiveCall = !!(active && data.from && active.otherUserId === data.from);
+        if (!isForActiveCall) return;
+        const targetName = chatUser?.name || chatUser?.username || 'User';
+        showCallStatusModal('Call Rejected', `${targetName} rejected your call.`);
+        setInCall(false);
+        setIsCallInitiator(false);
+        setConfirmCall(null);
+        window.dispatchEvent(new CustomEvent('app:call:end'));
+      }
+    };
+
+    return addMessageHandler(handler);
+  }, [addMessageHandler, chatId, currentUser.id, incomingCall, isCallInitiator, chatUser, showCallStatusModal]);
 
   // Audio element for ringing tone
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -180,6 +235,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     return () => {
       console.log('[ChatRoom] Component unmounting - stopping all ringing');
       stopRingingTone();
+      if (callStatusTimeoutRef.current) {
+        clearTimeout(callStatusTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -207,6 +265,38 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     }
   };
 
+  const startGlobalCall = (otherUser: UserProfile, isVideo: boolean, isInitiator: boolean) => {
+    window.dispatchEvent(new CustomEvent('app:call:start', {
+      detail: {
+        otherUser,
+        otherUserId: otherUser.id,
+        isVideo,
+        isInitiator
+      }
+    }));
+  };
+
+  useEffect(() => {
+    const handleGlobalCallEnd = () => {
+      setInCall(false);
+      setIsCallInitiator(false);
+    };
+
+    window.addEventListener('app:call:end', handleGlobalCallEnd);
+    return () => window.removeEventListener('app:call:end', handleGlobalCallEnd);
+  }, []);
+
+  useEffect(() => {
+    const handleCallBlocked = (event: Event) => {
+      const data = (event as CustomEvent).detail || {};
+      const name = data.activeWithName || 'another user';
+      showCallStatusModal('Call In Progress', `You are already in a call with ${name}.`);
+      window.dispatchEvent(new CustomEvent('app:call:restore'));
+    };
+    window.addEventListener('app:call:blocked', handleCallBlocked as EventListener);
+    return () => window.removeEventListener('app:call:blocked', handleCallBlocked as EventListener);
+  }, [showCallStatusModal]);
+
   // Register WebSocket handlers for incoming calls
   useEffect(() => {
     console.log('[ChatRoom useEffect] Setting up ws:call_incoming listener');
@@ -228,8 +318,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         return;
       }
       
-      if (inCall) {
+      const active = (window as any).__activeCall;
+      if (inCall || !!active) {
         console.log('[ChatRoom handleIncomingCall] Already in call, ignoring incoming call');
+        sendMessage({
+          type: 'call_rejected',
+          to: data.from
+        });
         return;
       }
       
@@ -239,12 +334,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       const callerUser: UserProfile = {
         id: data.from,
         name: data.fromName || 'Unknown User',
-        username: data.from,
+        username: data.fromName || data.from,
         age: 0,
         location: '',
         bio: '',
         interests: [],
-        images: [],
+        images: data.fromImage ? [data.fromImage] : [],
         isPremium: false,
         coins: 0,
         role: UserRole.USER,
@@ -273,7 +368,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       console.log('[ChatRoom useEffect cleanup] Removing event listener for ws:call_incoming');
       window.removeEventListener('ws:call_incoming', handleIncomingCall);
     };
-  }, [inCall]);
+  }, [inCall, sendMessage]);
 
   // Handle call notifications (busy, unavailable)
   useEffect(() => {
@@ -282,18 +377,29 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
       const data = customEvent.detail;
       console.log('[ChatRoom handleCallNotification] Received notification:', data.type);
 
+      const active = (window as any).__activeCall;
+      const hasActiveCall = !!(active && active.otherUserId);
+
       if (data.type === 'call_busy') {
         console.log('[ChatRoom] User is busy on another call:', data.recipientName);
-        showAlert('User Busy', `${data.recipientName} is currently on another call. Try again later.`);
-        setInCall(false);
+        showCallStatusModal('User Busy', `${data.recipientName || 'User'} is in another call right now.`);
         setConfirmCall(null);
-        logCallEvent(`⏸️  Call to ${data.recipientName} failed - User is busy`);
+        if (!hasActiveCall) {
+          setInCall(false);
+          setIsCallInitiator(false);
+          window.dispatchEvent(new CustomEvent('app:call:end'));
+        }
+        logCallEvent(`Call to ${data.recipientName || 'User'} failed - User is busy`);
       } else if (data.type === 'call_unavailable') {
         console.log('[ChatRoom] User is unavailable:', data.recipientName);
-        showAlert('User Unavailable', `${data.recipientName} is not available right now. Try again later.`);
-        setInCall(false);
+        showCallStatusModal('User Unavailable', `${data.recipientName || 'User'} is not available right now.`);
         setConfirmCall(null);
-        logCallEvent(`❌ Call to ${data.recipientName} failed - User unavailable`);
+        if (!hasActiveCall) {
+          setInCall(false);
+          setIsCallInitiator(false);
+          window.dispatchEvent(new CustomEvent('app:call:end'));
+        }
+        logCallEvent(`Call to ${data.recipientName || 'User'} failed - User unavailable`);
       }
     };
 
@@ -301,33 +407,41 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
     return () => {
       window.removeEventListener('ws:call_notification', handleCallNotification);
     };
-  }, []);
+  }, [showCallStatusModal]);
 
   // Handle incoming call acceptance
-  const handleAcceptIncomingCall = async () => {
+  const handleAcceptIncomingCall = () => {
     if (!incomingCall) return;
     
     try {
       console.log('[DEBUG ChatRoom] Accepting incoming call from:', incomingCall.caller.id);
-      
-      // Log call acceptance
-      await logCallEvent(`✅ Accepted ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
-      
-      // Create or get chat with caller
-      const chatData = await apiClient.createOrGetChat(incomingCall.caller.id);
-      setChatId(chatData.id);
-      setChatUser(incomingCall.caller);
-      
-      // Set up the call
+
+      // Set up the call immediately so Answer button always responds quickly.
       setCallIsVideo(incomingCall.isVideo);
+      setIsCallInitiator(false);
       setInCall(true);
-      setIncomingCall(null);
-      
-      // Send call accepted signal
+      startGlobalCall(incomingCall.caller, incomingCall.isVideo, false);
+
+      // Send accepted signal immediately.
       sendMessage({
         type: 'call_accepted',
         to: incomingCall.caller.id
       });
+
+      const acceptedCall = incomingCall;
+      setIncomingCall(null);
+
+      // Follow-up tasks should never block call acceptance.
+      (async () => {
+        try {
+          await logCallEvent(`Accepted ${acceptedCall.isVideo ? 'video' : 'voice'} call from ${acceptedCall.caller.name}`);
+          const chatData = await apiClient.createOrGetChat(acceptedCall.caller.id);
+          setChatId(chatData.id);
+          setChatUser(acceptedCall.caller);
+        } catch (err) {
+          console.warn('[ChatRoom] Post-accept chat sync failed:', err);
+        }
+      })();
     } catch (err) {
       console.error('[ERROR ChatRoom] Failed to accept incoming call:', err);
       showAlert('Error', 'Failed to accept call');
@@ -338,17 +452,21 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
   const handleRejectIncomingCall = () => {
     console.log('[DEBUG ChatRoom] Rejecting incoming call from:', incomingCall?.caller.id);
     
-    if (incomingCall) {
-      // Log call rejection
-      logCallEvent(`❌ Rejected ${incomingCall.isVideo ? 'video' : 'voice'} call from ${incomingCall.caller.name}`);
-      
-      sendMessage({
-        type: 'call_rejected',
-        to: incomingCall.caller.id
-      });
+    if (!incomingCall) {
+      setIncomingCall(null);
+      return;
     }
-    
+
+    const rejectedCall = incomingCall;
     setIncomingCall(null);
+
+    // Log call rejection (non-blocking)
+    logCallEvent(`Rejected ${rejectedCall.isVideo ? 'video' : 'voice'} call from ${rejectedCall.caller.name}`);
+    
+    sendMessage({
+      type: 'call_rejected',
+      to: rejectedCall.caller.id
+    });
   };
 
   // Handle keyboard visibility on mobile - scroll to bottom when keyboard shows/hides
@@ -1097,7 +1215,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 onClick={() => setShowUserProfile(true)}
                 className="flex items-center gap-1 md:gap-4 flex-1 min-w-0 hover:bg-gray-50 rounded-lg p-1 -m-1 transition-colors"
               >
-                <img src={chatUser.images?.[0] || 'https://via.placeholder.com/100'} className="w-8 md:w-11 h-8 md:h-11 rounded-full border border-gray-100 shadow-sm object-cover flex-shrink-0" alt="User" />
+                <img src={chatUser.images?.[0] || '/images/placeholders/user.svg'} className="w-8 md:w-11 h-8 md:h-11 rounded-full border border-gray-100 shadow-sm object-cover flex-shrink-0" alt="User" />
                 <div className="flex-1 min-w-0 text-left">
                   <h3 className="font-bold text-gray-900 text-xs md:text-lg leading-tight truncate">
                     {chatUser.username || chatUser.name}
@@ -1127,9 +1245,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                   >
                     <i className="fa-solid fa-video"></i>
                   </button>
-                  <div className="hidden md:flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-full border border-amber-100 shadow-sm">
-                    <i className="fa-solid fa-coins text-amber-500 text-xs"></i>
-                    <span className="text-[10px] font-black text-amber-800">{currentUser.isPremium ? '∞' : currentUser.coins}</span>
+                  <div className="flex items-center gap-1 bg-amber-50 px-1.5 md:px-2 py-1 rounded-full border border-amber-100 shadow-sm">
+                    <i className="fa-solid fa-coins text-amber-500 text-[10px] md:text-xs"></i>
+                    <span className="text-[10px] font-black text-amber-800">{currentUser.isPremium ? 'Unlimited' : currentUser.coins}</span>
                   </div>
                 </div>
                 {isModerator && (
@@ -1165,8 +1283,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                 </button>
                 <button
                   onClick={() => {
+                    const active = (window as any).__activeCall;
+                    if (active && active.otherUserId) {
+                      showCallStatusModal(
+                        'Call In Progress',
+                        `You are already in a call with ${active.otherUser?.username || active.otherUser?.name || 'another user'}.`
+                      );
+                      window.dispatchEvent(new CustomEvent('app:call:restore'));
+                      setConfirmCall(null);
+                      return;
+                    }
                     setCallIsVideo(confirmCall.isVideo);
+                    setIsCallInitiator(true);
                     setInCall(true);
+                    if (chatUser) {
+                      startGlobalCall(chatUser, confirmCall.isVideo, true);
+                    }
                     setConfirmCall(null);
                     if (chatUser) {
                       console.log('[DEBUG ChatRoom] Initiating call to:', chatUser.id, 'isVideo:', confirmCall.isVideo);
@@ -1176,7 +1308,8 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         type: 'call_incoming',
                         to: chatUser.id,
                         toName: chatUser.name || chatUser.username,
-                        fromName: currentUser.name || currentUser.username,
+                        fromName: currentUser.username || currentUser.name,
+                        fromImage: currentUser.images?.[0] || null,
                         isVideo: confirmCall.isVideo,
                         chatId: chatId
                       });
@@ -1192,6 +1325,29 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
           </div>
         )}
 
+        {callStatusModal && (
+          <div className="fixed top-20 right-4 z-[60] w-[min(92vw,360px)]">
+            <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                  <i className="fa-solid fa-phone-slash text-sm"></i>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-black text-gray-900">{callStatusModal.title}</div>
+                  <div className="text-sm text-gray-600 mt-0.5">{callStatusModal.message}</div>
+                </div>
+                <button
+                  onClick={() => setCallStatusModal(null)}
+                  className="text-gray-400 hover:text-gray-700 text-sm"
+                  aria-label="Close call status"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Incoming Call Modal */}
         {incomingCall && (
           <IncomingCall
@@ -1200,29 +1356,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             onAccept={handleAcceptIncomingCall}
             onReject={handleRejectIncomingCall}
             isVideo={incomingCall.isVideo}
-          />
-        )}
-
-        {/* Video call room */}
-        {inCall && chatUser && (
-          <VideoCallRoom
-            currentUser={currentUser}
-            otherUser={chatUser}
-            otherUserId={chatUser.id}
-            isInitiator={true}
-            isVideo={callIsVideo}
-            onCallEnd={() => {
-              console.log('[ChatRoom] Call ended, logging event');
-              setInCall(false);
-              sendMessage({
-                type: 'call_end',
-                to: chatUser.id
-              });
-              // Log call end after a brief delay to ensure it's captured
-              setTimeout(() => {
-                logCallEvent(`📞 ${callIsVideo ? 'Video' : 'Voice'} call ended with ${chatUser.name}`);
-              }, 100);
-            }}
           />
         )}
 
@@ -1961,3 +2094,4 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
 };
 
 export default ChatRoom;
+

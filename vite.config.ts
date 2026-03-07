@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => {
           registerType: 'autoUpdate',
           injectRegister: 'auto',
           devOptions: {
-            enabled: false,
+            enabled: mode === 'development',
           },
           manifest: {
             name: 'lunesa - Dating Platform',
@@ -41,33 +41,33 @@ export default defineConfig(({ mode }) => {
             description: 'A high-end dating PWA with AI-powered swiping, chat moderation, and premium features.',
             theme_color: '#000000',
             background_color: '#000000',
-            display: 'standalone',
+            display: 'fullscreen',
             display_override: ['fullscreen', 'standalone', 'minimal-ui'],
             orientation: 'portrait-primary',
             scope: '/',
-            start_url: '/',
+            start_url: '/#/',
             categories: ['social'],
             icons: [
               {
-                src: '/src/assets/images/logo/logo.png',
+                src: '/images/logo/logo.png',
                 sizes: '192x192',
                 type: 'image/png',
                 purpose: 'any'
               },
               {
-                src: '/src/assets/images/logo/logo.png',
+                src: '/images/logo/logo.png',
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'any'
               },
               {
-                src: '/src/assets/images/logo/logo.png',
+                src: '/images/logo/logo.png',
                 sizes: '192x192',
                 type: 'image/png',
                 purpose: 'maskable'
               },
               {
-                src: '/src/assets/images/logo/logo.png',
+                src: '/images/logo/logo.png',
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'maskable'
@@ -95,7 +95,7 @@ export default defineConfig(({ mode }) => {
                 url: '/#/chats',
                 icons: [
                   {
-                    src: '/src/assets/images/logo/logo.png',
+                    src: '/images/logo/logo.png',
                     sizes: '96x96',
                     type: 'image/png'
                   }
@@ -108,7 +108,7 @@ export default defineConfig(({ mode }) => {
                 url: '/#/matches',
                 icons: [
                   {
-                    src: '/src/assets/images/logo/logo.png',
+                    src: '/images/logo/logo.png',
                     sizes: '96x96',
                     type: 'image/png'
                   }
@@ -121,7 +121,7 @@ export default defineConfig(({ mode }) => {
                 url: '/#/',
                 icons: [
                   {
-                    src: '/src/assets/images/logo/logo.png',
+                    src: '/images/logo/logo.png',
                     sizes: '96x96',
                     type: 'image/png'
                   }

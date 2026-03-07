@@ -31,6 +31,8 @@ export const useWebRTC = ({
 
   // Initialize local media stream
   useEffect(() => {
+    let demoInterval: ReturnType<typeof setInterval> | null = null;
+
     const getLocalMedia = async () => {
       try {
         const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -59,7 +61,7 @@ export const useWebRTC = ({
             ctx.fillText('(Camera not available)', canvas.width / 2, canvas.height / 2 + 60);
             
             // Animate by updating canvas
-            setInterval(() => {
+            demoInterval = setInterval(() => {
               ctx.fillStyle = '#1a1a2e';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               ctx.fillStyle = '#00d4ff';
@@ -159,6 +161,9 @@ export const useWebRTC = ({
     }
 
     return () => {
+      if (demoInterval) {
+        clearInterval(demoInterval);
+      }
       localStreamRef.current?.getTracks().forEach(track => {
         console.log('[WebRTC] Stopping track:', track.kind);
         track.stop();
@@ -319,12 +324,7 @@ export const useWebRTC = ({
     localStream?.getTracks().forEach(track => track.stop());
     remoteStream?.getTracks().forEach(track => track.stop());
     pcRef.current?.close();
-    
-    wsMessageHandler?.({
-      type: 'send_call_end',
-      to: otherUserId
-    });
-  }, [localStream, remoteStream, otherUserId, wsMessageHandler]);
+  }, [localStream, remoteStream]);
 
   return {
     localStream,
