@@ -234,7 +234,6 @@ const AppContent: React.FC<{
   ) : false;
   const requiresProfileSetup = Boolean(
     currentUser &&
-    currentUser.role === UserRole.USER &&
     hasAcceptedLegal &&
     !isProfileSetupComplete(currentUser)
   );
@@ -322,7 +321,7 @@ const AppContent: React.FC<{
                 setShowLegalConsent(true);
               } else {
                 if (user.termsOfServiceAccepted && user.privacyPolicyAccepted && user.cookiePolicyAccepted) {
-                  const needsProfileSetup = user.role === UserRole.USER && !isProfileSetupComplete(user);
+                  const needsProfileSetup = !isProfileSetupComplete(user);
                   setCurrentUser(user);
                   setNewSignupUser(needsProfileSetup ? user : null);
                   setShowProfileSetup(needsProfileSetup);
@@ -422,6 +421,34 @@ const AppContent: React.FC<{
         />
         {renderPolicyModal()}
 
+        <PWAInstallPrompt />
+      </>
+    );
+  }
+
+  if (requiresProfileSetup && profileSetupUser) {
+    return (
+      <>
+        <div className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center p-4 z-50" style={{ width: '100vw', height: '100vh' }}>
+          <ProfileSetup
+            userId={profileSetupUser.id}
+            name={profileSetupUser.name}
+            email={profileSetupUser.email || `${profileSetupUser.name}@lunesa.com`}
+            profilePicture={profileSetupUser.images?.[0]}
+            onComplete={(userData: any) => {
+              const completeUser = buildCompletedProfileUser(profileSetupUser, userData);
+              setCurrentUser(completeUser);
+              setShowProfileSetup(false);
+              setNewSignupUser(null);
+            }}
+            onCancel={async () => {
+              try { await apiClient.logout(); } catch (err) { console.warn('[DEBUG App] Logout failed:', err); }
+              setCurrentUser(null);
+              setShowProfileSetup(false);
+              setNewSignupUser(null);
+            }}
+          />
+        </div>
         <PWAInstallPrompt />
       </>
     );
