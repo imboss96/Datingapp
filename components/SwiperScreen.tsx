@@ -1496,6 +1496,23 @@ const SwiperScreen: React.FC<SwiperScreenProps> = ({ currentUser, onDeductCoin }
                     Message
                   </button>
                 </div>
+
+                <div className="flex md:hidden gap-2 mt-3">
+                  <button
+                    onClick={() => setShowProfileModal(true)}
+                    className="flex-1 bg-white/20 backdrop-blur-lg ring-1 ring-white/50 py-2 rounded-full text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    <i className="fa-solid fa-eye text-xs" />
+                    View
+                  </button>
+                  <button
+                    onClick={() => navigate(`/chat/${currentProfile?.id}`, { state: { matchedProfile: currentProfile } })}
+                    className="flex-1 bg-white/20 backdrop-blur-lg ring-1 ring-white/50 py-2 rounded-full text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                  >
+                    <i className="fa-solid fa-message text-xs" />
+                    Message
+                  </button>
+                </div>
               </div>
             </div>
           </div>

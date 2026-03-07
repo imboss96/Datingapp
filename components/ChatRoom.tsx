@@ -1736,9 +1736,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         {id && (
         <div
           ref={inputContainerRef}
-           className="absolute bottom-0 left-0 right-0 z-20 md:px-4"
-           style={{
-           padding: 'calc(8px + env(safe-area-inset-bottom, 0px)) 8px 8px 8px',
+          className="chat-input sticky bottom-0 left-0 right-0 z-20 md:px-4"
+          style={{
+            padding: '8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px',
           }}
         >
           {/* Media Preview */}
@@ -2044,7 +2044,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
                         ? 'text-rose-500 animate-pulse hover:text-rose-600 hover:bg-rose-50'
                         : 'text-gray-500 hover:text-gray-600 hover:bg-gray-100'
                     }`}
-                    disabled={!chatId || uploadingMedia}
+                    disabled={uploadingMedia}
                     title={recordedAudio ? 'Send audio' : inputText.trim() || selectedMedia ? 'Send message' : 'Record audio'}
                   >
                     <i className={`fa-solid ${
