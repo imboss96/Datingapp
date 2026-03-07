@@ -223,7 +223,10 @@ async function finalizeSuccessfulPayment(tx, source = 'unknown') {
     return { alreadyCompleted: true };
   }
 
-  const user = await User.findById(updatedTx.userId);
+  let user = await User.findById(updatedTx.userId);
+  if (!user) {
+    user = await User.findOne({ id: updatedTx.userId });
+  }
   if (!user) {
     console.warn(`[LIPANA finalize] User not found for tx ${updatedTx.id}`);
     return { alreadyCompleted: false, user: null };
@@ -617,7 +620,11 @@ router.post('/webhook', async (req, res) => {
     // Try each possible ID
     for (const idValue of possibleIds) {
       tx = await Transaction.findOne({
-        $or: [{ lipanaTransactionId: idValue }, { id: idValue }]
+        $or: [
+          { lipanaTransactionId: idValue },
+          { checkoutRequestID: idValue },
+          { id: idValue }
+        ]
       });
       if (tx) {
         console.log(`[LIPANA /webhook] ✓ Found transaction using ID: ${idValue}`);
@@ -637,6 +644,7 @@ router.post('/webhook', async (req, res) => {
         // Update the lipanaTransactionId for future lookups
         if (transactionId && !tx.lipanaTransactionId) {
           tx.lipanaTransactionId = transactionId;
+          await tx.save();
         }
       }
     }
