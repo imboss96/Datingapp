@@ -27,6 +27,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import TermsPage from './components/TermsPage';
 import PrivacyPage from './components/PrivacyPage';
 import CookiePolicyPage from './components/CookiePolicyPage';
+import LegalConsentGate from './components/LegalConsentGate';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import ModalPreview from './components/ModalPreview';
 import { WebSocketProvider } from './services/WebSocketProvider';
@@ -151,9 +152,9 @@ const AppContent: React.FC<{
   const [isStandalonePWA, setIsStandalonePWA] = useState(false);
   const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [emailToVerify, setEmailToVerify] = useState('');
-  const [showTerms, setShowTerms] = useState(false);
-  const [showPrivacy, setShowPrivacy] = useState(false);
-  const [showCookies, setShowCookies] = useState(false);
+  const [showLegalConsent, setShowLegalConsent] = useState(false);
+  const [activePolicyModal, setActivePolicyModal] = useState<'terms' | 'privacy' | 'cookies' | null>(null);
+  const [legalSaving, setLegalSaving] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [activeCall, setActiveCall] = useState<{
     otherUser?: UserProfile;
@@ -228,7 +229,8 @@ const AppContent: React.FC<{
 
   const hasAcceptedLegal = currentUser ? (
     currentUser.termsOfServiceAccepted &&
-    currentUser.privacyPolicyAccepted
+    currentUser.privacyPolicyAccepted &&
+    currentUser.cookiePolicyAccepted
   ) : false;
   const requiresProfileSetup = Boolean(
     currentUser &&
@@ -237,6 +239,62 @@ const AppContent: React.FC<{
     !isProfileSetupComplete(currentUser)
   );
   const profileSetupUser = (newSignupUser || currentUser) as UserProfile | null;
+
+  const persistFullLegalAcceptance = async (userId: string, fallbackUser?: UserProfile | null) => {
+    const acceptanceDate = new Date().toISOString();
+    await apiClient.updateProfile(userId, {
+      termsOfServiceAccepted: true,
+      privacyPolicyAccepted: true,
+      cookiePolicyAccepted: true,
+      legalAcceptanceDate: acceptanceDate,
+    });
+
+    try {
+      const refreshed = await apiClient.getCurrentUser();
+      return refreshed as UserProfile;
+    } catch (err) {
+      console.warn('[DEBUG App] Failed to refresh user after legal acceptance:', err);
+      if (!fallbackUser) throw err;
+      return {
+        ...fallbackUser,
+        termsOfServiceAccepted: true,
+        privacyPolicyAccepted: true,
+        cookiePolicyAccepted: true,
+        legalAcceptanceDate: new Date(acceptanceDate),
+      } as UserProfile;
+    }
+  };
+
+  const renderPolicyModal = () => {
+    if (!activePolicyModal) return null;
+
+    const closeModal = () => setActivePolicyModal(null);
+    if (activePolicyModal === 'terms') {
+      return (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="w-full h-screen max-w-4xl bg-white">
+            <TermsPage onAccept={closeModal} onClose={closeModal} isModal={true} />
+          </div>
+        </div>
+      );
+    }
+    if (activePolicyModal === 'privacy') {
+      return (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+          <div className="w-full h-screen max-w-4xl bg-white">
+            <PrivacyPage onAccept={closeModal} onClose={closeModal} isModal={true} />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center">
+        <div className="w-full h-screen max-w-4xl bg-white">
+          <CookiePolicyPage onAccept={closeModal} onClose={closeModal} isModal={true} />
+        </div>
+      </div>
+    );
+  };
 
   if (!currentUser || !currentUser.id) {
     return (
@@ -247,9 +305,9 @@ const AppContent: React.FC<{
           <Route path="/verify-email-info" element={<VerifyEmailInfoPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/account-suspended" element={<AccountSuspendedPage />} />
-          <Route path="/terms" element={<TermsPage onAccept={() => setShowTerms(false)} isModal={true} />} />
-          <Route path="/privacy" element={<PrivacyPage onAccept={() => setShowPrivacy(false)} isModal={true} />} />
-          <Route path="/cookies" element={<CookiePolicyPage onAccept={() => setShowCookies(false)} isModal={true} />} />
+          <Route path="/terms" element={<TermsPage onAccept={() => {}} isModal={true} />} />
+          <Route path="/privacy" element={<PrivacyPage onAccept={() => {}} isModal={true} />} />
+          <Route path="/cookies" element={<CookiePolicyPage onAccept={() => {}} isModal={true} />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
         {showLoginModal && !showProfileSetup && (
@@ -261,16 +319,16 @@ const AppContent: React.FC<{
               if (isSignup) {
                 setNewSignupUser(user);
                 setEmailToVerify(user.name + '@lunesa.com');
-                setShowTerms(true);
+                setShowLegalConsent(true);
               } else {
-                if (user.termsOfServiceAccepted && user.privacyPolicyAccepted) {
+                if (user.termsOfServiceAccepted && user.privacyPolicyAccepted && user.cookiePolicyAccepted) {
                   const needsProfileSetup = user.role === UserRole.USER && !isProfileSetupComplete(user);
                   setCurrentUser(user);
                   setNewSignupUser(needsProfileSetup ? user : null);
                   setShowProfileSetup(needsProfileSetup);
                 } else {
                   setNewSignupUser(user);
-                  setShowTerms(true);
+                  setShowLegalConsent(true);
                 }
               }
               setShowLoginModal(false);
@@ -278,65 +336,38 @@ const AppContent: React.FC<{
           />
         )}
 
-        {showTerms && (
-          <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
-            <div className="w-full h-screen max-w-4xl bg-white">
-              <TermsPage
-                onAccept={() => { setShowTerms(false); setShowPrivacy(true); }}
-                onClose={() => setShowTerms(false)}
-                isModal={true}
-              />
-            </div>
+        {showLegalConsent && newSignupUser && (
+          <div className="fixed inset-0 z-40">
+            <LegalConsentGate
+              userName={newSignupUser.name}
+              isSaving={legalSaving}
+              onOpenPolicy={(policy) => setActivePolicyModal(policy)}
+              onAcceptAll={async () => {
+                setLegalSaving(true);
+                try {
+                  const persistedUser = await persistFullLegalAcceptance(newSignupUser.id, newSignupUser);
+                  const needsProfileSetup = !isProfileSetupComplete(persistedUser);
+                  setCurrentUser(persistedUser);
+                  setNewSignupUser(needsProfileSetup ? persistedUser : null);
+                  setShowProfileSetup(needsProfileSetup);
+                  setShowLegalConsent(false);
+                } catch (err) {
+                  console.warn('[DEBUG App] Failed to persist legal acceptance:', err);
+                } finally {
+                  setLegalSaving(false);
+                }
+              }}
+              onLogout={async () => {
+                try { await apiClient.logout(); } catch (err) { console.warn('[DEBUG App] Logout failed:', err); }
+                setShowLegalConsent(false);
+                setCurrentUser(null);
+                setNewSignupUser(null);
+              }}
+            />
           </div>
         )}
-        {showPrivacy && (
-          <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
-            <div className="w-full h-screen max-w-4xl bg-white">
-              <PrivacyPage
-                onAccept={() => { setShowPrivacy(false); setShowCookies(true); }}
-                onClose={() => { setShowPrivacy(false); setShowTerms(true); }}
-                isModal={true}
-              />
-            </div>
-          </div>
-        )}
-        {showCookies && (
-          <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
-            <div className="w-full h-screen max-w-4xl bg-white">
-              <CookiePolicyPage
-                onAccept={async () => {
-                  setShowCookies(false);
-                  if (newSignupUser) {
-                    try {
-                      await apiClient.updateProfile(newSignupUser.id, {
-                        termsOfServiceAccepted: true,
-                        privacyPolicyAccepted: true,
-                        cookiePolicyAccepted: true,
-                        legalAcceptanceDate: new Date().toISOString()
-                      });
-                      const refreshed = await apiClient.getCurrentUser();
-                      const persistedUser = refreshed as UserProfile;
-                      const needsProfileSetup = !isProfileSetupComplete(persistedUser);
-                      if (needsProfileSetup) {
-                        setCurrentUser(persistedUser);
-                        setNewSignupUser(persistedUser);
-                        setShowProfileSetup(true);
-                      } else {
-                        setCurrentUser(persistedUser);
-                        setNewSignupUser(null);
-                        setShowProfileSetup(false);
-                      }
-                    } catch (err) {
-                      console.warn('[DEBUG App] Failed to persist legal acceptance:', err);
-                    }
-                  }
-                }}
-                onClose={() => { setShowCookies(false); setShowPrivacy(true); }}
-                isModal={true}
-              />
-            </div>
-          </div>
-        )}
+
+        {renderPolicyModal()}
 
         {showProfileSetup && newSignupUser && (
           <div className="fixed inset-0 backdrop-blur-md bg-white/20 flex items-center justify-center p-4 z-50" style={{ width: '100vw', height: '100vh' }}>
@@ -368,79 +399,28 @@ const AppContent: React.FC<{
   if (!hasAcceptedLegal) {
     return (
       <>
-        <div className="w-full h-screen flex items-center justify-center">
-          <div className="text-center max-w-md">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Please Accept Our Policies</h1>
-            <p className="text-gray-600 mb-6">To continue using the app, you need to accept our Terms of Service, Privacy Policy, and Cookie Policy.</p>
-            <div className="space-y-3">
-              <button onClick={() => setShowTerms(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Terms of Service</button>
-              <button onClick={() => setShowPrivacy(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Privacy Policy</button>
-              <button onClick={() => setShowCookies(true)} className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white font-semibold py-3 rounded-lg hover:from-pink-600 hover:to-red-600 transition">Review Cookie Policy</button>
-            </div>
-            <button
-              onClick={async () => {
-                try { await apiClient.logout(); } catch (err) { console.warn('[DEBUG App] Logout failed:', err); }
-                setCurrentUser(null);
-              }}
-              className="mt-6 text-gray-600 hover:text-gray-800 underline"
-            >
-              Log Out
-            </button>
-          </div>
-
-          {showTerms && (
-            <TermsPage
-              onAccept={() => {
-                const updated = { ...currentUser, termsOfServiceAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
-                setCurrentUser(updated);
-                setShowTerms(false);
-                (async () => {
-                  try {
-                    await apiClient.updateProfile(currentUser.id, { termsOfServiceAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
-                    const refreshed = await apiClient.getCurrentUser();
-                    setCurrentUser(refreshed as UserProfile);
-                  } catch (err) { console.warn('[DEBUG App] Failed to persist terms:', err); }
-                })();
-              }}
-              onClose={() => setShowTerms(false)}
-              isModal={true}
-            />
-          )}
-          {showPrivacy && (
-            <PrivacyPage
-              onAccept={() => {
-                const updated = { ...currentUser, privacyPolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
-                setCurrentUser(updated);
-                setShowPrivacy(false);
-                (async () => {
-                  try {
-                    await apiClient.updateProfile(currentUser.id, { privacyPolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
-                    const refreshed = await apiClient.getCurrentUser();
-                    setCurrentUser(refreshed as UserProfile);
-                  } catch (err) { console.warn('[DEBUG App] Failed to persist privacy:', err); }
-                })();
-              }}
-              onClose={() => setShowPrivacy(false)}
-              isModal={true}
-            />
-          )}
-          {showCookies && (
-            <CookiePolicyPage
-              onAccept={async () => {
-                const updated = { ...currentUser, cookiePolicyAccepted: true, legalAcceptanceDate: new Date() } as UserProfile;
-                setCurrentUser(updated);
-                setShowCookies(false);
-                try {
-                  await apiClient.updateProfile(currentUser.id, { cookiePolicyAccepted: true, legalAcceptanceDate: updated.legalAcceptanceDate });
-                  const refreshed = await apiClient.getCurrentUser();
-                  setCurrentUser(refreshed as UserProfile);
-                } catch (err) { console.warn('[DEBUG App] Failed to persist cookies:', err); }
-              }}
-              onClose={() => setShowCookies(false)}
-              isModal={true}
-            />
-          )}
-        </div>
+        <LegalConsentGate
+          userName={currentUser?.name}
+          isSaving={legalSaving}
+          onOpenPolicy={(policy) => setActivePolicyModal(policy)}
+          onAcceptAll={async () => {
+            if (!currentUser) return;
+            setLegalSaving(true);
+            try {
+              const refreshed = await persistFullLegalAcceptance(currentUser.id, currentUser);
+              setCurrentUser(refreshed);
+            } catch (err) {
+              console.warn('[DEBUG App] Failed to persist legal acceptance:', err);
+            } finally {
+              setLegalSaving(false);
+            }
+          }}
+          onLogout={async () => {
+            try { await apiClient.logout(); } catch (err) { console.warn('[DEBUG App] Logout failed:', err); }
+            setCurrentUser(null);
+          }}
+        />
+        {renderPolicyModal()}
 
         <PWAInstallPrompt />
       </>
@@ -491,9 +471,9 @@ const AppContent: React.FC<{
           } />
           <Route path="/chat/:id" element={<div className="flex-1 flex flex-col h-full"><ChatRoom currentUser={currentUser} onDeductCoin={() => updateCoins(-1)} /></div>} />
           <Route path="/matches" element={<div className="flex-1 overflow-y-auto"><MatchesPage currentUserId={currentUser?.id} /></div>} />
-          <Route path="/terms" element={<div className="flex-1 overflow-y-auto"><TermsPage onAccept={() => setShowTerms(false)} isModal={false} /></div>} />
-          <Route path="/privacy" element={<div className="flex-1 overflow-y-auto"><PrivacyPage onAccept={() => setShowPrivacy(false)} isModal={false} /></div>} />
-          <Route path="/cookies" element={<div className="flex-1 overflow-y-auto"><CookiePolicyPage onAccept={() => setShowCookies(false)} isModal={false} /></div>} />
+          <Route path="/terms" element={<div className="flex-1 overflow-y-auto"><TermsPage onAccept={() => {}} isModal={false} /></div>} />
+          <Route path="/privacy" element={<div className="flex-1 overflow-y-auto"><PrivacyPage onAccept={() => {}} isModal={false} /></div>} />
+          <Route path="/cookies" element={<div className="flex-1 overflow-y-auto"><CookiePolicyPage onAccept={() => {}} isModal={false} /></div>} />
           {isAdmin && (
             <Route path="/admin" element={<div className="flex-1 overflow-y-auto"><ModeratorPanel /></div>} />
           )}
