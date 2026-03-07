@@ -1591,7 +1591,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
             ref={scrollRef}
             className="flex-1 overflow-y-auto p-2 md:px-4 md:py-4 space-y-2 w-full chat-messages relative whatsapp-chat-background min-h-0"
             style={{
-              paddingBottom: `calc(80px + env(safe-area-inset-bottom, 16px))`,
+              paddingBottom: `calc(140px + env(safe-area-inset-bottom, 16px))`,
             }}
 >
             {/* Content Layer */}
@@ -1719,7 +1719,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
               })}
 
               {/* Spacer so last message is visible above input/nav */}
-              <div aria-hidden="true" style={{ height: 'calc(100px + env(safe-area-inset-bottom, 16px))' }} />
+              <div aria-hidden="true" style={{ height: 'calc(60px + env(safe-area-inset-bottom, 16px))' }} />
 
               {/* Typing Indicator */}
               {isOtherUserTyping && (
@@ -1742,9 +1742,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, onDeductCoin }) => {
         {id && (
         <div
           ref={inputContainerRef}
-          className="chat-input sticky bottom-0 left-0 right-0 z-20 md:px-4"
+          className="chat-input fixed bottom-16 left-0 right-0 z-20 md:sticky md:bottom-0 md:px-4 max-w-md mx-auto"
           style={{
-            padding: '8px 8px calc(8px + env(safe-area-inset-bottom, 0px)) 8px',
+            padding: '12px 8px 12px 8px',
           }}
         >
           {/* Media Preview */}
