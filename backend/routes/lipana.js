@@ -670,7 +670,10 @@ router.post('/webhook', async (req, res) => {
       error: err.message,
       stack: err.stack,
     });
-    res.status(500).end();
+    res.status(500).json({
+      ok: false,
+      error: err.message || 'Webhook processing failed',
+    });
   }
 });
 
