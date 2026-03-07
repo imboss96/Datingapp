@@ -106,6 +106,34 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
   const [premiumEmailSent, setPremiumEmailSent] = useState<boolean | null>(null);
   const [premiumEmailError, setPremiumEmailError] = useState<string | null>(null);
 
+  const normalizePaymentError = (raw: unknown, scope: 'coin' | 'premium' = 'coin'): string => {
+    const fallback = scope === 'premium'
+      ? 'Premium payment failed. Please try again.'
+      : 'Payment failed. Please try again.';
+    const msg = String(raw || '').trim();
+    if (!msg) return fallback;
+
+    const lower = msg.toLowerCase();
+
+    if (lower.includes('timed out')) return 'Payment confirmation timed out. Please check transaction history.';
+    if (lower.includes('cancel')) return 'Payment was cancelled. If this was accidental, please try again.';
+    if (lower.includes('network') || lower.includes('server error') || lower.includes('no response')) {
+      return 'Could not reach payment server. Please check your connection and try again.';
+    }
+    if (lower === 'coin_purchase' || lower === 'premium_purchase' || /^[a-z]+(_[a-z]+)+$/.test(lower)) {
+      return scope === 'premium'
+        ? 'Premium payment could not be completed. Please retry and confirm on your phone.'
+        : 'Payment could not be completed. Please retry and confirm on your phone.';
+    }
+
+    return msg;
+  };
+
+  const resolveMethodIconClass = (icon: string) => {
+    if (icon.startsWith('fa-brands')) return icon;
+    return `fa-solid ${icon}`;
+  };
+
   const interestsList = [
     'Travel', 'Fitness', 'Music', 'Art', 'Food', 'Gaming', 'Reading',
     'Sports', 'Cooking', 'Photography', 'Dance', 'Hiking', 'Movies',
@@ -239,7 +267,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
               setIsProcessing(false);
             } else if (s === 'failed' || s === 'cancelled') {
               clearInterval(poll);
-              setError(status.message || 'Mobile money payment failed or cancelled');
+              setError(normalizePaymentError(status.message || 'Mobile money payment failed or cancelled', 'coin'));
               setPaymentStep('SELECT_METHOD');
               setIsProcessing(false);
             } else if (Date.now() - pollStartTime > pollTimeoutMs) {
@@ -251,7 +279,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
           } catch (pollErr) {
             console.error('[ERROR ProfileSettings] polling lipana status failed:', pollErr);
             clearInterval(poll);
-            setError('Error checking payment status. Please refresh.');
+            setError(normalizePaymentError('Error checking payment status. Please refresh.', 'coin'));
             setPaymentStep('SELECT_METHOD');
             setIsProcessing(false);
           }
@@ -290,7 +318,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
         || err?.message
         || String(err)
         || 'Payment failed. Please try again.';
-      setError(errorMsg);
+      setError(normalizePaymentError(errorMsg, 'coin'));
       setPaymentStep('SELECT_METHOD');
       setIsProcessing(false);
     }
@@ -405,7 +433,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
               setIsProcessing(false);
             } else if (s === 'failed' || s === 'cancelled') {
               clearInterval(poll);
-              setError(status.message || 'Premium payment failed or cancelled');
+              setError(normalizePaymentError(status.message || 'Premium payment failed or cancelled', 'premium'));
               setPremiumPaymentStep('SELECT_METHOD');
               setIsProcessing(false);
             } else if (Date.now() - pollStartTime > pollTimeoutMs) {
@@ -417,7 +445,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
           } catch (pollErr) {
             console.error('[ERROR ProfileSettings] polling premium payment status failed:', pollErr);
             clearInterval(poll);
-            setError('Error checking premium payment status. Please refresh.');
+            setError(normalizePaymentError('Error checking premium payment status. Please refresh.', 'premium'));
             setPremiumPaymentStep('SELECT_METHOD');
             setIsProcessing(false);
           }
@@ -447,7 +475,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     } catch (err: any) {
       console.error('[ERROR ProfileSettings] Premium payment processing failed:', err);
       const errorMsg = err?.response?.data?.error || err?.message || 'Premium purchase failed. Please try again.';
-      setError(errorMsg);
+      setError(normalizePaymentError(errorMsg, 'premium'));
       setPremiumPaymentStep('SELECT_METHOD');
       setIsProcessing(false);
     }
@@ -828,7 +856,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                           >
                             <div className="flex items-center gap-4">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${selectedMethod === method.id ? 'text-rose-500' : 'text-gray-400'}`}>
-                                <i className={method.icon}></i>
+                                <i className={resolveMethodIconClass(method.icon)}></i>
                               </div>
                               <div className="text-left">
                                 <p className="text-sm font-bold text-gray-800">{method.name}</p>
@@ -1012,7 +1040,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
                           >
                             <div className="flex items-center gap-4">
                               <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${premiumSelectedMethod === method.id ? 'text-purple-500' : 'text-gray-400'}`}>
-                                <i className={method.icon}></i>
+                                <i className={resolveMethodIconClass(method.icon)}></i>
                               </div>
                               <div className="text-left">
                                 <p className="text-sm font-bold text-gray-800">{method.name}</p>
