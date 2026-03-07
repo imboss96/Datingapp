@@ -1,6 +1,7 @@
 import express from 'express';
 import CoinPackage from '../models/CoinPackage.js';
 import LandingPageSettings from '../models/LandingPageSettings.js';
+import PremiumPackage from '../models/PremiumPackage.js';
 
 const router = express.Router();
 
@@ -52,6 +53,30 @@ router.get('/coin-packages/all', async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: 'Failed to fetch packages' 
+    });
+  }
+});
+
+// GET all active premium packages (PUBLIC - no auth required)
+router.get('/premium-packages', async (req, res) => {
+  try {
+    console.log('[DEBUG public] Fetching premium packages for frontend');
+    const packages = await PremiumPackage.find({ isActive: true })
+      .sort({ displayOrder: 1 })
+      .lean();
+
+    console.log(`[DEBUG public] Found ${packages.length} active premium packages`);
+
+    res.json({
+      success: true,
+      packages: packages || []
+    });
+  } catch (error) {
+    console.error('[ERROR public] Failed to fetch premium packages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch premium packages',
+      message: error.message
     });
   }
 });

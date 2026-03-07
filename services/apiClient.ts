@@ -123,6 +123,27 @@ class APIClient {
     }
   }
 
+  async getPublicPremiumPackages() {
+    try {
+      console.log('[DEBUG apiClient] Requesting public premium packages from:', `${API_BASE_URL}/public/premium-packages`);
+      const response = await fetch(`${API_BASE_URL}/public/premium-packages`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch premium packages: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('[DEBUG apiClient] Premium packages response received:', data);
+      return data;
+    } catch (error) {
+      console.error('[ERROR apiClient] getPublicPremiumPackages error:', error);
+      throw error;
+    }
+  }
+
   // Auth
   async register(email: string, password: string, name: string, age: number, location?: string) {
     const data = await this.request('/auth/register', {

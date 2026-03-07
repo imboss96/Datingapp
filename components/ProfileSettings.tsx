@@ -762,7 +762,7 @@ const ProfileSettings: React.FC<Props> = ({ user, setUser, onClose }) => {
     const fetchPremiumPackages = async () => {
       try {
         setLoadingPremiumPackages(true);
-        const response = await apiClient.getPremiumPackages();
+        const response = await apiClient.getPublicPremiumPackages();
         if (response.success && Array.isArray(response.packages)) {
           setPremiumPackages(response.packages);
         } else if (response.premium_packages && Array.isArray(response.premium_packages)) {
