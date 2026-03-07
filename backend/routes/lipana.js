@@ -551,20 +551,35 @@ router.post('/webhook', async (req, res) => {
       return res.status(500).json({ error: 'Server misconfiguration' });
     }
     
-    // Verify HMAC-SHA256 signature
-    const expectedSignature = crypto
+    // Verify HMAC-SHA256 signature.
+    // Accept common formats:
+    // - raw hex
+    // - "sha256=<hex>"
+    // - base64 digest
+    const expectedHex = crypto
       .createHmac('sha256', webhookSecret)
       .update(payload)
-      .digest('hex');
-    
-    // Use constant-time comparison to prevent timing attacks
-    const providedSignature = String(signature).trim();
-    const signatureValid = providedSignature.length === expectedSignature.length
-      ? crypto.timingSafeEqual(Buffer.from(providedSignature), Buffer.from(expectedSignature))
-      : false;
+      .digest('hex')
+      .toLowerCase();
+    const expectedBase64 = Buffer.from(expectedHex, 'hex').toString('base64');
+
+    const providedRaw = String(signature).trim();
+    const providedNormalized = providedRaw.replace(/^sha256=/i, '').trim();
+
+    const safeEqual = (a, b) => {
+      if (!a || !b || a.length !== b.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+    };
+
+    const signatureValid =
+      safeEqual(providedNormalized.toLowerCase(), expectedHex) ||
+      safeEqual(providedNormalized, expectedBase64);
     
     if (!signatureValid) {
-      console.warn(`[LIPANA /webhook] Signature verification failed`);
+      console.warn(`[LIPANA /webhook] Signature verification failed`, {
+        providedPrefix: providedRaw.slice(0, 14),
+        providedLength: providedRaw.length,
+      });
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
