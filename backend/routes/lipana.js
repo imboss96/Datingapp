@@ -589,11 +589,11 @@ router.post('/webhook', async (req, res) => {
     console.log(`[LIPANA /webhook] ✓ Signature verified`);
     
     const event = JSON.parse(payload.toString());
-    // Lipana sends top-level fields, not nested in 'data'
+    // Accept both top-level and nested `data` webhook shapes.
     const eventType = event.event;
-    const transactionId = event.transaction_id;
-    const phone = event.phone;
-    const reference = event.reference;
+    const transactionId = event.transaction_id || event.transactionId || event.data?.transaction_id || event.data?.transactionId;
+    const phone = event.phone || event.recipientPhone || event.data?.phone || event.data?.recipientPhone;
+    const reference = event.reference || event.data?.reference || event.data?.conversationId || event.data?.checkoutRequestID;
     
     console.log(`[LIPANA /webhook] Event parsed:`, {
       eventType,
@@ -611,6 +611,9 @@ router.post('/webhook', async (req, res) => {
     const possibleIds = [
       transactionId,
       reference,
+      event.data?.checkoutRequestID,
+      event.data?.checkout_request_id,
+      event.data?.conversationId
     ].filter(Boolean);
     
     console.log(`[LIPANA /webhook] Trying to find transaction with IDs:`, {
@@ -672,15 +675,15 @@ router.post('/webhook', async (req, res) => {
     const normalizedStatus = String(event.status || event.data?.status || '').toLowerCase();
 
     const isSuccessEvent =
-      ['payment.success', 'transaction.success', 'payment.completed', 'transaction.completed'].includes(normalizedEventType) ||
+      ['payment.success', 'transaction.success', 'payment.completed', 'transaction.completed', 'payout.success', 'payout.completed'].includes(normalizedEventType) ||
       ['success', 'completed', 'paid'].includes(normalizedStatus);
 
     const isFailedEvent =
-      ['payment.failed', 'transaction.failed'].includes(normalizedEventType) ||
+      ['payment.failed', 'transaction.failed', 'payout.failed'].includes(normalizedEventType) ||
       ['failed', 'error'].includes(normalizedStatus);
 
     const isCancelledEvent =
-      ['payment.cancelled', 'transaction.cancelled', 'payment.canceled', 'transaction.canceled'].includes(normalizedEventType) ||
+      ['payment.cancelled', 'transaction.cancelled', 'payment.canceled', 'transaction.canceled', 'payout.cancelled', 'payout.canceled'].includes(normalizedEventType) ||
       ['cancelled', 'canceled'].includes(normalizedStatus);
 
     if (isSuccessEvent) {
