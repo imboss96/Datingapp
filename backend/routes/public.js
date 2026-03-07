@@ -10,9 +10,18 @@ const router = express.Router();
 router.get('/coin-packages', async (req, res) => {
   try {
     console.log('[DEBUG public] Fetching coin packages for frontend');
-    const packages = await CoinPackage.find({ isActive: true })
+    let packages = await CoinPackage.find({ isActive: true })
       .sort({ displayOrder: 1, id: 1 })
       .lean();
+
+    // Fallback: if admins accidentally deactivated all packages, return all packages
+    // so standard users are not blocked from purchasing coins.
+    if (!packages.length) {
+      console.warn('[WARN public] No active coin packages found. Falling back to all packages.');
+      packages = await CoinPackage.find()
+        .sort({ displayOrder: 1, id: 1 })
+        .lean();
+    }
     
     console.log(`[DEBUG public] Found ${packages.length} active coin packages:`, 
       packages.map(p => ({ id: p.id, coins: p.coins, price: p.price }))
@@ -61,9 +70,18 @@ router.get('/coin-packages/all', async (req, res) => {
 router.get('/premium-packages', async (req, res) => {
   try {
     console.log('[DEBUG public] Fetching premium packages for frontend');
-    const packages = await PremiumPackage.find({ isActive: true })
+    let packages = await PremiumPackage.find({ isActive: true })
       .sort({ displayOrder: 1 })
       .lean();
+
+    // Fallback: expose existing packages if all are currently inactive,
+    // to avoid hiding premium plans from standard users.
+    if (!packages.length) {
+      console.warn('[WARN public] No active premium packages found. Falling back to all packages.');
+      packages = await PremiumPackage.find()
+        .sort({ displayOrder: 1 })
+        .lean();
+    }
 
     console.log(`[DEBUG public] Found ${packages.length} active premium packages`);
 
